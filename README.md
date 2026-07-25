@@ -99,13 +99,29 @@ demo week whose totals reproduce the design exactly — $1,482.60 across
 29/21/18/14/11/7%. Five of its seven days run two or three apps at once, so the
 attribution logic is exercised from first launch.
 
+## Charts
+
+`ChartSeries` carries plain arrays; the shapes normalise them at draw time, so
+no pixel coordinates survive outside the design doc.
+
+A shift's gross is spread across the two-hour buckets it actually spans — a
+15:00–21:30 block feeds the 14:00, 16:00, 18:00 and 20:00 slots rather than
+dumping everything at its start time. The buckets sum back to the week's gross
+exactly. They begin at 06:00 rather than midnight, which puts the five axis
+labels on bucket boundaries instead of between them.
+
+"Peak 6–8pm" is computed from the busiest bucket. Hard-coded, as the design had
+it, the caption could contradict the bars directly beneath it.
+
+The monthly curve falls back to the design's series until two months of history
+exist, since a new account has nothing to plot.
+
 ## Not yet built
 
-**Charts are still static.** `ChartData` holds the design's hard-coded series,
-so logging a shift moves every figure but not the bars. That's the next task —
-and the reason it's split out is that a new user has no month of history to
-draw a monthly curve from, so those need an empty state as much as a query.
-
 No networking, no platform OAuth. Expenses have a model but no entry UI. The
-Week/Month/Year control holds state but doesn't re-slice yet — the builder
-already takes an arbitrary `range`, so it's a matter of passing it through.
+Week/Month/Year control holds state but doesn't re-slice yet — `build` already
+takes an arbitrary `range`, so it's a matter of passing it through.
+
+Nothing here has been run against real driver data, only against the seeded
+week. The parsing paths that would replace manual entry — statement CSVs,
+weekly summary emails — don't exist yet.
