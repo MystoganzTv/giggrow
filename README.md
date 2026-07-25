@@ -72,11 +72,40 @@ want it elsewhere.
 | Analytics range | "Week" always selected | Working segmented control | Charts are static for now |
 | Logo | Absent from the screens | Settings footer | Additive; disturbs no designed row |
 
+## Data layer
+
+SwiftData, `Model/Store/`. Entities are in `Entities.swift`, the projection in
+`SnapshotBuilder.swift`, first-run contents in `Seed.swift`.
+
+**A shift is a block of time, not a block of time on one app.** Multi-app
+drivers run Uber and DoorDash simultaneously, so `Shift` stores the hours once
+and `PlatformEarning` hangs each app's take off it. The alternative — one shift
+per platform — double-counts every overlapping hour and halves the headline
+$/hour, which is the number the whole product rests on.
+
+**Per-platform hours are attributed, not measured.** With two apps on at once
+there's no ground truth for "hours on Uber", so a shift's hours are split in
+proportion to what each app paid. The attributed hours therefore sum to hours
+actually worked. The split is over *online* hours rather than active ones, so
+per-app rates share a denominator with the headline and can be compared to it.
+
+**The five screens didn't change.** `EarningsSnapshot` was always a projection;
+it's now computed from the store instead of holding literals. `.mock` survives
+as preview data so every `#Preview` still works offline.
+
+A fresh install seeds a profile, the six platforms, a service schedule and a
+demo week whose totals reproduce the design exactly — $1,482.60 across
+38.4 online hours, 9.2 idle, 612 miles, 214 units of work, split
+29/21/18/14/11/7%. Five of its seven days run two or three apps at once, so the
+attribution logic is exercised from first launch.
+
 ## Not yet built
 
-Mock data only — no networking, persistence, or platform OAuth. The
-Week/Month/Year control animates and holds state but doesn't re-slice the
-charts. Every button is inert except tab selection and the range picker.
+**Charts are still static.** `ChartData` holds the design's hard-coded series,
+so logging a shift moves every figure but not the bars. That's the next task —
+and the reason it's split out is that a new user has no month of history to
+draw a monthly curve from, so those need an empty state as much as a query.
 
-`EarningsSnapshot` is the single seam: swap `.mock` in `RootView` for a live
-source and all five screens follow.
+No networking, no platform OAuth. Expenses have a model but no entry UI. The
+Week/Month/Year control holds state but doesn't re-slice yet — the builder
+already takes an arbitrary `range`, so it's a matter of passing it through.

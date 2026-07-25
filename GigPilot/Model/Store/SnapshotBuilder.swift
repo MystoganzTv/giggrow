@@ -1,0 +1,329 @@
+//
+//  SnapshotBuilder.swift
+//  GigPilot
+//
+//  Turns stored shifts into the `EarningsSnapshot` the five screens already
+//  read. This is the whole point of having built the UI against a projection:
+//  nothing below changes a single line in DashboardView and friends.
+//
+
+import Foundation
+import SwiftData
+import SwiftUI   // Platform carries its brand gradient as Color values
+
+// MARK: - Date ranges
+
+enum DateRange {
+    /// Monday-based week containing `date`, matching the design's Mon…Sun axis.
+    static func week(containing date: Date, calendar: Calendar = .gigPilot) -> Range<Date> {
+        let start = calendar.startOfWeek(for: date)
+        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
+        return start..<end
+    }
+
+    static func month(containing date: Date, calendar: Calendar = .gigPilot) -> Range<Date> {
+        let comps = calendar.dateComponents([.year, .month], from: date)
+        let start = calendar.date(from: comps) ?? date
+        let end = calendar.date(byAdding: .month, value: 1, to: start) ?? start
+        return start..<end
+    }
+
+    static func year(containing date: Date, calendar: Calendar = .gigPilot) -> Range<Date> {
+        let comps = calendar.dateComponents([.year], from: date)
+        let start = calendar.date(from: comps) ?? date
+        let end = calendar.date(byAdding: .year, value: 1, to: start) ?? start
+        return start..<end
+    }
+
+    static func shifted(_ range: Range<Date>, by value: Int, unit: Calendar.Component,
+                        calendar: Calendar = .gigPilot) -> Range<Date> {
+        let lower = calendar.date(byAdding: unit, value: value, to: range.lowerBound) ?? range.lowerBound
+        let upper = calendar.date(byAdding: unit, value: value, to: range.upperBound) ?? range.upperBound
+        return lower..<upper
+    }
+}
+
+extension Calendar {
+    /// Weeks start Monday; the design's bar charts are labelled M T W T F S S.
+    static var gigPilot: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.firstWeekday = 2
+        return c
+    }
+
+    func startOfWeek(for date: Date) -> Date {
+        let comps = dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return self.date(from: comps) ?? startOfDay(for: date)
+    }
+}
+
+// MARK: - Attribution
+
+/// How a shift's hours and miles are split between the apps that were running.
+///
+/// With two apps on at once there is no ground truth for "hours on Uber", so
+/// the shift's hours are divided in proportion to what each app paid. A
+/// platform that earned 70% of the block is charged 70% of its hours. The sum
+/// of attributed hours therefore equals hours actually worked — no double
+/// counting — while still giving a per-app rate worth comparing.
+///
+/// Note this splits *online* hours, not active ones. The dashboard's headline
+/// $/hour is gross ÷ online hours, because waiting for a ping is part of the
+/// job; per-platform rates have to divide by the same denominator or they
+/// aren't comparable to the headline they sit under.
+enum ShiftAttribution {
+
+    static func hours(of earning: PlatformEarning, in shift: Shift) -> Double {
+        share(of: earning, in: shift) * shift.hours
+    }
+
+    static func miles(of earning: PlatformEarning, in shift: Shift) -> Double {
+        // Prefer what the app itself reported.
+        if earning.reportedMiles > 0 { return earning.reportedMiles }
+        return share(of: earning, in: shift) * shift.miles
+    }
+
+    private static func share(of earning: PlatformEarning, in shift: Shift) -> Double {
+        let total = shift.gross
+        guard total > 0 else {
+            // Nothing earned: split evenly rather than dividing by zero.
+            let n = max(shift.earnings.count, 1)
+            return 1 / Double(n)
+        }
+        return earning.gross / total
+    }
+}
+
+// MARK: - Builder
+
+extension EarningsSnapshot {
+
+    /// Builds the snapshot for `range` out of everything in the store.
+    ///
+    /// - Parameters:
+    ///   - shifts: every shift, unfiltered. Filtering happens here so the
+    ///     all-time rollups (maintenance fund, YTD taxes) stay correct.
+    ///   - expenses: every expense, unfiltered, for the same reason.
+    static func build(
+        shifts: [Shift],
+        expenses: [Expense],
+        accounts: [PlatformAccount],
+        profile: DriverProfile,
+        vehicle vehicleRecord: VehicleRecord?,
+        range: Range<Date> = DateRange.week(containing: .now),
+        now: Date = .now,
+        calendar: Calendar = .gigPilot
+    ) -> EarningsSnapshot {
+
+        let inRange = shifts.filter { range.contains($0.start) }
+        let gross = inRange.reduce(0) { $0 + $1.gross }
+
+        // Hours are summed per shift, so an hour with three apps on counts once.
+        let onlineHours = inRange.reduce(0) { $0 + $1.hours }
+        let activeHours = inRange.reduce(0) { $0 + $1.activeHours }
+        let miles = inRange.reduce(0) { $0 + $1.miles }
+        let trips = inRange.reduce(0) { $0 + $1.tripCount }
+
+        // MARK: Platforms
+
+        let previous = DateRange.shifted(range, by: -1, unit: .weekOfYear, calendar: calendar)
+        let previousShifts = shifts.filter { previous.contains($0.start) }
+
+        var platforms: [Platform] = []
+        for account in accounts.sorted(by: { $0.sortIndex < $1.sortIndex }) {
+            var accGross = 0.0, accHours = 0.0, accMiles = 0.0, accTrips = 0
+
+            for shift in inRange {
+                for earning in shift.earnings where earning.account?.name == account.name {
+                    accGross += earning.gross
+                    accHours += ShiftAttribution.hours(of: earning, in: shift)
+                    accMiles += ShiftAttribution.miles(of: earning, in: shift)
+                    accTrips += earning.trips
+                }
+            }
+
+            // Skip apps with no activity this period rather than showing a zero row.
+            guard accGross > 0 || accTrips > 0 else { continue }
+
+            let prevGross = previousShifts.reduce(0.0) { total, shift in
+                total + shift.earnings
+                    .filter { $0.account?.name == account.name }
+                    .reduce(0) { $0 + $1.gross }
+            }
+
+            platforms.append(
+                Platform(
+                    name: account.name,
+                    short: account.short,
+                    initial: account.initial,
+                    share: gross > 0 ? accGross / gross : 0,
+                    hourly: accHours > 0 ? Money.cents(accGross / accHours) : "—",
+                    meta: "\(accTrips) \(account.unitNoun) · \(Int(accMiles.rounded())) mi",
+                    delta: percentChange(from: prevGross, to: accGross),
+                    gradient: [Color(hex: account.gradientStart), Color(hex: account.gradientEnd)]
+                )
+            )
+        }
+        platforms.sort { $0.share > $1.share }
+
+        // MARK: Rollups
+
+        let allTimeGross = shifts.reduce(0) { $0 + $1.gross }
+        let maintenanceSpent = expenses
+            .filter { $0.category.drawsFromMaintenanceFund }
+            .reduce(0) { $0 + $1.amount }
+        let maintenanceFund = profile.maintenanceOpeningBalance
+            + allTimeGross * profile.maintenanceRate / 100
+            - maintenanceSpent
+
+        let yearRange = DateRange.year(containing: now, calendar: calendar)
+        let ytdGross = shifts
+            .filter { yearRange.contains($0.start) }
+            .reduce(0) { $0 + $1.gross }
+
+        let monthRange = DateRange.month(containing: now, calendar: calendar)
+        let monthGross = shifts
+            .filter { monthRange.contains($0.start) }
+            .reduce(0) { $0 + $1.gross }
+        let previousMonth = DateRange.shifted(monthRange, by: -1, unit: .month, calendar: calendar)
+        let previousMonthGross = shifts
+            .filter { previousMonth.contains($0.start) }
+            .reduce(0) { $0 + $1.gross }
+
+        let previousGross = previousShifts.reduce(0) { $0 + $1.gross }
+
+        let rangeExpenses = expenses
+            .filter { range.contains($0.date) }
+            .reduce(0) { $0 + $1.amount }
+
+        // What the driver actually keeps once both set-asides are honoured.
+        let netProfit = gross
+            - rangeExpenses
+            - gross * profile.taxRate / 100
+            - gross * profile.maintenanceRate / 100
+
+        // MARK: Vehicle & service
+
+        let odometer = liveOdometer(vehicleRecord, shifts: shifts)
+
+        let service: [ServiceItem] = (vehicleRecord?.service ?? [])
+            .sorted { lhs, rhs in
+                lhs.status(currentMileage: odometer, now: now).urgency
+                    < rhs.status(currentMileage: odometer, now: now).urgency
+            }
+            .map {
+                ServiceItem(
+                    name: $0.name,
+                    due: $0.dueDescription(currentMileage: odometer),
+                    status: $0.status(currentMileage: odometer, now: now)
+                )
+            }
+
+        let vehicle = Vehicle(
+            name: vehicleRecord?.name ?? "No vehicle",
+            detail: vehicleRecord?.detail ?? "Add one in Settings",
+            odometer: odometer,
+            milesThisWeek: Int(miles.rounded()),
+            fuelCostPerMile: vehicleRecord?.fuelCostPerMile ?? 0,
+            averageMPG: vehicleRecord?.averageMPG ?? 0
+        )
+
+        // MARK: Assemble
+
+        return EarningsSnapshot(
+            weeklyTotal: gross,
+            taxRate: profile.taxRate,
+            maintenanceRate: profile.maintenanceRate,
+
+            perHour: onlineHours > 0 ? gross / onlineHours : 0,
+            perMile: miles > 0 ? gross / miles : 0,
+            onlineHours: onlineHours,
+            activeHours: activeHours,
+            mileage: Int(miles.rounded()),
+            tripCount: trips,
+            weeklyChange: percentChange(from: previousGross, to: gross),
+            monthlyChange: percentChange(from: previousMonthGross, to: monthGross),
+
+            maintenanceFund: max(maintenanceFund, 0),
+            maintenanceGoal: profile.maintenanceGoal,
+            taxSavingsYTD: ytdGross * profile.taxRate / 100,
+            monthlyIncome: monthGross,
+            netProfit: max(netProfit, 0),
+
+            platforms: platforms,
+            service: service,
+            settingGroups: settingGroups(for: profile),
+
+            driver: Driver(name: profile.name, detail: profile.detail),
+            vehicle: vehicle
+        )
+    }
+
+    // MARK: Helpers
+
+    /// Baseline odometer plus everything driven since it was recorded.
+    private static func liveOdometer(_ vehicle: VehicleRecord?, shifts: [Shift]) -> Int {
+        guard let vehicle else { return 0 }
+        let since = shifts
+            .filter { $0.start >= vehicle.odometerAsOf }
+            .reduce(0) { $0 + $1.miles }
+        return vehicle.odometerBaseline + Int(since.rounded())
+    }
+
+    /// "+12.4%" / "−6%" / "—" when there's no prior period to compare against.
+    private static func percentChange(from old: Double, to new: Double) -> String {
+        guard old > 0 else { return new > 0 ? "New" : "—" }
+        let pct = (new - old) / old * 100
+        let rounded = (pct * 10).rounded() / 10
+        let sign = rounded >= 0 ? "+" : "−"
+        // Whole numbers read better without a trailing .0
+        let magnitude = abs(rounded)
+        let text = magnitude == magnitude.rounded()
+            ? String(format: "%.0f", magnitude)
+            : String(format: "%.1f", magnitude)
+        return "\(sign)\(text)%"
+    }
+
+    /// Builds the grouped Settings rows from live preferences.
+    private static func settingGroups(for profile: DriverProfile) -> [SettingGroup] {
+        func pct(_ value: Double) -> String {
+            value == value.rounded()
+                ? "\(Int(value))%"
+                : String(format: "%.1f%%", value)
+        }
+
+        return [
+            SettingGroup(title: "Money", rows: [
+                SettingRow(label: "Tax set-aside", value: pct(profile.taxRate)),
+                SettingRow(label: "Maintenance set-aside", value: pct(profile.maintenanceRate)),
+                SettingRow(label: "Mileage rate", value: String(format: "$%.2f / mi", profile.mileageRate)),
+                SettingRow(label: "Payout account",
+                           value: profile.payoutLast4.isEmpty ? "Not set" : "•••• \(profile.payoutLast4)")
+            ]),
+            SettingGroup(title: "Tracking", rows: [
+                SettingRow(label: "Auto mileage tracking", value: profile.autoMileageTracking ? "On" : "Off"),
+                SettingRow(label: "Shift detection",
+                           value: profile.shiftDetectionAutomatic ? "Automatic" : "Manual"),
+                SettingRow(label: "Idle threshold", value: "\(profile.idleThresholdMinutes) min")
+            ]),
+            SettingGroup(title: "General", rows: [
+                SettingRow(label: "Notifications", value: "Weekly digest"),
+                SettingRow(label: "Export data", value: "CSV, PDF"),
+                SettingRow(label: "Privacy", value: "")
+            ])
+        ]
+    }
+}
+
+// MARK: - Ordering
+
+private extension ServiceStatus {
+    /// Most urgent first in the vehicle list.
+    var urgency: Int {
+        switch self {
+        case .dueNow:    return 0
+        case .scheduled: return 1
+        case .healthy:   return 2
+        }
+    }
+}
