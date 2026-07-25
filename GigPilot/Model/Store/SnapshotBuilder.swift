@@ -196,13 +196,22 @@ extension EarningsSnapshot {
 
         let previousGross = previousShifts.reduce(0) { $0 + $1.gross }
 
-        let rangeExpenses = expenses
-            .filter { range.contains($0.date) }
+        let rangeExpenses = expenses.filter { range.contains($0.date) }
+        let expensesTotal = rangeExpenses.reduce(0) { $0 + $1.amount }
+
+        // Maintenance spending is paid out of the reserve the maintenance
+        // rate already withheld. Subtracting it from net profit as well would
+        // charge the driver twice for the same dollar — once when it was set
+        // aside, once when it was spent. Only out-of-pocket categories reduce
+        // take-home.
+        let outOfPocket = rangeExpenses
+            .filter { !$0.category.drawsFromMaintenanceFund }
             .reduce(0) { $0 + $1.amount }
+        let reserveDraw = expensesTotal - outOfPocket
 
         // What the driver actually keeps once both set-asides are honoured.
         let netProfit = gross
-            - rangeExpenses
+            - outOfPocket
             - gross * profile.taxRate / 100
             - gross * profile.maintenanceRate / 100
 
@@ -253,6 +262,9 @@ extension EarningsSnapshot {
             taxSavingsYTD: ytdGross * profile.taxRate / 100,
             monthlyIncome: monthGross,
             netProfit: max(netProfit, 0),
+
+            expensesTotal: expensesTotal,
+            reserveDraw: reserveDraw,
 
             platforms: platforms,
             service: service,
@@ -325,10 +337,13 @@ extension EarningsSnapshot {
             spread(shift: shift, into: &hourly, calendar: calendar)
         }
 
-        // Take-home per day, after both set-asides.
+        // Take-home per day, after both set-asides. Only out-of-pocket
+        // expenses are deducted — maintenance comes out of the reserve, and
+        // charging it here too would double-count it.
         let keepRate = 1 - (profile.taxRate + profile.maintenanceRate) / 100
         var dailyNet = daily.map { $0 * keepRate }
-        for expense in expenses where weekWindow.contains(expense.date) {
+        for expense in expenses
+        where weekWindow.contains(expense.date) && !expense.category.drawsFromMaintenanceFund {
             let i = calendar.dateComponents([.day], from: weekStart, to: expense.date).day ?? -1
             if (0..<7).contains(i) { dailyNet[i] = Swift.max(dailyNet[i] - expense.amount, 0) }
         }

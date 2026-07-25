@@ -12,6 +12,7 @@ struct AnalyticsView: View {
     /// belongs to the selected period rather than always to the week.
     let snapshot: EarningsSnapshot
     @Binding var range: AnalyticsRange
+    var onShowExpenses: () -> Void = {}
 
     @Namespace private var segmentNamespace
 
@@ -209,21 +210,39 @@ struct AnalyticsView: View {
                     .padding(.top, 10)
             }
         } right: {
-            StatTile(
-                eyebrow: "Net profit",
-                value: Money.whole(snapshot.netProfit),
-                valueFont: GP.Typo.metricSmall,
-                valueTracking: GP.Typo.metricSmallTracking
-            ) {
-                Sparkline(points: snapshot.series.dailyNet
-                            .chartPoints(box: ChartData.tileSparkBox),
-                          box: ChartData.tileSparkBox,
-                          color: GP.Palette.mint,
-                          height: 40,
-                          filled: true)
-                    .padding(.top, 10)
+            // Tapping through to the expenses list — net profit is the number
+            // expenses move, so this is where a driver goes looking for them.
+            Button(action: onShowExpenses) {
+                StatTile(
+                    eyebrow: "Net profit",
+                    value: Money.whole(snapshot.netProfit),
+                    footnote: expenseFootnote,
+                    footnoteColor: GP.Ink.tertiary,
+                    valueFont: GP.Typo.metricSmall,
+                    valueTracking: GP.Typo.metricSmallTracking
+                ) {
+                    Sparkline(points: snapshot.series.dailyNet
+                                .chartPoints(box: ChartData.tileSparkBox),
+                              box: ChartData.tileSparkBox,
+                              color: GP.Palette.mint,
+                              height: 40,
+                              filled: true)
+                        .padding(.top, 10)
+                }
             }
+            .buttonStyle(.plain)
         }
+    }
+
+    /// Names the out-of-pocket figure, not the gross spend — the reserve draw
+    /// doesn't touch net profit and saying otherwise would be misleading.
+    private var expenseFootnote: String {
+        let pocket = snapshot.expensesTotal - snapshot.reserveDraw
+        guard snapshot.expensesTotal > 0 else { return "Add expenses" }
+        if snapshot.reserveDraw > 0 {
+            return "\(Money.whole(pocket)) costs · \(Money.whole(snapshot.reserveDraw)) from reserve"
+        }
+        return "After \(Money.whole(pocket)) of costs"
     }
 
     // MARK: Chart support

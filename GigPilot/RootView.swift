@@ -14,6 +14,8 @@ struct RootView: View {
 
     @State private var selection: GPIcon = .dashboard
     @State private var isLoggingShift = false
+    @State private var isLoggingExpense = false
+    @State private var isShowingExpenses = false
     @State private var analyticsRange: AnalyticsRange = .week
 
     /// Re-running the projection on every change is what keeps all five
@@ -86,9 +88,9 @@ struct RootView: View {
 
             logButton(snapshot)
         }
-        .sheet(isPresented: $isLoggingShift) {
-            LogShiftView()
-        }
+        .sheet(isPresented: $isLoggingShift) { LogShiftView() }
+        .sheet(isPresented: $isLoggingExpense) { LogExpenseView() }
+        .sheet(isPresented: $isShowingExpenses) { ExpensesView() }
     }
 
     @ViewBuilder
@@ -97,7 +99,8 @@ struct RootView: View {
         case .dashboard: DashboardView(snapshot: snapshot, onLogShift: { isLoggingShift = true })
         case .apps:      AppsView(snapshot: snapshot)
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
-                                       range: $analyticsRange)
+                                       range: $analyticsRange,
+                                       onShowExpenses: { isShowingExpenses = true })
         case .vehicle:   VehicleView(snapshot: snapshot)
         case .settings:  SettingsView(snapshot: snapshot)
         }
@@ -110,14 +113,20 @@ struct RootView: View {
         let hiddenOnEmptyDashboard = selection == .dashboard && !snapshot.hasData
 
         if selection != .settings && !hiddenOnEmptyDashboard {
-            Button {
-                isLoggingShift = true
+            // A menu rather than two buttons: logging a shift is the common
+            // case and stays one tap from the label, while expenses get a
+            // home without adding a second floating control.
+            Menu {
+                Button("Log shift") { isLoggingShift = true }
+                Button("Add expense") { isLoggingExpense = true }
+                Divider()
+                Button("All expenses") { isShowingExpenses = true }
             } label: {
                 HStack(spacing: 7) {
                     PlusGlyph()
                         .stroke(Color.white, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
                         .frame(width: 16, height: 16)
-                    Text("Log shift")
+                    Text("Log")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -125,8 +134,9 @@ struct RootView: View {
                 .padding(.vertical, 12)
                 .background(GP.Gradients.brandMark, in: Capsule())
                 .shadow(color: Color(hex: 0x5C3CDC, opacity: 0.55), radius: 18, y: 8)
+            } primaryAction: {
+                isLoggingShift = true
             }
-            .buttonStyle(.plain)
             .padding(.bottom, GP.Layout.tabBarHeight + 18)
             .transition(.scale.combined(with: .opacity))
         }

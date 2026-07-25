@@ -308,6 +308,13 @@ struct EarningsSnapshot {
     let monthlyIncome: Double
     let netProfit: Double
 
+    /// Everything spent in the period, both pots together.
+    let expensesTotal: Double
+    /// The part of `expensesTotal` paid out of the maintenance reserve rather
+    /// than out of take-home. Kept separate so the split can be shown, and so
+    /// nobody is tempted to subtract it from net profit a second time.
+    let reserveDraw: Double
+
     // Collections
     let platforms: [Platform]
     let service: [ServiceItem]

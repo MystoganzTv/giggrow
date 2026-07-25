@@ -30,6 +30,9 @@ extension EarningsSnapshot {
         monthlyIncome: 5940,
         netProfit: 994,
 
+        expensesTotal: 0,
+        reserveDraw: 0,
+
         platforms: [
             Platform(name: "Uber", short: "Uber", initial: "U", share: 0.29,
                      hourly: "$41.20", meta: "58 trips · 128 mi", delta: "+9%",
@@ -122,6 +125,9 @@ extension EarningsSnapshot {
         taxSavingsYTD: 0,
         monthlyIncome: 0,
         netProfit: 0,
+
+        expensesTotal: 0,
+        reserveDraw: 0,
 
         platforms: [],
         service: [],
