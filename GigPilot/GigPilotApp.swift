@@ -35,12 +35,18 @@ struct GigPilotApp: App {
 
 extension ModelContainer {
     /// In-memory container seeded with the demo week, for `#Preview` blocks.
+    /// `let`, not `var` — a mutable static is shared global state and trips
+    /// concurrency checking the moment the project moves to Swift 6.
     @MainActor
-    static var preview: ModelContainer = {
+    static let preview: ModelContainer = {
         let schema = Schema(GigPilotSchema.all)
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        let container = try! ModelContainer(for: schema, configurations: [config])
-        Seed.bootstrapIfNeeded(container.mainContext)
-        return container
+        do {
+            let container = try ModelContainer(for: schema, configurations: [config])
+            Seed.bootstrapIfNeeded(container.mainContext)
+            return container
+        } catch {
+            fatalError("Preview container: \(error)")
+        }
     }()
 }

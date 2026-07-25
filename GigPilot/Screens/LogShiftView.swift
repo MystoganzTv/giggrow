@@ -329,11 +329,13 @@ struct LogShiftView: View {
         shift.note = note.isEmpty ? nil : note
 
         // Rebuild the earnings rather than diffing them — a shift has at most
-        // a handful, and cascade delete keeps the store tidy.
-        for earning in shift.earnings {
+        // a handful. Detach first, then delete: mutating the relationship
+        // while iterating it is asking for trouble.
+        let stale = shift.earnings
+        shift.earnings = []
+        for earning in stale {
             context.delete(earning)
         }
-        shift.earnings = []
 
         for account in accounts {
             guard let row = rows[account.name], row.isOn else { continue }

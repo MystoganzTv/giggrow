@@ -33,7 +33,11 @@ enum Seed {
         context.insert(profile)
 
         let accounts = defaultAccounts()
-        accounts.forEach(context.insert)
+        // Explicit loop rather than `forEach(context.insert)` — passing a
+        // generic method as a function value leaves T unresolved.
+        for account in accounts {
+            context.insert(account)
+        }
 
         let vehicle = VehicleRecord(
             name: "2022 Toyota RAV4",
