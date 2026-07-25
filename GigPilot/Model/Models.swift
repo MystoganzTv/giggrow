@@ -120,6 +120,66 @@ struct Driver: Hashable {
     var initial: String { String(name.prefix(1)) }
 }
 
+// MARK: - Chart series
+
+/// The numbers behind every chart, as plain arrays in chronological order.
+/// Shapes normalise them at draw time, so nothing here carries pixel
+/// coordinates — that was the design doc's job, not the app's.
+struct ChartSeries: Equatable {
+
+    /// Gross per weekday, Monday first. Always 7 entries.
+    var daily: [Double]
+    /// Running total across the week — what the dashboard's rising line plots.
+    var cumulative: [Double]
+    /// Gross per two-hour bucket across the day, starting 06:00. 12 entries.
+    var hourly: [Double]
+    /// Gross for each of the last months, oldest first.
+    var monthly: [Double]
+    /// Miles per weekday, Monday first.
+    var dailyMiles: [Double]
+    /// Take-home per weekday after both set-asides.
+    var dailyNet: [Double]
+
+    /// Labels under the hourly chart, derived from the bucket definition so
+    /// they can't drift away from the data the way hard-coded ones do.
+    static let hourLabels = ["6a", "12p", "6p", "12a", "6a"]
+
+    /// First bucket covers 06:00–08:00.
+    static let hourlyOrigin = 6
+    static var bucketHours: Int { 24 / 12 }
+
+    var hasAnyEarnings: Bool { daily.contains { $0 > 0 } }
+    var hasMonthlyHistory: Bool { monthly.filter { $0 > 0 }.count >= 2 }
+
+    /// "Peak 6–8pm", computed from the busiest bucket rather than asserted.
+    /// The design hard-coded this string; leaving it that way would let the
+    /// caption contradict the bars directly beneath it.
+    var peakWindowLabel: String {
+        guard let peak = hourly.max(), peak > 0,
+              let index = hourly.firstIndex(of: peak) else { return "No data yet" }
+
+        let startHour = (Self.hourlyOrigin + index * Self.bucketHours) % 24
+        let endHour = (startHour + Self.bucketHours) % 24
+        return "Peak \(Self.clock(startHour))–\(Self.clock(endHour))"
+    }
+
+    /// 0 → "12am", 13 → "1pm", 18 → "6pm".
+    private static func clock(_ hour: Int) -> String {
+        let suffix = hour < 12 ? "am" : "pm"
+        let display = hour % 12 == 0 ? 12 : hour % 12
+        return "\(display)\(suffix)"
+    }
+
+    static let empty = ChartSeries(
+        daily: Array(repeating: 0, count: 7),
+        cumulative: Array(repeating: 0, count: 7),
+        hourly: Array(repeating: 0, count: 12),
+        monthly: Array(repeating: 0, count: 4),
+        dailyMiles: Array(repeating: 0, count: 7),
+        dailyNet: Array(repeating: 0, count: 7)
+    )
+}
+
 // MARK: - Earnings snapshot
 
 /// Everything the five screens read from. One object, injected at the root,
@@ -157,6 +217,9 @@ struct EarningsSnapshot {
 
     let driver: Driver
     let vehicle: Vehicle
+
+    /// Everything the charts plot.
+    let series: ChartSeries
 
     // MARK: Derived
 

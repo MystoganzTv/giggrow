@@ -255,8 +255,114 @@ extension EarningsSnapshot {
             settingGroups: settingGroups(for: profile),
 
             driver: Driver(name: profile.name, detail: profile.detail),
-            vehicle: vehicle
+            vehicle: vehicle,
+
+            series: series(
+                shifts: shifts,
+                expenses: expenses,
+                profile: profile,
+                range: range,
+                now: now,
+                calendar: calendar
+            )
         )
+    }
+
+    // MARK: Chart series
+
+    /// Buckets the shifts into the arrays every chart plots.
+    ///
+    /// A shift is credited to the day it started, and its gross is spread
+    /// evenly across the two-hour buckets it actually spans — a 15:00–21:30
+    /// block puts money into the 14:00, 16:00, 18:00 and 20:00 slots rather
+    /// than dumping it all at its start time, which is what makes the "peak
+    /// hours" chart worth reading.
+    static func series(
+        shifts: [Shift],
+        expenses: [Expense],
+        profile: DriverProfile,
+        range: Range<Date>,
+        now: Date,
+        calendar: Calendar
+    ) -> ChartSeries {
+
+        var daily = Array(repeating: 0.0, count: 7)
+        var dailyMiles = Array(repeating: 0.0, count: 7)
+        var hourly = Array(repeating: 0.0, count: 12)
+
+        let weekStart = range.lowerBound
+
+        for shift in shifts where range.contains(shift.start) {
+            let dayIndex = calendar.dateComponents([.day], from: weekStart, to: shift.start).day ?? 0
+            guard (0..<7).contains(dayIndex) else { continue }
+
+            daily[dayIndex] += shift.gross
+            dailyMiles[dayIndex] += shift.miles
+
+            spread(shift: shift, into: &hourly, calendar: calendar)
+        }
+
+        // Take-home per day, after both set-asides.
+        let keepRate = 1 - (profile.taxRate + profile.maintenanceRate) / 100
+        var dailyNet = daily.map { $0 * keepRate }
+        for expense in expenses where range.contains(expense.date) {
+            let i = calendar.dateComponents([.day], from: weekStart, to: expense.date).day ?? 0
+            if (0..<7).contains(i) { dailyNet[i] = Swift.max(dailyNet[i] - expense.amount, 0) }
+        }
+
+        // Running total for the dashboard's rising line.
+        var running = 0.0
+        let cumulative = daily.map { running += $0; return running }
+
+        // Last four calendar months, oldest first.
+        var monthly: [Double] = []
+        for offset in stride(from: 3, through: 0, by: -1) {
+            let month = DateRange.month(
+                containing: calendar.date(byAdding: .month, value: -offset, to: now) ?? now,
+                calendar: calendar
+            )
+            monthly.append(
+                shifts.filter { month.contains($0.start) }.reduce(0) { $0 + $1.gross }
+            )
+        }
+
+        return ChartSeries(
+            daily: daily,
+            cumulative: cumulative,
+            hourly: hourly,
+            monthly: monthly,
+            dailyMiles: dailyMiles,
+            dailyNet: dailyNet
+        )
+    }
+
+    /// Distributes a shift's gross across the two-hour buckets it overlaps,
+    /// weighted by how much of each bucket the shift occupied.
+    private static func spread(shift: Shift, into hourly: inout [Double], calendar: Calendar) {
+        let bucketCount = hourly.count                 // 12
+        let bucketHours = 24.0 / Double(bucketCount)   // 2
+        let dayStart = calendar.startOfDay(for: shift.start)
+
+        // Buckets start at 06:00 — drivers' days, not calendar days.
+        let originOffset = 6.0
+
+        let startHour = shift.start.timeIntervalSince(dayStart) / 3600
+        let endHour = startHour + shift.hours
+        guard endHour > startHour else { return }
+
+        let perHour = shift.gross / (endHour - startHour)
+
+        for bucket in 0..<bucketCount {
+            let lower = originOffset + Double(bucket) * bucketHours
+            let upper = lower + bucketHours
+
+            // Compare on a 24h wheel so a late shift wraps into the small hours.
+            for shiftOffset in [0.0, 24.0, -24.0] {
+                let overlap = Swift.min(endHour + shiftOffset, upper)
+                    - Swift.max(startHour + shiftOffset, lower)
+                if overlap > 0 { hourly[bucket] += overlap * perHour }
+            }
+        }
     }
 
     // MARK: Helpers

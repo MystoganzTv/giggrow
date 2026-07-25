@@ -91,8 +91,31 @@ extension EarningsSnapshot {
             milesThisWeek: 612,
             fuelCostPerMile: 0.11,
             averageMPG: 39
-        )
+        ),
+
+        series: .mock
     )
+}
+
+// MARK: - Mock series
+//
+// The same seven days the demo week seeds, so previews and a freshly
+// installed app draw identical charts.
+
+extension ChartSeries {
+    static let mock: ChartSeries = {
+        let daily: [Double] = [175.25, 165.80, 131.21, 206.54, 242.74, 331.96, 229.10]
+        var running = 0.0
+        return ChartSeries(
+            daily: daily,
+            cumulative: daily.map { running += $0; return running },
+            // Two-hour buckets from 06:00 — the demo week's shifts spread out.
+            hourly: [0, 58.4, 92.6, 118.3, 141.7, 96.2, 88.5, 152.4, 171.9, 84.3, 21.6, 0],
+            monthly: [4_820, 5_140, 5_610, 5_940],
+            dailyMiles: [82, 74, 96, 88, 104, 118, 50],
+            dailyNet: daily.map { $0 * 0.67 }
+        )
+    }()
 }
 
 // MARK: - Chart series

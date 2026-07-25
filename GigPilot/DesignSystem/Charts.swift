@@ -9,6 +9,63 @@
 
 import SwiftUI
 
+// MARK: - Normalising real values
+
+extension Array where Element == Double {
+
+    /// Turns raw values into points in a `box`-sized space, with y inverted so
+    /// larger values sit higher. Used to feed `SeriesLine` / `SeriesArea` from
+    /// live data rather than the design's hard-coded coordinates.
+    ///
+    /// - Parameter headroom: fraction of the box left empty above the peak,
+    ///   so the maximum doesn't graze the top edge.
+    func chartPoints(box: CGSize, headroom: Double = 0.10) -> [CGPoint] {
+        guard count > 1 else { return [] }
+        let peak = (self.max() ?? 0) * (1 + headroom)
+        guard peak > 0 else {
+            // Flat baseline rather than a division by zero.
+            return enumerated().map { i, _ in
+                CGPoint(x: CGFloat(i) / CGFloat(count - 1) * box.width, y: box.height)
+            }
+        }
+        return enumerated().map { i, value in
+            CGPoint(
+                x: CGFloat(i) / CGFloat(count - 1) * box.width,
+                y: box.height * CGFloat(1 - value / peak)
+            )
+        }
+    }
+
+    /// Bar heights plus the opacity ramp the design uses — taller bars are
+    /// more opaque, so the eye lands on the best day without needing a label.
+    func chartBars(minOpacity: Double = 0.45) -> [(height: CGFloat, opacity: Double)] {
+        let peak = self.max() ?? 0
+        guard peak > 0 else {
+            return map { _ in (height: CGFloat(0), opacity: minOpacity) }
+        }
+        return map { value in
+            let ratio = value / peak
+            return (height: CGFloat(ratio),
+                    opacity: minOpacity + (1 - minOpacity) * ratio)
+        }
+    }
+
+    /// Same, tinted along a violet→indigo ramp for the hourly distribution.
+    func chartColoredBars(palette: [Color]) -> [(height: CGFloat, color: Color, opacity: Double)] {
+        let peak = self.max() ?? 0
+        return enumerated().map { i, value in
+            let ratio = peak > 0 ? value / peak : 0
+            // Explicitly Swift.min / Swift.max — Array has its own min()/max().
+            let colour = palette.isEmpty
+                ? GP.Palette.violet400
+                : palette[Swift.min(i * palette.count / Swift.max(count, 1), palette.count - 1)]
+            return (height: CGFloat(ratio),
+                    color: colour,
+                    opacity: 0.40 + 0.60 * ratio)
+        }
+    }
+}
+
 // MARK: - Coordinate mapping
 
 private func mapped(_ points: [CGPoint], box: CGSize, into rect: CGRect) -> [CGPoint] {

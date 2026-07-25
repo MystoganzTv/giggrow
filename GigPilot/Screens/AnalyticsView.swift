@@ -80,8 +80,8 @@ struct AnalyticsView: View {
                         .gpText(.system(size: 15, weight: .semibold))
                 }
 
-                BarChart(bars: ChartData.weeklyBars,
-                         maxHeight: ChartData.weeklyBarsMax,
+                BarChart(bars: snapshot.series.daily.chartBars(),
+                         maxHeight: 1,
                          height: 100)
                     .padding(.top, 16)
 
@@ -104,10 +104,25 @@ struct AnalyticsView: View {
                         .gpText(.system(size: 15, weight: .semibold))
                 }
 
-                MonthlyCurveChart()
-                    .padding(.top, 16)
+                // A brand-new account has no month-over-month history, so the
+                // design's smooth curve stands in until there are two months
+                // worth of shifts to draw a real one from.
+                Group {
+                    if snapshot.series.hasMonthlyHistory {
+                        Sparkline(points: snapshot.series.monthly
+                                    .chartPoints(box: ChartData.monthlyCurveBox),
+                                  box: ChartData.monthlyCurveBox,
+                                  color: GP.Palette.sky300,
+                                  height: 104,
+                                  lineWidth: 2.4,
+                                  filled: true)
+                    } else {
+                        MonthlyCurveChart()
+                    }
+                }
+                .padding(.top, 16)
 
-                AxisLabels(labels: ChartData.monthLabels)
+                AxisLabels(labels: monthLabels)
                     .padding(.top, 6)
             }
         }
@@ -151,16 +166,17 @@ struct AnalyticsView: View {
                     Text("Hourly earnings")
                         .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
                     Spacer()
-                    Text("Peak 6–8pm")
+                    Text(snapshot.series.peakWindowLabel)
                         .gpText(GP.Typo.captionMuted, color: GP.Ink.tertiary)
                 }
 
-                ColoredBarChart(bars: ChartData.hourlyBars,
-                                maxHeight: ChartData.hourlyBarsMax,
+                ColoredBarChart(bars: snapshot.series.hourly
+                                    .chartColoredBars(palette: Self.hourPalette),
+                                maxHeight: 1,
                                 height: 78)
                     .padding(.top, 16)
 
-                AxisLabels(labels: ChartData.hourLabels)
+                AxisLabels(labels: ChartSeries.hourLabels)
                     .padding(.top, 6)
             }
         }
@@ -176,7 +192,8 @@ struct AnalyticsView: View {
                 valueFont: GP.Typo.metricSmall,
                 valueTracking: GP.Typo.metricSmallTracking
             ) {
-                Sparkline(points: ChartData.mileageSpark,
+                Sparkline(points: snapshot.series.dailyMiles
+                            .chartPoints(box: ChartData.tileSparkBox),
                           box: ChartData.tileSparkBox,
                           color: GP.Palette.violet400,
                           height: 40,
@@ -190,13 +207,32 @@ struct AnalyticsView: View {
                 valueFont: GP.Typo.metricSmall,
                 valueTracking: GP.Typo.metricSmallTracking
             ) {
-                Sparkline(points: ChartData.profitSpark,
+                Sparkline(points: snapshot.series.dailyNet
+                            .chartPoints(box: ChartData.tileSparkBox),
                           box: ChartData.tileSparkBox,
                           color: GP.Palette.mint,
                           height: 40,
                           filled: true)
                     .padding(.top, 10)
             }
+        }
+    }
+
+    // MARK: Chart support
+
+    /// Violet through indigo, walked across the day so the peak reads warm.
+    private static let hourPalette: [Color] = [
+        Color(hex: 0x6366F1), Color(hex: 0x7C6CF6), Color(hex: 0x8B5CF6),
+        Color(hex: 0x9B6CFA), Color(hex: 0xA78BFA), Color(hex: 0x818CF8)
+    ]
+
+    /// Month abbreviations for the last four months, ending with this one.
+    private var monthLabels: [String] {
+        let f = DateFormatter()
+        f.dateFormat = "MMM"
+        let cal = Calendar.gigPilot
+        return (0..<4).reversed().compactMap { offset in
+            cal.date(byAdding: .month, value: -offset, to: .now).map(f.string(from:))
         }
     }
 

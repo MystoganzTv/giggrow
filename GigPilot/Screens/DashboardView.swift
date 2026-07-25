@@ -60,7 +60,11 @@ struct DashboardView: View {
                 .padding(.top, 8)
 
                 VStack(spacing: 8) {
-                    HeroAreaChart(points: ChartData.weekTrend, box: ChartData.weekTrendBox)
+                    HeroAreaChart(
+                        points: snapshot.series.cumulative
+                            .chartPoints(box: ChartData.weekTrendBox),
+                        box: ChartData.weekTrendBox
+                    )
                     AxisLabels(labels: ChartData.weekdayNames, color: Color.white.opacity(0.42))
                 }
                 .padding(.top, 18)
@@ -189,7 +193,8 @@ struct DashboardView: View {
                 valueTracking: GP.Typo.headlineTracking,
                 valueColor: GP.Palette.mint
             ) {
-                Sparkline(points: ChartData.weeklySparkline,
+                Sparkline(points: snapshot.series.daily
+                            .chartPoints(box: ChartData.sparklineBox),
                           color: GP.Palette.mint.opacity(0.8))
                     .padding(.top, 8)
             }
@@ -201,7 +206,8 @@ struct DashboardView: View {
                 valueTracking: GP.Typo.headlineTracking,
                 valueColor: GP.Palette.blue300
             ) {
-                Sparkline(points: ChartData.monthlySparkline,
+                Sparkline(points: snapshot.series.monthly
+                            .chartPoints(box: ChartData.sparklineBox),
                           color: GP.Palette.blue300.opacity(0.8))
                     .padding(.top, 8)
             }
