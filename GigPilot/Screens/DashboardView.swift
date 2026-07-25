@@ -10,6 +10,8 @@ import SwiftUI
 struct DashboardView: View {
     let snapshot: EarningsSnapshot
     var onLogShift: () -> Void = {}
+    var onShowHistory: () -> Void = {}
+    var onShowProfile: () -> Void = {}
 
     var body: some View {
         ScreenScaffold {
@@ -82,11 +84,38 @@ struct DashboardView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 12) {
             Text("This week")
                 .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
+
             Spacer()
-            Monogram(letter: snapshot.driver.initial)
+
+            // The dashboard is where a wrong figure gets noticed, so the way
+            // back to the shift that caused it belongs here.
+            if snapshot.hasData {
+                Button(action: onShowHistory) {
+                    HStack(spacing: 5) {
+                        Text("History")
+                            .font(.system(size: 13.5, weight: .medium))
+                        Chevron(size: 13, color: GP.Ink.muted)
+                    }
+                    .foregroundStyle(GP.Ink.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(GP.Surface.glass, in: Capsule())
+                    .overlay(Capsule().strokeBorder(GP.Surface.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Shift history")
+            }
+
+            // An avatar in the corner reads as a profile button in every app
+            // a driver already uses. It should behave like one.
+            Button(action: onShowProfile) {
+                Monogram(letter: snapshot.driver.initial)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Profile")
         }
     }
 
@@ -158,7 +187,9 @@ struct DashboardView: View {
                     Text("Earnings by app")
                         .gpText(GP.Typo.cardTitle, tracking: GP.Typo.cardTitleTracking)
                     Spacer()
-                    Text("\(snapshot.platforms.count) connected")
+                    // Not "connected" — nothing is connected to anything.
+                    // These are apps the driver logged by hand.
+                    Text("\(snapshot.platforms.count) this week")
                         .gpText(GP.Typo.captionMuted, color: Color.white.opacity(0.40))
                 }
 

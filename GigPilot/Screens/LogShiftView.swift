@@ -52,6 +52,8 @@ struct LogShiftView: View {
                         distanceCard
                         platformsCard
                         summaryCard
+
+                        if editing != nil { deleteButton }
                     }
                     .padding(.horizontal, GP.Layout.screenInset)
                     .padding(.top, 8)
@@ -214,6 +216,20 @@ struct LogShiftView: View {
         }
     }
 
+    private var deleteButton: some View {
+        Button(role: .destructive, action: deleteShift) {
+            Text("Delete shift")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color(hex: 0xFB7185))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(Color(hex: 0xFB7185, opacity: 0.10),
+                            in: RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+    }
+
     // MARK: Fields
 
     private func numberField(_ label: String, text: Binding<String>, suffix: String) -> some View {
@@ -328,6 +344,11 @@ struct LogShiftView: View {
 
     private func save() {
         let shift = editing ?? Shift(start: start, end: end)
+
+        // Insert before wiring up relationships — attaching an earning to a
+        // shift the context hasn't seen yet leaves the graph half-registered.
+        if editing == nil { context.insert(shift) }
+
         shift.start = start
         shift.end = end
         shift.miles = miles
@@ -350,12 +371,22 @@ struct LogShiftView: View {
                 gross: Double(row.gross) ?? 0,
                 trips: Int(row.trips) ?? 0
             )
-            earning.shift = shift
             context.insert(earning)
+            earning.shift = shift
             shift.earnings.append(earning)
         }
 
-        if editing == nil { context.insert(shift) }
+        try? context.save()
+        dismiss()
+    }
+
+    /// Same action as the history list's context menu, somewhere obvious.
+    private func deleteShift() {
+        guard let shift = editing else { return }
+        let earnings = shift.earnings
+        shift.earnings = []
+        for earning in earnings { context.delete(earning) }
+        context.delete(shift)
         try? context.save()
         dismiss()
     }

@@ -9,7 +9,8 @@ import SwiftUI
 
 struct AppsView: View {
     let snapshot: EarningsSnapshot
-    var onConnect: () -> Void = {}
+
+    @State private var isManagingPlatforms = false
 
     var body: some View {
         ScreenScaffold {
@@ -37,6 +38,7 @@ struct AppsView: View {
 
             connectRow
         }
+        .sheet(isPresented: $isManagingPlatforms) { ManagePlatformsView() }
     }
 
     /// Honest about state instead of asserting a sync that hasn't happened.
@@ -122,13 +124,17 @@ struct AppsView: View {
     // MARK: Connect
 
     private var connectRow: some View {
-        Button(action: onConnect) {
+        Button {
+            isManagingPlatforms = true
+        } label: {
             HStack(spacing: 9) {
                 PlusGlyph()
                     .stroke(Color.white.opacity(0.55),
                             style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .frame(width: 18, height: 18)
-                Text("Connect another platform")
+                // "Connect" would promise a link that doesn't exist. This
+                // toggles which apps you log against.
+                Text("Manage your apps")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.55))
             }

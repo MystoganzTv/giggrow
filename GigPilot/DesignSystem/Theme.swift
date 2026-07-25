@@ -67,8 +67,12 @@ enum GP {
         static let eyebrow = Color.white.opacity(0.45)
         /// Row metadata.
         static let tertiary = Color.white.opacity(0.42)
-        /// Inactive tab items, muted counts.
+        /// Muted counts and secondary captions.
         static let muted = Color.white.opacity(0.35)
+        /// Inactive tab bar items. Deliberately brighter than the design's
+        /// 0.35 — a tab bar has to stay legible over whatever scrolls behind
+        /// it, and in sunlight.
+        static let tabInactive = Color.white.opacity(0.58)
         /// Footer text.
         static let faint = Color.white.opacity(0.28)
         /// Body text inside list rows.
@@ -251,8 +255,9 @@ enum GP {
         static let gridGap: CGFloat = 12
         /// Height of the custom tab bar, excluding the home-indicator inset.
         static let tabBarHeight: CGFloat = 62
-        /// Extra breathing room below the last card so it clears the tab bar.
-        static let scrollBottomPadding: CGFloat = 34
+        /// Clearance below the last card. Has to cover the floating Log
+        /// button as well as the bar, or the final card hides behind it.
+        static let scrollBottomPadding: CGFloat = 66
     }
 
     // MARK: Typography

@@ -36,18 +36,22 @@ struct GPTabBar: View {
         }
         .background {
             ZStack {
-                // Frosting behind the fade, so content scrolling under the bar
-                // blurs rather than simply dimming.
+                // Full-strength material. At 0.55 the numbers scrolling
+                // underneath read straight through the labels — a driver
+                // glancing down saw "$38.61" printed across "Dashboard".
                 Rectangle()
                     .fill(.ultraThinMaterial)
-                    .opacity(0.55)
 
-                // `linear-gradient(to top, rgba(8,8,13,.96), rgba(8,8,13,.6) 60%, transparent)`
+                // The design's fade, but reaching opacity much sooner. The
+                // gradient only has to soften the top edge; from a third of
+                // the way down it needs to be solid or the labels compete
+                // with whatever card is passing behind them.
                 LinearGradient(
                     stops: [
                         .init(color: GP.Palette.screen.opacity(0.0), location: 0.0),
-                        .init(color: GP.Palette.screen.opacity(0.60), location: 0.40),
-                        .init(color: GP.Palette.screen.opacity(0.96), location: 1.0)
+                        .init(color: GP.Palette.screen.opacity(0.82), location: 0.30),
+                        .init(color: GP.Palette.screen.opacity(0.97), location: 0.55),
+                        .init(color: GP.Palette.screen, location: 1.0)
                     ],
                     startPoint: .top, endPoint: .bottom
                 )
@@ -63,7 +67,10 @@ struct GPTabBar: View {
             Text(icon.title)
                 .font(isSelected ? GP.Typo.tabLabelActive : GP.Typo.tabLabel)
         }
-        .foregroundStyle(isSelected ? GP.Palette.violet400 : GP.Ink.muted)
+        // The design specified 0.35 for inactive items. That reads on a
+        // static mockup and not on a phone in daylight, so it's lifted —
+        // this is a bar people tap while parked in the sun.
+        .foregroundStyle(isSelected ? GP.Palette.violet400 : GP.Ink.tabInactive)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .accessibilityLabel(icon.title)

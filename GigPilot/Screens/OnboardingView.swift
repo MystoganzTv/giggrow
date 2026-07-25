@@ -15,8 +15,10 @@ import SwiftData
 struct OnboardingView: View {
     @Environment(\.modelContext) private var context
 
-    /// Called once the profile has been written.
-    var onFinish: () -> Void = {}
+    // No completion closure: RootView decides what to show from whether a
+    // DriverProfile exists, and @Query pushes that change the moment
+    // `completeOnboarding` saves. A callback here would be a second source
+    // of truth for the same fact.
 
     @Query(sort: \PlatformAccount.sortIndex) private var accounts: [PlatformAccount]
 
@@ -310,7 +312,8 @@ struct OnboardingView: View {
             odometer: Int(odometerText) ?? 0,
             activePlatformNames: selectedPlatforms
         )
-        onFinish()
+        // Nothing else to do — the profile now exists, and RootView's @Query
+        // swaps onboarding for the app on the next render.
     }
 }
 

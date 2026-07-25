@@ -16,6 +16,8 @@ struct RootView: View {
     @State private var isLoggingShift = false
     @State private var isLoggingExpense = false
     @State private var isShowingExpenses = false
+    @State private var isShowingHistory = false
+    @State private var isShowingProfile = false
     @State private var analyticsRange: AnalyticsRange = .week
 
     /// Re-running the projection on every change is what keeps all five
@@ -91,12 +93,21 @@ struct RootView: View {
         .sheet(isPresented: $isLoggingShift) { LogShiftView() }
         .sheet(isPresented: $isLoggingExpense) { LogExpenseView() }
         .sheet(isPresented: $isShowingExpenses) { ExpensesView() }
+        .sheet(isPresented: $isShowingHistory) { ShiftHistoryView() }
+        .sheet(isPresented: $isShowingProfile) {
+            if let profile = profiles.first {
+                ProfileEditor(profile: profile)
+            }
+        }
     }
 
     @ViewBuilder
     private func screen(_ snapshot: EarningsSnapshot) -> some View {
         switch selection {
-        case .dashboard: DashboardView(snapshot: snapshot, onLogShift: { isLoggingShift = true })
+        case .dashboard: DashboardView(snapshot: snapshot,
+                                       onLogShift: { isLoggingShift = true },
+                                       onShowHistory: { isShowingHistory = true },
+                                       onShowProfile: { isShowingProfile = true })
         case .apps:      AppsView(snapshot: snapshot)
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
                                        range: $analyticsRange,
@@ -120,6 +131,7 @@ struct RootView: View {
                 Button("Log shift") { isLoggingShift = true }
                 Button("Add expense") { isLoggingExpense = true }
                 Divider()
+                Button("Shift history") { isShowingHistory = true }
                 Button("All expenses") { isShowingExpenses = true }
             } label: {
                 HStack(spacing: 7) {
