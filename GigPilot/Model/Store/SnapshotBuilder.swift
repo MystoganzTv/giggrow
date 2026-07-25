@@ -345,6 +345,7 @@ extension EarningsSnapshot {
     /// weighted by how much of each bucket the shift occupied.
     private static func spread(shift: Shift, into hourly: inout [Double], calendar: Calendar) {
         let bucketCount = hourly.count                 // 12
+        guard bucketCount > 0 else { return }          // no buckets, nothing to spread
         let bucketHours = 24.0 / Double(bucketCount)   // 2
         let dayStart = calendar.startOfDay(for: shift.start)
 

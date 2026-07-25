@@ -99,6 +99,48 @@ extension EarningsSnapshot {
         entitlement: .pro,
         planRenewsOn: Calendar.gigPilot.date(byAdding: .month, value: 1, to: .now)
     )
+
+    /// A freshly onboarded driver: profile and vehicle set, nothing logged.
+    /// Used by the empty-state previews and as the safe fallback anywhere a
+    /// snapshot is required before one can be built.
+    static let empty = EarningsSnapshot(
+        weeklyTotal: 0,
+        taxRate: 25,
+        maintenanceRate: 8,
+
+        perHour: 0,
+        perMile: 0,
+        onlineHours: 0,
+        activeHours: 0,
+        mileage: 0,
+        tripCount: 0,
+        weeklyChange: "—",
+        monthlyChange: "—",
+
+        maintenanceFund: 0,
+        maintenanceGoal: 3_000,
+        taxSavingsYTD: 0,
+        monthlyIncome: 0,
+        netProfit: 0,
+
+        platforms: [],
+        service: [],
+        settingGroups: [],
+
+        driver: Driver(name: "", detail: ""),
+        vehicle: Vehicle(
+            name: "No vehicle",
+            detail: "Add one in Settings",
+            odometer: 0,
+            milesThisWeek: 0,
+            fuelCostPerMile: 0,
+            averageMPG: 0
+        ),
+
+        series: .empty,
+        entitlement: .free,
+        planRenewsOn: nil
+    )
 }
 
 // MARK: - Mock series

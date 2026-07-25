@@ -379,6 +379,77 @@ struct LockGlyph: Shape {
     }
 }
 
+// MARK: - Empty state
+
+/// Shown in place of a card when there's no data behind it yet.
+///
+/// Each one names the specific thing that's missing and what produces it,
+/// rather than a generic "no data" — a driver on their first launch should
+/// never have to guess what the app wants from them.
+struct EmptyStateCard: View {
+    let title: String
+    let message: String
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+    /// Optional illustration slot; the brand mark by default.
+    var showsLogo: Bool = false
+
+    var body: some View {
+        GlassCard(padding: EdgeInsets(top: 28, leading: 22, bottom: 26, trailing: 22)) {
+            VStack(alignment: .leading, spacing: 10) {
+                if showsLogo {
+                    GigPilotLogo(size: 44)
+                        .padding(.bottom, 6)
+                }
+
+                Text(title)
+                    .gpText(GP.Typo.cardTitle, tracking: GP.Typo.cardTitleTracking)
+
+                Text(message)
+                    .gpText(.system(size: 14, weight: .regular), color: GP.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let actionTitle, let action {
+                    Button(action: action) {
+                        HStack(spacing: 7) {
+                            PlusGlyph()
+                                .stroke(Color.white, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                                .frame(width: 15, height: 15)
+                            Text(actionTitle)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(GP.Gradients.brandMark, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                }
+            }
+        }
+    }
+}
+
+/// Inline note for a card that has structure but nothing in it — the charts,
+/// mainly, where hiding the card entirely would make the screen feel broken.
+struct EmptyChartNote: View {
+    let message: String
+    var height: CGFloat = 100
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.03))
+            Text(message)
+                .gpText(GP.Typo.footnote, color: GP.Ink.muted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+        }
+        .frame(height: height)
+    }
+}
+
 // MARK: - Divider
 
 /// Hairline used between rows inside a grouped card. Omitted after the last row.

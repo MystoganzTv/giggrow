@@ -2,10 +2,16 @@
 //  Seed.swift
 //  GigPilot
 //
-//  First-run contents. A brand-new install gets the six platform accounts,
-//  a profile and a service schedule; the demo flag additionally lays down a
-//  week of shifts that reproduces the design's figures exactly, which is what
-//  makes the screens look like the mockup on first launch.
+//  First-run contents.
+//
+//  A real install gets the six platform accounts and nothing else — no
+//  profile, no vehicle, no shifts. The profile is what onboarding produces,
+//  and its absence is how the app knows onboarding hasn't run.
+//
+//  The demo week lives behind `#if DEBUG` and is never reachable from a
+//  release build. Seeding it on first launch, as this file used to, meant a
+//  real driver opened GigPilot and saw $1,482.60 of somebody else's earnings
+//  presented as their own.
 //
 
 import Foundation
@@ -13,54 +19,77 @@ import SwiftData
 
 enum Seed {
 
-    /// Runs once. Safe to call on every launch — it no-ops if a profile exists.
-    @discardableResult
-    static func bootstrapIfNeeded(_ context: ModelContext, includeDemoWeek: Bool = true) -> DriverProfile {
-        if let existing = try? context.fetch(FetchDescriptor<DriverProfile>()), let profile = existing.first {
-            return profile
+    /// Creates the platform catalogue if it's missing. Safe on every launch.
+    ///
+    /// Deliberately does **not** create a `DriverProfile` — see `hasCompletedOnboarding`.
+    static func bootstrapPlatformsIfNeeded(_ context: ModelContext) {
+        let existing = (try? context.fetch(FetchDescriptor<PlatformAccount>())) ?? []
+        guard existing.isEmpty else { return }
+
+        // Explicit loop rather than `forEach(context.insert)` — passing a
+        // generic method as a function value leaves T unresolved.
+        for account in defaultAccounts() {
+            context.insert(account)
         }
+        try? context.save()
+    }
+
+    /// Onboarding is complete once a profile exists. One check, one meaning.
+    static func hasCompletedOnboarding(_ context: ModelContext) -> Bool {
+        let profiles = (try? context.fetch(FetchDescriptor<DriverProfile>())) ?? []
+        return !profiles.isEmpty
+    }
+
+    /// Writes what onboarding collected. The only path that creates a profile.
+    @discardableResult
+    static func completeOnboarding(
+        _ context: ModelContext,
+        name: String,
+        location: String,
+        vehicleName: String,
+        vehicleDetail: String,
+        odometer: Int,
+        activePlatformNames: Set<String>,
+        taxRate: Double = 25,
+        maintenanceRate: Double = 8
+    ) -> DriverProfile {
+
+        let year = Calendar.gigPilot.component(.year, from: .now)
+        let detail = location.isEmpty ? "Since \(year)" : "\(location) · Since \(year)"
 
         let profile = DriverProfile(
-            name: "Marco Delgado",
-            detail: "Phoenix, AZ · Since 2023",
-            taxRate: 25,
-            maintenanceRate: 8,
+            name: name,
+            detail: detail,
+            taxRate: taxRate,
+            maintenanceRate: maintenanceRate,
             mileageRate: 0.70,
-            payoutLast4: "4417",
+            payoutLast4: "",
             maintenanceGoal: 3_000,
             maintenanceOpeningBalance: 0
         )
         context.insert(profile)
 
-        let accounts = defaultAccounts()
-        // Explicit loop rather than `forEach(context.insert)` — passing a
-        // generic method as a function value leaves T unresolved.
-        for account in accounts {
-            context.insert(account)
-        }
+        if !vehicleName.isEmpty {
+            let vehicle = VehicleRecord(
+                name: vehicleName,
+                detail: vehicleDetail,
+                odometerBaseline: odometer,
+                odometerAsOf: .now
+            )
+            context.insert(vehicle)
 
-        let vehicle = VehicleRecord(
-            name: "2022 Toyota RAV4",
-            detail: "Hybrid · 7KJD812",
-            odometerBaseline: 83_598,          // + the demo week's 612 mi = 84,210
-            odometerAsOf: Calendar.gigPilot.startOfWeek(for: .now),
-            fuelCostPerMile: 0.11,
-            averageMPG: 39
-        )
-        context.insert(vehicle)
-
-        for record in defaultService(baseOdometer: 84_210) {
-            record.vehicle = vehicle
-            context.insert(record)
-        }
-
-        if includeDemoWeek {
-            for shift in demoWeek(accounts: accounts) {
-                context.insert(shift)
+            // Service intervals are seeded relative to the driver's own
+            // odometer, so the schedule means something from day one.
+            for record in defaultService(baseOdometer: odometer) {
+                record.vehicle = vehicle
+                context.insert(record)
             }
-            // The design's maintenance fund is $2,684, of which the demo week
-            // contributes 8% of $1,482.60. The rest is treated as prior balance.
-            profile.maintenanceOpeningBalance = 2_684 - 1_482.60 * 0.08
+        }
+
+        // Only the platforms they actually drive for stay active.
+        let accounts = (try? context.fetch(FetchDescriptor<PlatformAccount>())) ?? []
+        for account in accounts {
+            account.isActive = activePlatformNames.contains(account.name)
         }
 
         try? context.save()
@@ -94,7 +123,92 @@ enum Seed {
 
     // MARK: Service schedule
 
+    /// Standard intervals measured forward from the driver's own odometer.
+    /// Nothing starts overdue — claiming a stranger's tyres need rotating is
+    /// the kind of fabricated detail that costs trust on first launch.
     static func defaultService(baseOdometer: Int) -> [ServiceRecord] {
+        [
+            ServiceRecord(name: "Oil change",    dueAtMileage: baseOdometer + 5_000),
+            ServiceRecord(name: "Tire rotation", dueAtMileage: baseOdometer + 6_000),
+            ServiceRecord(name: "Brake pads",    dueAtMileage: baseOdometer + 20_000),
+            ServiceRecord(name: "Registration",
+                          dueOn: Calendar.gigPilot.date(byAdding: .year, value: 1, to: .now))
+        ]
+    }
+}
+
+// MARK: - Demo data
+//
+// Debug builds only. This is what makes the screens look like the mockup
+// while developing, and it must never reach a shipping build.
+
+#if DEBUG
+extension Seed {
+
+    /// Wipes the store and lays down the design's exact week. Reachable from
+    /// the debug menu, never from first launch.
+    static func loadDemoData(_ context: ModelContext) {
+        try? context.delete(model: Shift.self)
+        try? context.delete(model: PlatformEarning.self)
+        try? context.delete(model: Expense.self)
+        try? context.delete(model: ServiceRecord.self)
+        try? context.delete(model: VehicleRecord.self)
+        try? context.delete(model: DriverProfile.self)
+        try? context.delete(model: PlatformAccount.self)
+
+        let accounts = defaultAccounts()
+        for account in accounts { context.insert(account) }
+
+        let profile = DriverProfile(
+            name: "Marco Delgado",
+            detail: "Phoenix, AZ · Since 2023",
+            taxRate: 25,
+            maintenanceRate: 8,
+            mileageRate: 0.70,
+            payoutLast4: "4417",
+            maintenanceGoal: 3_000,
+            // The design's fund is $2,684; the demo week contributes 8% of
+            // $1,482.60 and the rest is treated as prior balance.
+            maintenanceOpeningBalance: 2_684 - 1_482.60 * 0.08
+        )
+        context.insert(profile)
+
+        let vehicle = VehicleRecord(
+            name: "2022 Toyota RAV4",
+            detail: "Hybrid · 7KJD812",
+            odometerBaseline: 83_598,          // + the demo week's 612 mi = 84,210
+            odometerAsOf: Calendar.gigPilot.startOfWeek(for: .now),
+            fuelCostPerMile: 0.11,
+            averageMPG: 39
+        )
+        context.insert(vehicle)
+
+        for record in demoService(baseOdometer: 84_210) {
+            record.vehicle = vehicle
+            context.insert(record)
+        }
+
+        for shift in demoWeek(accounts: accounts) {
+            context.insert(shift)
+        }
+
+        try? context.save()
+    }
+
+    /// Erases everything, returning the app to a genuine first-run state.
+    static func wipe(_ context: ModelContext) {
+        try? context.delete(model: Shift.self)
+        try? context.delete(model: PlatformEarning.self)
+        try? context.delete(model: Expense.self)
+        try? context.delete(model: ServiceRecord.self)
+        try? context.delete(model: VehicleRecord.self)
+        try? context.delete(model: DriverProfile.self)
+        try? context.delete(model: PlatformAccount.self)
+        try? context.save()
+    }
+
+    /// The design's exact mix of statuses: one scheduled, one overdue, two healthy.
+    static func demoService(baseOdometer: Int) -> [ServiceRecord] {
         [
             ServiceRecord(name: "Oil change",
                           dueAtMileage: baseOdometer + 1_790,
@@ -175,18 +289,22 @@ enum Seed {
         ]
     }
 }
+#endif
 
 // MARK: - Store access
 
 /// Small helper so views can pull everything the projection needs in one call.
 enum Store {
 
+    /// Returns nil before onboarding has run — there is no profile to build from.
     static func snapshot(
         _ context: ModelContext,
         range: Range<Date> = DateRange.week(containing: .now),
         now: Date = .now
-    ) -> EarningsSnapshot {
-        let profile = Seed.bootstrapIfNeeded(context)
+    ) -> EarningsSnapshot? {
+        guard let profile = (try? context.fetch(FetchDescriptor<DriverProfile>()))?.first else {
+            return nil
+        }
         let shifts = (try? context.fetch(FetchDescriptor<Shift>())) ?? []
         let expenses = (try? context.fetch(FetchDescriptor<Expense>())) ?? []
         let accounts = (try? context.fetch(FetchDescriptor<PlatformAccount>())) ?? []

@@ -25,13 +25,20 @@ struct AnalyticsView: View {
             Text("Analytics")
                 .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
 
-            segmentedControl
-            weeklyIncomeCard
-            monthlyIncomeCard
-            comparisonCard
-            hourlyCard
-            tiles
-            setAsideCard
+            if snapshot.hasData {
+                segmentedControl
+                weeklyIncomeCard
+                monthlyIncomeCard
+                comparisonCard
+                hourlyCard
+                tiles
+                setAsideCard
+            } else {
+                EmptyStateCard(
+                    title: "Nothing to analyse yet",
+                    message: "Analytics needs a few shifts before the patterns mean anything — which hours pay best, which app earns most per hour, where the miles go."
+                )
+            }
         }
     }
 

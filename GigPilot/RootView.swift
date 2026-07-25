@@ -2,8 +2,8 @@
 //  RootView.swift
 //  GigPilot
 //
-//  Hosts the five screens behind the custom tab bar, and rebuilds the
-//  snapshot whenever the stored data changes.
+//  Decides between onboarding and the app, then hosts the five screens
+//  behind the custom tab bar and rebuilds the snapshot when data changes.
 //
 
 import SwiftUI
@@ -15,41 +15,59 @@ struct RootView: View {
     @State private var selection: GPIcon = .dashboard
     @State private var isLoggingShift = false
 
-    /// Re-running the projection on every shift/expense change is what keeps
-    /// all five screens live. @Query gives us the change notification; the
-    /// heavy lifting happens in `EarningsSnapshot.build`.
+    /// Re-running the projection on every change is what keeps all five
+    /// screens live. @Query supplies the change notification; the work
+    /// happens in `EarningsSnapshot.build`.
     @Query(sort: \Shift.start, order: .reverse) private var shifts: [Shift]
     @Query private var expenses: [Expense]
     @Query(sort: \PlatformAccount.sortIndex) private var accounts: [PlatformAccount]
     @Query private var profiles: [DriverProfile]
     @Query private var vehicles: [VehicleRecord]
 
-    private var snapshot: EarningsSnapshot {
-        guard let profile = profiles.first else { return .mock }
+    /// A profile exists only after onboarding, so its absence is the flag.
+    private var needsOnboarding: Bool { profiles.isEmpty }
+
+    private var snapshot: EarningsSnapshot? {
+        guard let profile = profiles.first else { return nil }
         return EarningsSnapshot.build(
             shifts: shifts,
             expenses: expenses,
-            accounts: accounts,
+            accounts: accounts.filter(\.isActive),
             profile: profile,
             vehicle: vehicles.first
         )
     }
 
     var body: some View {
+        Group {
+            if needsOnboarding {
+                OnboardingView()
+                    .transition(.opacity)
+            } else if let snapshot {
+                main(snapshot)
+            }
+        }
+        .preferredColorScheme(.dark)
+        .animation(.easeOut(duration: 0.25), value: needsOnboarding)
+        .task {
+            // The platform catalogue is reference data, not user data, so it
+            // is safe to create before onboarding runs.
+            Seed.bootstrapPlatformsIfNeeded(context)
+        }
+    }
+
+    // MARK: App
+
+    private func main(_ snapshot: EarningsSnapshot) -> some View {
         ZStack(alignment: .bottom) {
             GP.Palette.screen.ignoresSafeArea()
 
-            screen
+            screen(snapshot)
                 .transition(.opacity)
 
             GPTabBar(selection: $selection)
 
-            logButton
-        }
-        .preferredColorScheme(.dark)
-        .task {
-            // First launch only; a no-op once a profile exists.
-            Seed.bootstrapIfNeeded(context)
+            logButton(snapshot)
         }
         .sheet(isPresented: $isLoggingShift) {
             LogShiftView()
@@ -57,9 +75,9 @@ struct RootView: View {
     }
 
     @ViewBuilder
-    private var screen: some View {
+    private func screen(_ snapshot: EarningsSnapshot) -> some View {
         switch selection {
-        case .dashboard: DashboardView(snapshot: snapshot)
+        case .dashboard: DashboardView(snapshot: snapshot, onLogShift: { isLoggingShift = true })
         case .apps:      AppsView(snapshot: snapshot)
         case .analytics: AnalyticsView(snapshot: snapshot)
         case .vehicle:   VehicleView(snapshot: snapshot)
@@ -67,11 +85,13 @@ struct RootView: View {
         }
     }
 
-    /// Floating action button, tucked just above the tab bar. Hidden on
-    /// Settings, where there's nothing to add.
+    /// Floating action button. Hidden on Settings, and on the empty dashboard
+    /// where a full-width prompt does the job better.
     @ViewBuilder
-    private var logButton: some View {
-        if selection != .settings {
+    private func logButton(_ snapshot: EarningsSnapshot) -> some View {
+        let hiddenOnEmptyDashboard = selection == .dashboard && !snapshot.hasData
+
+        if selection != .settings && !hiddenOnEmptyDashboard {
             Button {
                 isLoggingShift = true
             } label: {
@@ -95,7 +115,12 @@ struct RootView: View {
     }
 }
 
-#Preview("GigPilot") {
+#Preview("GigPilot — with data") {
     RootView()
         .modelContainer(.preview)
+}
+
+#Preview("GigPilot — first launch") {
+    RootView()
+        .modelContainer(.previewEmpty)
 }

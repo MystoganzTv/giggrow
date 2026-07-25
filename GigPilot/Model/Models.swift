@@ -228,6 +228,14 @@ struct EarningsSnapshot {
 
     // MARK: Derived
 
+    /// Whether there's anything to show. Every screen branches on this before
+    /// rendering a chart or a rate, because all of them divide by something
+    /// that is zero on a fresh install.
+    var hasData: Bool { weeklyTotal > 0 || onlineHours > 0 || mileage > 0 }
+
+    /// True once the driver has logged anything at all, this week or not.
+    var hasEverLoggedShift: Bool { hasData || maintenanceFund > 0 || taxSavingsYTD > 0 }
+
     var idleHours: Double { max(onlineHours - activeHours, 0) }
     var activeShare: Double { onlineHours > 0 ? activeHours / onlineHours : 0 }
 

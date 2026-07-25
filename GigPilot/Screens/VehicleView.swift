@@ -15,6 +15,9 @@ struct VehicleView: View {
     private var vehicle: Vehicle { snapshot.vehicle }
     private var entitlement: Entitlement { snapshot.entitlement }
 
+    /// Onboarding lets the vehicle step be skipped, so this can be false.
+    private var hasVehicle: Bool { vehicle.odometer > 0 || vehicle.name != "No vehicle" }
+
     var body: some View {
         ScreenScaffold {
             GP.Gradients.vehicleWash()
@@ -22,7 +25,14 @@ struct VehicleView: View {
             Text("Vehicle")
                 .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
 
-            vehicleCard
+            if hasVehicle {
+                vehicleCard
+            } else {
+                EmptyStateCard(
+                    title: "No vehicle yet",
+                    message: "Add your car and GigPilot tracks what it costs per mile and when it's next due for service."
+                )
+            }
 
             // The reserve is the differentiator, so free users see the figure
             // they would have banked rather than an empty locked box.
@@ -32,12 +42,16 @@ struct VehicleView: View {
                 maintenanceFundCard
             }
 
-            serviceCard
+            if !snapshot.service.isEmpty {
+                serviceCard
+            }
 
-            ProLock(isLocked: !entitlement.allows(.costPerMile)) {
-                isUpgrading = true
-            } content: {
-                efficiencyTiles
+            if hasVehicle {
+                ProLock(isLocked: !entitlement.allows(.costPerMile)) {
+                    isUpgrading = true
+                } content: {
+                    efficiencyTiles
+                }
             }
         }
         .sheet(isPresented: $isUpgrading) {

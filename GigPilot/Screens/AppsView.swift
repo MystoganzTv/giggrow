@@ -18,18 +18,34 @@ struct AppsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Apps")
                     .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
-                Text("All six platforms synced 4 minutes ago.")
+                Text(subtitle)
                     .gpText(GP.Typo.subtitle, color: Color.white.opacity(0.45))
             }
 
-            combinedCard
+            if snapshot.hasData {
+                combinedCard
 
-            ForEach(snapshot.platforms) { platform in
-                platformRow(platform)
+                ForEach(snapshot.platforms) { platform in
+                    platformRow(platform)
+                }
+            } else {
+                EmptyStateCard(
+                    title: "Nothing logged yet",
+                    message: "Once you log a shift, each app you drove for shows up here with what it paid, its share of the week, and its own hourly rate."
+                )
             }
 
             connectRow
         }
+    }
+
+    /// Honest about state instead of asserting a sync that hasn't happened.
+    private var subtitle: String {
+        guard snapshot.hasData else {
+            return "Every platform you drive for, side by side."
+        }
+        let count = snapshot.platforms.count
+        return "\(count) platform\(count == 1 ? "" : "s") active this week."
     }
 
     // MARK: Combined week

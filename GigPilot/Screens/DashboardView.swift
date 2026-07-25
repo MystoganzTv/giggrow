@@ -9,19 +9,74 @@ import SwiftUI
 
 struct DashboardView: View {
     let snapshot: EarningsSnapshot
+    var onLogShift: () -> Void = {}
 
     var body: some View {
         ScreenScaffold {
             GP.Gradients.dashboardWash()
         } content: {
             header
-            heroCard
-            setAsideTiles
-            earningsByApp
-            rateTiles
-            hoursCard
-            trendTiles
+
+            if snapshot.hasData {
+                heroCard
+                setAsideTiles
+                earningsByApp
+                rateTiles
+                hoursCard
+                trendTiles
+            } else {
+                emptyState
+            }
         }
+    }
+
+    // MARK: Empty
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
+            EmptyStateCard(
+                title: "No shifts yet this week",
+                message: "Log one and GigPilot works out your hourly rate, what to set aside for taxes, and what the car is costing you.",
+                actionTitle: "Log your first shift",
+                action: onLogShift,
+                showsLogo: true
+            )
+
+            // The set-asides are the reason to bother, so name them up front
+            // rather than showing two tiles reading $0.
+            GlassCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("What happens after you log")
+                        .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
+
+                    explainerRow(
+                        "\(Int(snapshot.taxRate))% held for taxes",
+                        "Nothing owed in April that you haven't already put away."
+                    )
+                    RowDivider()
+                    explainerRow(
+                        "\(Int(snapshot.maintenanceRate))% held for the car",
+                        "The next repair is paid for before it happens."
+                    )
+                    RowDivider()
+                    explainerRow(
+                        "Real hourly rate",
+                        "Hours counted once, even with three apps running at the same time."
+                    )
+                }
+            }
+        }
+    }
+
+    private func explainerRow(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .gpText(GP.Typo.rowLabel)
+            Text(detail)
+                .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
     }
 
     // MARK: Header
@@ -217,5 +272,10 @@ struct DashboardView: View {
 
 #Preview("Dashboard") {
     DashboardView(snapshot: .mock)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Dashboard — empty") {
+    DashboardView(snapshot: .empty)
         .preferredColorScheme(.dark)
 }

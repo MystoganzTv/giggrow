@@ -6,12 +6,14 @@
 //
 
 import SwiftUI
+import SwiftData   // the debug section reads and writes the profile directly
 
 struct SettingsView: View {
     let snapshot: EarningsSnapshot
     var appVersion: String = "3.2.1"
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.modelContext) private var context
     @State private var isUpgrading = false
 
     private var entitlement: Entitlement { snapshot.entitlement }
@@ -30,12 +32,68 @@ struct SettingsView: View {
                 settingGroup(group)
             }
 
+            #if DEBUG
+            debugSection
+            #endif
+
             footer
         }
         .sheet(isPresented: $isUpgrading) {
             UpgradeView(previewReserve: snapshot.maintenanceFund)
         }
     }
+
+    // MARK: Debug
+    //
+    // Compiled out of release builds. This is the only way to reach the demo
+    // week now that first launch no longer seeds it.
+
+    #if DEBUG
+    private var debugSection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("DEBUG")
+                .gpText(GP.Typo.groupLabel,
+                        tracking: GP.Typo.groupLabelTracking,
+                        color: GP.Palette.amber.opacity(0.8))
+                .padding(.leading, 6)
+
+            GlassCard(radius: GP.Radius.tile,
+                      padding: EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18)) {
+                VStack(spacing: 0) {
+                    debugRow("Load demo week") { Seed.loadDemoData(context) }
+                    RowDivider(color: GP.Surface.dividerSoft)
+                    debugRow("Toggle Pro") {
+                        if let profile = try? context.fetch(FetchDescriptor<DriverProfile>()).first {
+                            profile.planTierRaw = entitlement.isPro
+                                ? PlanTier.free.rawValue
+                                : PlanTier.pro.rawValue
+                            try? context.save()
+                        }
+                    }
+                    RowDivider(color: GP.Surface.dividerSoft)
+                    debugRow("Erase everything", destructive: true) { Seed.wipe(context) }
+                }
+            }
+        }
+        .padding(.top, 6)
+    }
+
+    private func debugRow(_ label: String,
+                          destructive: Bool = false,
+                          action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(label)
+                    .gpText(GP.Typo.rowLabel,
+                            color: destructive ? Color(hex: 0xFB7185) : GP.Ink.primary)
+                Spacer()
+            }
+            .padding(.vertical, 15)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+    #endif
 
     // MARK: Profile
 
