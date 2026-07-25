@@ -150,11 +150,26 @@ mapping each one to its own `Shift` would reintroduce exactly the
 double-counted hours this data model exists to avoid. Overlapping windows have
 to be merged.
 
+## Ranges
+
+`AnalyticsRange` owns three things that have to agree: the window of time, how
+that window is cut into bars, and which prior period a delta compares against.
+Keeping them on one type is what stops a month view from quietly comparing
+itself to last week.
+
+A month is cut into weeks rather than days — 31 bars are unreadable at phone
+width, and drivers think about a month in weeks. Verified against a synthetic
+year: every range's buckets sum back to that range's gross, with no shift
+falling between buckets.
+
+RootView builds **two** projections: the week for four screens, and the
+selected range for Analytics. Sharing one mutable range would mean tapping a
+pill on Analytics silently switched the dashboard to yearly figures.
+
 ## Not yet built
 
-No networking, no platform OAuth. Expenses have a model but no entry UI. The
-Week/Month/Year control holds state but doesn't re-slice yet — `build` already
-takes an arbitrary `range`, so it's a matter of passing it through.
+No networking, no platform OAuth. Expenses have a model and feed the
+projection, but no entry UI.
 
 Nothing here has been run against real driver data, only against the seeded
 week. The parsing paths that would replace manual entry — statement CSVs,

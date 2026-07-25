@@ -14,6 +14,7 @@ struct RootView: View {
 
     @State private var selection: GPIcon = .dashboard
     @State private var isLoggingShift = false
+    @State private var analyticsRange: AnalyticsRange = .week
 
     /// Re-running the projection on every change is what keeps all five
     /// screens live. @Query supplies the change notification; the work
@@ -27,14 +28,30 @@ struct RootView: View {
     /// A profile exists only after onboarding, so its absence is the flag.
     private var needsOnboarding: Bool { profiles.isEmpty }
 
+    /// The week. Four of the five screens read this — the dashboard says
+    /// "This week" in the design, and it means it.
     private var snapshot: EarningsSnapshot? {
+        build(range: .week)
+    }
+
+    /// Analytics gets its own, built for whatever the picker is set to.
+    /// Two projections rather than one shared mutable range: the dashboard
+    /// shouldn't silently switch to yearly figures because you tapped a pill
+    /// on another tab.
+    private var analyticsSnapshot: EarningsSnapshot? {
+        build(range: analyticsRange)
+    }
+
+    private func build(range kind: AnalyticsRange) -> EarningsSnapshot? {
         guard let profile = profiles.first else { return nil }
         return EarningsSnapshot.build(
             shifts: shifts,
             expenses: expenses,
             accounts: accounts.filter(\.isActive),
             profile: profile,
-            vehicle: vehicles.first
+            vehicle: vehicles.first,
+            range: kind.window(containing: .now),
+            rangeKind: kind
         )
     }
 
@@ -79,7 +96,8 @@ struct RootView: View {
         switch selection {
         case .dashboard: DashboardView(snapshot: snapshot, onLogShift: { isLoggingShift = true })
         case .apps:      AppsView(snapshot: snapshot)
-        case .analytics: AnalyticsView(snapshot: snapshot)
+        case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
+                                       range: $analyticsRange)
         case .vehicle:   VehicleView(snapshot: snapshot)
         case .settings:  SettingsView(snapshot: snapshot)
         }

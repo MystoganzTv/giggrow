@@ -159,7 +159,9 @@ extension ChartSeries {
             hourly: [0, 58.4, 92.6, 118.3, 141.7, 96.2, 88.5, 152.4, 171.9, 84.3, 21.6, 0],
             monthly: [4_820, 5_140, 5_610, 5_940],
             dailyMiles: [82, 74, 96, 88, 104, 118, 50],
-            dailyNet: daily.map { $0 * 0.67 }
+            dailyNet: daily.map { $0 * 0.67 },
+            primary: daily,
+            primaryLabels: AnalyticsRange.week.labels
         )
     }()
 }

@@ -120,6 +120,94 @@ struct Driver: Hashable {
     var initial: String { String(name.prefix(1)) }
 }
 
+// MARK: - Analytics range
+
+/// The Week / Month / Year selector on the Analytics screen.
+///
+/// Each range owns three things that have to stay consistent with each other:
+/// the window of time it covers, how that window is cut into bars, and what
+/// prior period a delta compares against. Keeping them on one type is what
+/// stops a month view from quietly comparing itself to last week.
+enum AnalyticsRange: String, CaseIterable, Identifiable {
+    case week = "Week"
+    case month = "Month"
+    case year = "Year"
+
+    var id: String { rawValue }
+
+    /// Noun used in card titles — "This week's income".
+    var possessive: String {
+        switch self {
+        case .week:  return "This week"
+        case .month: return "This month"
+        case .year:  return "This year"
+        }
+    }
+
+    /// Unit stepped back by one to find the comparison period.
+    var comparisonUnit: Calendar.Component {
+        switch self {
+        case .week:  return .weekOfYear
+        case .month: return .month
+        case .year:  return .year
+        }
+    }
+
+    /// How many bars the chart draws.
+    ///
+    /// A month is cut into weeks rather than days: 31 bars at phone width are
+    /// unreadable, and a driver thinks about their month in weeks anyway.
+    var bucketCount: Int {
+        switch self {
+        case .week:  return 7
+        case .month: return 5
+        case .year:  return 12
+        }
+    }
+
+    /// Which calendar unit one bar spans.
+    var bucketUnit: Calendar.Component {
+        switch self {
+        case .week:  return .day
+        case .month: return .weekOfYear
+        case .year:  return .month
+        }
+    }
+
+    var labels: [String] {
+        switch self {
+        case .week:  return ["M", "T", "W", "T", "F", "S", "S"]
+        case .month: return (1...5).map { "W\($0)" }
+        case .year:  return ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
+        }
+    }
+
+    /// The window this range covers, containing `date`.
+    func window(containing date: Date, calendar: Calendar = .gigPilot) -> Range<Date> {
+        switch self {
+        case .week:  return DateRange.week(containing: date, calendar: calendar)
+        case .month: return DateRange.month(containing: date, calendar: calendar)
+        case .year:  return DateRange.year(containing: date, calendar: calendar)
+        }
+    }
+
+    /// Which bar a shift belongs in, or nil if it falls outside the window.
+    func bucketIndex(for date: Date, windowStart: Date, calendar: Calendar = .gigPilot) -> Int? {
+        let index: Int
+        switch self {
+        case .week:
+            index = calendar.dateComponents([.day], from: windowStart, to: date).day ?? -1
+        case .month:
+            // Week of the month, 0-based, counted from the 1st.
+            let day = calendar.component(.day, from: date)
+            index = (day - 1) / 7
+        case .year:
+            index = calendar.component(.month, from: date) - 1
+        }
+        return (0..<bucketCount).contains(index) ? index : nil
+    }
+}
+
 // MARK: - Chart series
 
 /// The numbers behind every chart, as plain arrays in chronological order.
@@ -139,6 +227,14 @@ struct ChartSeries: Equatable {
     var dailyMiles: [Double]
     /// Take-home per weekday after both set-asides.
     var dailyNet: [Double]
+
+    /// Gross per bar for whichever range Analytics is showing. Equals `daily`
+    /// when that range is the week; becomes weeks-of-month or months-of-year
+    /// otherwise. Kept separate so the dashboard's weekly view is unaffected
+    /// by what the Analytics picker is set to.
+    var primary: [Double]
+    /// Axis captions matching `primary`, one per bar.
+    var primaryLabels: [String]
 
     /// Labels under the hourly chart, derived from the bucket definition so
     /// they can't drift away from the data the way hard-coded ones do.
@@ -176,7 +272,9 @@ struct ChartSeries: Equatable {
         hourly: Array(repeating: 0, count: 12),
         monthly: Array(repeating: 0, count: 4),
         dailyMiles: Array(repeating: 0, count: 7),
-        dailyNet: Array(repeating: 0, count: 7)
+        dailyNet: Array(repeating: 0, count: 7),
+        primary: Array(repeating: 0, count: 7),
+        primaryLabels: AnalyticsRange.week.labels
     )
 }
 

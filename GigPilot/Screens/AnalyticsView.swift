@@ -8,14 +8,11 @@
 import SwiftUI
 
 struct AnalyticsView: View {
+    /// Built for whatever `range` is set to, so every figure on this screen
+    /// belongs to the selected period rather than always to the week.
     let snapshot: EarningsSnapshot
+    @Binding var range: AnalyticsRange
 
-    enum Range: String, CaseIterable, Identifiable {
-        case week = "Week", month = "Month", year = "Year"
-        var id: String { rawValue }
-    }
-
-    @State private var range: Range = .week
     @Namespace private var segmentNamespace
 
     var body: some View {
@@ -25,8 +22,11 @@ struct AnalyticsView: View {
             Text("Analytics")
                 .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
 
+            // The picker stays put whether or not this period has data —
+            // an empty week shouldn't trap you out of checking the month.
+            segmentedControl
+
             if snapshot.hasData {
-                segmentedControl
                 weeklyIncomeCard
                 monthlyIncomeCard
                 comparisonCard
@@ -35,7 +35,7 @@ struct AnalyticsView: View {
                 setAsideCard
             } else {
                 EmptyStateCard(
-                    title: "Nothing to analyse yet",
+                    title: "Nothing logged \(range.possessive.lowercased())",
                     message: "Analytics needs a few shifts before the patterns mean anything — which hours pay best, which app earns most per hour, where the miles go."
                 )
             }
@@ -46,7 +46,7 @@ struct AnalyticsView: View {
 
     private var segmentedControl: some View {
         HStack(spacing: 7) {
-            ForEach(Range.allCases) { option in
+            ForEach(AnalyticsRange.allCases) { option in
                 let isSelected = option == range
                 Button {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
@@ -80,19 +80,20 @@ struct AnalyticsView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Weekly income")
+                    Text("\(range.possessive)'s income")
                         .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
                     Spacer()
                     Text(Money.cents(snapshot.weeklyTotal))
                         .gpText(.system(size: 15, weight: .semibold))
                 }
 
-                BarChart(bars: snapshot.series.daily.chartBars(),
+                BarChart(bars: snapshot.series.primary.chartBars(),
                          maxHeight: 1,
-                         height: 100)
+                         height: 100,
+                         spacing: range == .year ? 5 : 12)
                     .padding(.top, 16)
 
-                AxisLabels(labels: ChartData.weekdayInitials)
+                AxisLabels(labels: snapshot.series.primaryLabels)
                     .padding(.top, 6)
             }
         }
@@ -277,6 +278,11 @@ struct AnalyticsView: View {
 }
 
 #Preview("Analytics") {
-    AnalyticsView(snapshot: .mock)
+    AnalyticsView(snapshot: .mock, range: .constant(.week))
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Analytics — empty") {
+    AnalyticsView(snapshot: .empty, range: .constant(.week))
         .preferredColorScheme(.dark)
 }

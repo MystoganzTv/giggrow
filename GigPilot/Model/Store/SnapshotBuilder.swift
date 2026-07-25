@@ -111,6 +111,10 @@ extension EarningsSnapshot {
         profile: DriverProfile,
         vehicle vehicleRecord: VehicleRecord?,
         range: Range<Date> = DateRange.week(containing: .now),
+        /// Which range the caller is asking about. Drives both the bar
+        /// bucketing and the period a delta compares against — a month view
+        /// that compared itself to last week would be quietly wrong.
+        rangeKind: AnalyticsRange = .week,
         now: Date = .now,
         calendar: Calendar = .gigPilot
     ) -> EarningsSnapshot {
@@ -126,7 +130,7 @@ extension EarningsSnapshot {
 
         // MARK: Platforms
 
-        let previous = DateRange.shifted(range, by: -1, unit: .weekOfYear, calendar: calendar)
+        let previous = DateRange.shifted(range, by: -1, unit: rangeKind.comparisonUnit, calendar: calendar)
         let previousShifts = shifts.filter { previous.contains($0.start) }
 
         var platforms: [Platform] = []
@@ -262,6 +266,7 @@ extension EarningsSnapshot {
                 expenses: expenses,
                 profile: profile,
                 range: range,
+                rangeKind: rangeKind,
                 now: now,
                 calendar: calendar
             ),
@@ -287,31 +292,44 @@ extension EarningsSnapshot {
         expenses: [Expense],
         profile: DriverProfile,
         range: Range<Date>,
+        rangeKind: AnalyticsRange = .week,
         now: Date,
         calendar: Calendar
     ) -> ChartSeries {
 
+        // The dashboard's series is always the current week, whatever the
+        // Analytics picker says, so it's computed from its own window.
+        let weekWindow = DateRange.week(containing: now, calendar: calendar)
+        let weekStart = weekWindow.lowerBound
+
         var daily = Array(repeating: 0.0, count: 7)
         var dailyMiles = Array(repeating: 0.0, count: 7)
-        var hourly = Array(repeating: 0.0, count: 12)
 
-        let weekStart = range.lowerBound
-
-        for shift in shifts where range.contains(shift.start) {
-            let dayIndex = calendar.dateComponents([.day], from: weekStart, to: shift.start).day ?? 0
+        for shift in shifts where weekWindow.contains(shift.start) {
+            let dayIndex = calendar.dateComponents([.day], from: weekStart, to: shift.start).day ?? -1
             guard (0..<7).contains(dayIndex) else { continue }
-
             daily[dayIndex] += shift.gross
             dailyMiles[dayIndex] += shift.miles
+        }
 
+        // The Analytics series follows the selected range.
+        var primary = Array(repeating: 0.0, count: rangeKind.bucketCount)
+        var hourly = Array(repeating: 0.0, count: 12)
+
+        for shift in shifts where range.contains(shift.start) {
+            if let bucket = rangeKind.bucketIndex(
+                for: shift.start, windowStart: range.lowerBound, calendar: calendar
+            ) {
+                primary[bucket] += shift.gross
+            }
             spread(shift: shift, into: &hourly, calendar: calendar)
         }
 
         // Take-home per day, after both set-asides.
         let keepRate = 1 - (profile.taxRate + profile.maintenanceRate) / 100
         var dailyNet = daily.map { $0 * keepRate }
-        for expense in expenses where range.contains(expense.date) {
-            let i = calendar.dateComponents([.day], from: weekStart, to: expense.date).day ?? 0
+        for expense in expenses where weekWindow.contains(expense.date) {
+            let i = calendar.dateComponents([.day], from: weekStart, to: expense.date).day ?? -1
             if (0..<7).contains(i) { dailyNet[i] = Swift.max(dailyNet[i] - expense.amount, 0) }
         }
 
@@ -337,7 +355,9 @@ extension EarningsSnapshot {
             hourly: hourly,
             monthly: monthly,
             dailyMiles: dailyMiles,
-            dailyNet: dailyNet
+            dailyNet: dailyNet,
+            primary: primary,
+            primaryLabels: rangeKind.labels
         )
     }
 
