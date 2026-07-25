@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>
+  html,body{margin:0;padding:0;background:#06060A;}
+  *{box-sizing:border-box;}
+  a{color:#8B7CFF;text-decoration:none;}
+  a:hover{color:#A99BFF;}
+  .gp-scroll::-webkit-scrollbar{width:0;height:0;}
+</style>
+</helmet>
+<div style="min-height:100vh;background:radial-gradient(1200px 700px at 15% 0%, #17123A 0%, #0A0A12 55%, #06060A 100%);padding:72px 64px 96px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;color:#fff;">
+
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:1000px;margin-bottom:56px;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;border-radius:13px;background:linear-gradient(145deg,#8B5CF6,#3B82F6);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(99,80,255,0.45);">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-linecap="round"><g transform="translate(0,0.4)"><path d="M4.2 17.4 A8.7 8.7 0 1 1 19.8 17.4" stroke="rgba(255,255,255,0.40)" stroke-width="2.3"></path><path d="M4.2 17.4 A8.7 8.7 0 0 1 16.3 5" stroke="#fff" stroke-width="2.3"></path><text x="12" y="18.1" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif" font-size="12.6" font-weight="700" fill="#fff" stroke="none">$</text></g></svg>
+      </div>
+      <div style="font-size:34px;font-weight:640;letter-spacing:-0.03em;">GigPilot</div>
+    </div>
+    <div style="font-size:17px;line-height:1.5;color:rgba(255,255,255,0.5);max-width:620px;font-weight:420;">Earnings intelligence for multi-app drivers — Uber, Lyft, Spark, Amazon Flex, DoorDash and Instacart in one ledger. iOS, dark, five sections.</div>
+  </div>
+
+  <div style="display:flex;gap:56px;align-items:flex-start;flex-wrap:wrap;">
+
+    <!-- ══ DASHBOARD ══ -->
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding-left:6px;"><span style="font-size:13px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.32);">01</span><span style="font-size:19px;font-weight:560;letter-spacing:-0.01em;">Dashboard</span></div>
+      <div data-screen-label="Dashboard" style="position:relative;width:393px;height:852px;border-radius:56px;padding:11px;background:linear-gradient(160deg,#2A2A34,#101015 40%,#26262F);box-shadow:0 50px 90px -30px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.06);flex:none;">
+        <div style="position:relative;width:100%;height:100%;border-radius:45px;overflow:hidden;background:#08080D;">
+          <div style="position:absolute;inset:0;background:radial-gradient(340px 300px at 82% -6%, rgba(139,92,246,0.30), transparent 70%),radial-gradient(300px 280px at 5% 12%, rgba(59,130,246,0.18), transparent 70%);"></div>
+          <div style="position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;z-index:5;font-size:15px;font-weight:600;letter-spacing:-0.01em;">
+            <span>9:41</span>
+            <span style="display:flex;align-items:center;gap:6px;"><svg width="17" height="11" viewBox="0 0 17 11" fill="rgba(255,255,255,0.95)"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4.6" y="5" width="3" height="6" rx="1"></rect><rect x="9.2" y="2.6" width="3" height="8.4" rx="1"></rect><rect x="13.8" y="0" width="3" height="11" rx="1"></rect></svg><svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="19" height="11" rx="3.4" stroke="rgba(255,255,255,0.4)"></rect><rect x="2.4" y="2.4" width="13" height="7.2" rx="2" fill="#fff"></rect><path d="M21.4 4v4c1.2-.4 1.2-3.6 0-4z" fill="rgba(255,255,255,0.5)"></path></svg></span>
+          </div>
+          <div class="gp-scroll" style="position:absolute;inset:0;padding:62px 20px 118px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;z-index:2;">
+
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div style="font-size:30px;font-weight:680;letter-spacing:-0.035em;">This week</div>
+              <div style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.10);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:rgba(255,255,255,0.7);">M</div>
+            </div>
+
+            <div style="border-radius:30px;padding:24px 22px 20px;background:linear-gradient(150deg,rgba(139,92,246,0.30),rgba(59,130,246,0.16) 60%,rgba(255,255,255,0.03));border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(30px);box-shadow:0 24px 50px -24px rgba(92,60,220,0.6);">
+              <div style="font-size:12px;font-weight:600;letter-spacing:0.13em;text-transform:uppercase;color:rgba(255,255,255,0.55);">Total earnings</div>
+              <div style="display:flex;align-items:flex-end;gap:10px;margin-top:8px;">
+                <div style="font-size:54px;line-height:1;font-weight:700;letter-spacing:-0.045em;">{{ weeklyTotalFmt }}</div>
+                <div style="display:flex;align-items:center;gap:3px;padding:5px 9px;border-radius:999px;background:rgba(52,211,153,0.16);color:#5EEAB0;font-size:13px;font-weight:620;margin-bottom:7px;">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#5EEAB0" stroke-width="2" stroke-linecap="round"><path d="M6 10V2M2.5 5.5L6 2l3.5 3.5"></path></svg>12.4%
+                </div>
+              </div>
+              <div style="margin-top:18px;">
+                <svg width="100%" height="72" viewBox="0 0 300 72" preserveAspectRatio="none">
+                  <defs><linearGradient id="gpArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C4B5FD" stop-opacity="0.45"></stop><stop offset="1" stop-color="#C4B5FD" stop-opacity="0"></stop></linearGradient></defs>
+                  <path d="M0 58 L38 48 L76 52 L114 34 L152 40 L190 22 L228 26 L266 12 L300 8 L300 72 L0 72 Z" fill="url(#gpArea)"></path>
+                  <path d="M0 58 L38 48 L76 52 L114 34 L152 40 L190 22 L228 26 L266 12 L300 8" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+                  <circle cx="300" cy="8" r="4.2" fill="#fff"></circle>
+                </svg>
+                <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;font-weight:560;color:rgba(255,255,255,0.42);"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.055);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Taxes to save</div>
+                <div style="font-size:27px;font-weight:660;letter-spacing:-0.03em;margin-top:8px;">{{ taxFmt }}</div>
+                <div style="font-size:12.5px;color:rgba(196,181,253,0.85);font-weight:520;margin-top:3px;">{{ taxRateLabel }} set aside</div>
+              </div>
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.055);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Maintenance</div>
+                <div style="font-size:27px;font-weight:660;letter-spacing:-0.03em;margin-top:8px;">{{ maintFmt }}</div>
+                <div style="font-size:12.5px;color:rgba(147,197,253,0.85);font-weight:520;margin-top:3px;">Fund {{ maintTotalFmt }}</div>
+              </div>
+            </div>
+
+            <div style="border-radius:28px;padding:20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);display:flex;flex-direction:column;gap:16px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="font-size:17px;font-weight:600;letter-spacing:-0.015em;">Earnings by app</div>
+                <div style="font-size:13px;font-weight:520;color:rgba(255,255,255,0.4);">6 connected</div>
+              </div>
+              <sc-for list="{{ apps }}" as="app" hint-placeholder-count="6">
+                <div style="display:flex;flex-direction:column;gap:7px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;font-size:14.5px;">
+                    <span style="font-weight:540;color:rgba(255,255,255,0.85);">{{ app.name }}</span>
+                    <span style="font-weight:620;letter-spacing:-0.01em;">{{ app.amount }}</span>
+                  </div>
+                  <div style="height:6px;border-radius:999px;background:rgba(255,255,255,0.07);overflow:hidden;">
+                    <div style="height:100%;border-radius:999px;width:{{ app.pct }};background:{{ app.grad }};"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Per hour</div>
+                <div style="font-size:27px;font-weight:660;letter-spacing:-0.03em;margin-top:8px;">$38.60</div>
+              </div>
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Per mile</div>
+                <div style="font-size:27px;font-weight:660;letter-spacing:-0.03em;margin-top:8px;">$2.42</div>
+              </div>
+            </div>
+
+            <div style="border-radius:28px;padding:20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);display:flex;flex-direction:column;gap:18px;">
+              <div style="display:flex;align-items:flex-end;justify-content:space-between;">
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Online hours</div>
+                  <div style="font-size:34px;font-weight:680;letter-spacing:-0.035em;line-height:1;">38.4<span style="font-size:17px;font-weight:560;color:rgba(255,255,255,0.45);letter-spacing:-0.01em;"> hrs</span></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+                  <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Mileage</div>
+                  <div style="font-size:34px;font-weight:680;letter-spacing:-0.035em;line-height:1;">612<span style="font-size:17px;font-weight:560;color:rgba(255,255,255,0.45);letter-spacing:-0.01em;"> mi</span></div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:9px;">
+                <div style="display:flex;height:10px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,0.07);">
+                  <div style="width:76%;background:linear-gradient(90deg,#8B5CF6,#6366F1);"></div>
+                  <div style="width:24%;background:rgba(255,255,255,0.16);"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:520;">
+                  <span style="color:rgba(196,181,253,0.9);">Active 29.2 hrs</span>
+                  <span style="color:rgba(255,255,255,0.42);">Idle 9.2 hrs</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Weekly trend</div>
+                <div style="font-size:22px;font-weight:660;letter-spacing:-0.025em;margin-top:8px;color:#5EEAB0;">+12.4%</div>
+                <svg width="100%" height="30" viewBox="0 0 100 30" preserveAspectRatio="none" style="margin-top:8px;"><path d="M0 24 L20 20 L40 22 L60 12 L80 14 L100 4" fill="none" stroke="rgba(94,234,176,0.8)" stroke-width="2" stroke-linecap="round"></path></svg>
+              </div>
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Monthly trend</div>
+                <div style="font-size:22px;font-weight:660;letter-spacing:-0.025em;margin-top:8px;color:#93C5FD;">+6.1%</div>
+                <svg width="100%" height="30" viewBox="0 0 100 30" preserveAspectRatio="none" style="margin-top:8px;"><path d="M0 20 L25 22 L50 14 L75 16 L100 8" fill="none" stroke="rgba(147,197,253,0.8)" stroke-width="2" stroke-linecap="round"></path></svg>
+              </div>
+            </div>
+          </div>
+
+          <div style="position:absolute;left:0;right:0;bottom:0;height:96px;padding:12px 14px 0;background:linear-gradient(to top,rgba(8,8,13,0.96),rgba(8,8,13,0.6) 60%,rgba(8,8,13,0));backdrop-filter:blur(24px);border-top:1px solid rgba(255,255,255,0.07);display:flex;align-items:flex-start;justify-content:space-between;z-index:6;">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:#A78BFA;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="3" y="13.5" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2.4"></rect></svg>
+              <span style="font-size:10.5px;font-weight:600;letter-spacing:-0.005em;">Dashboard</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4"></circle><circle cx="17" cy="17" r="4"></circle><circle cx="17" cy="7" r="4"></circle><circle cx="7" cy="17" r="4"></circle></svg>
+              <span style="font-size:10.5px;font-weight:560;">Apps</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V11"></path><path d="M10 19V5"></path><path d="M16 19v-6"></path><path d="M21 19H3"></path></svg>
+              <span style="font-size:10.5px;font-weight:560;">Analytics</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-3.2L6 7h12l2 5.8V16"></path><path d="M4 16h16"></path><circle cx="7.5" cy="16.5" r="1.6"></circle><circle cx="16.5" cy="16.5" r="1.6"></circle></svg>
+              <span style="font-size:10.5px;font-weight:560;">Vehicle</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"></path></svg>
+              <span style="font-size:10.5px;font-weight:560;">Settings</span>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:999px;background:rgba(255,255,255,0.32);z-index:7;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ APPS ══ -->
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding-left:6px;"><span style="font-size:13px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.32);">02</span><span style="font-size:19px;font-weight:560;letter-spacing:-0.01em;">Apps</span></div>
+      <div data-screen-label="Apps" style="position:relative;width:393px;height:852px;border-radius:56px;padding:11px;background:linear-gradient(160deg,#2A2A34,#101015 40%,#26262F);box-shadow:0 50px 90px -30px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.06);flex:none;">
+        <div style="position:relative;width:100%;height:100%;border-radius:45px;overflow:hidden;background:#08080D;">
+          <div style="position:absolute;inset:0;background:radial-gradient(320px 280px at 15% -4%, rgba(59,130,246,0.26), transparent 70%),radial-gradient(280px 260px at 95% 30%, rgba(139,92,246,0.16), transparent 70%);"></div>
+          <div style="position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;z-index:5;font-size:15px;font-weight:600;">
+            <span>9:41</span>
+            <span style="display:flex;align-items:center;gap:6px;"><svg width="17" height="11" viewBox="0 0 17 11" fill="rgba(255,255,255,0.95)"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4.6" y="5" width="3" height="6" rx="1"></rect><rect x="9.2" y="2.6" width="3" height="8.4" rx="1"></rect><rect x="13.8" y="0" width="3" height="11" rx="1"></rect></svg><svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="19" height="11" rx="3.4" stroke="rgba(255,255,255,0.4)"></rect><rect x="2.4" y="2.4" width="13" height="7.2" rx="2" fill="#fff"></rect><path d="M21.4 4v4c1.2-.4 1.2-3.6 0-4z" fill="rgba(255,255,255,0.5)"></path></svg></span>
+          </div>
+          <div class="gp-scroll" style="position:absolute;inset:0;padding:62px 20px 118px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;z-index:2;">
+            <div style="font-size:30px;font-weight:680;letter-spacing:-0.035em;">Apps</div>
+            <div style="font-size:15px;color:rgba(255,255,255,0.45);font-weight:440;margin-top:-6px;">All six platforms synced 4 minutes ago.</div>
+
+            <div style="border-radius:28px;padding:20px;background:linear-gradient(150deg,rgba(59,130,246,0.26),rgba(139,92,246,0.14) 70%,rgba(255,255,255,0.03));border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(30px);display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <div style="font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.55);">Combined week</div>
+                <div style="font-size:38px;font-weight:700;letter-spacing:-0.04em;line-height:1.05;">{{ weeklyTotalFmt }}</div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.5);font-weight:500;">214 trips · 6 platforms</div>
+              </div>
+              <div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v4.5h-4.5"></path></svg>
+              </div>
+            </div>
+
+            <sc-for list="{{ apps }}" as="app" hint-placeholder-count="6">
+              <div style="border-radius:26px;padding:16px 18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);display:flex;align-items:center;gap:14px;">
+                <div style="width:46px;height:46px;border-radius:15px;background:{{ app.grad }};display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:680;letter-spacing:-0.01em;flex:none;">{{ app.initial }}</div>
+                <div style="flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;">
+                  <div style="font-size:16.5px;font-weight:580;letter-spacing:-0.012em;">{{ app.name }}</div>
+                  <div style="font-size:13px;font-weight:480;color:rgba(255,255,255,0.42);">{{ app.meta }}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                  <div style="font-size:17px;font-weight:640;letter-spacing:-0.02em;">{{ app.amount }}</div>
+                  <div style="font-size:11.5px;font-weight:600;color:#5EEAB0;">{{ app.delta }}</div>
+                </div>
+              </div>
+            </sc-for>
+
+            <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.035);border:1px dashed rgba(255,255,255,0.14);display:flex;align-items:center;justify-content:center;gap:9px;color:rgba(255,255,255,0.55);font-size:15px;font-weight:540;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Connect another platform
+            </div>
+          </div>
+
+          <div style="position:absolute;left:0;right:0;bottom:0;height:96px;padding:12px 14px 0;background:linear-gradient(to top,rgba(8,8,13,0.96),rgba(8,8,13,0.6) 60%,rgba(8,8,13,0));backdrop-filter:blur(24px);border-top:1px solid rgba(255,255,255,0.07);display:flex;align-items:flex-start;justify-content:space-between;z-index:6;">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="3" y="13.5" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2.4"></rect></svg>
+              <span style="font-size:10.5px;font-weight:560;">Dashboard</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:#A78BFA;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4"></circle><circle cx="17" cy="17" r="4"></circle><circle cx="17" cy="7" r="4"></circle><circle cx="7" cy="17" r="4"></circle></svg>
+              <span style="font-size:10.5px;font-weight:600;">Apps</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V11"></path><path d="M10 19V5"></path><path d="M16 19v-6"></path><path d="M21 19H3"></path></svg>
+              <span style="font-size:10.5px;font-weight:560;">Analytics</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-3.2L6 7h12l2 5.8V16"></path><path d="M4 16h16"></path><circle cx="7.5" cy="16.5" r="1.6"></circle><circle cx="16.5" cy="16.5" r="1.6"></circle></svg>
+              <span style="font-size:10.5px;font-weight:560;">Vehicle</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"></path></svg>
+              <span style="font-size:10.5px;font-weight:560;">Settings</span>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:999px;background:rgba(255,255,255,0.32);z-index:7;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ANALYTICS ══ -->
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding-left:6px;"><span style="font-size:13px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.32);">03</span><span style="font-size:19px;font-weight:560;letter-spacing:-0.01em;">Analytics</span></div>
+      <div data-screen-label="Analytics" style="position:relative;width:393px;height:852px;border-radius:56px;padding:11px;background:linear-gradient(160deg,#2A2A34,#101015 40%,#26262F);box-shadow:0 50px 90px -30px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.06);flex:none;">
+        <div style="position:relative;width:100%;height:100%;border-radius:45px;overflow:hidden;background:#08080D;">
+          <div style="position:absolute;inset:0;background:radial-gradient(340px 300px at 78% -6%, rgba(99,102,241,0.28), transparent 70%),radial-gradient(300px 300px at 0% 40%, rgba(139,92,246,0.14), transparent 70%);"></div>
+          <div style="position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;z-index:5;font-size:15px;font-weight:600;">
+            <span>9:41</span>
+            <span style="display:flex;align-items:center;gap:6px;"><svg width="17" height="11" viewBox="0 0 17 11" fill="rgba(255,255,255,0.95)"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4.6" y="5" width="3" height="6" rx="1"></rect><rect x="9.2" y="2.6" width="3" height="8.4" rx="1"></rect><rect x="13.8" y="0" width="3" height="11" rx="1"></rect></svg><svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="19" height="11" rx="3.4" stroke="rgba(255,255,255,0.4)"></rect><rect x="2.4" y="2.4" width="13" height="7.2" rx="2" fill="#fff"></rect><path d="M21.4 4v4c1.2-.4 1.2-3.6 0-4z" fill="rgba(255,255,255,0.5)"></path></svg></span>
+          </div>
+          <div class="gp-scroll" style="position:absolute;inset:0;padding:62px 20px 118px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;z-index:2;">
+            <div style="font-size:30px;font-weight:680;letter-spacing:-0.035em;">Analytics</div>
+            <div style="display:flex;gap:7px;padding:4px;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);">
+              <div style="flex:1;text-align:center;padding:8px 0;border-radius:999px;background:linear-gradient(120deg,#8B5CF6,#4F76F6);font-size:13.5px;font-weight:600;">Week</div>
+              <div style="flex:1;text-align:center;padding:8px 0;font-size:13.5px;font-weight:540;color:rgba(255,255,255,0.5);">Month</div>
+              <div style="flex:1;text-align:center;padding:8px 0;font-size:13.5px;font-weight:540;color:rgba(255,255,255,0.5);">Year</div>
+            </div>
+
+            <div style="border-radius:28px;padding:20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;"><div style="font-size:16.5px;font-weight:600;letter-spacing:-0.015em;">Weekly income</div><div style="font-size:15px;font-weight:620;">{{ weeklyTotalFmt }}</div></div>
+              <svg width="100%" height="112" viewBox="0 0 300 112" style="margin-top:16px;">
+                <defs><linearGradient id="gpBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A78BFA"></stop><stop offset="1" stop-color="#4F76F6"></stop></linearGradient></defs>
+                <rect x="4" y="52" width="30" height="48" rx="9" fill="url(#gpBar)" opacity="0.55"></rect>
+                <rect x="46" y="40" width="30" height="60" rx="9" fill="url(#gpBar)" opacity="0.65"></rect>
+                <rect x="88" y="60" width="30" height="40" rx="9" fill="url(#gpBar)" opacity="0.5"></rect>
+                <rect x="130" y="26" width="30" height="74" rx="9" fill="url(#gpBar)" opacity="0.8"></rect>
+                <rect x="172" y="34" width="30" height="66" rx="9" fill="url(#gpBar)" opacity="0.72"></rect>
+                <rect x="214" y="8" width="30" height="92" rx="9" fill="url(#gpBar)"></rect>
+                <rect x="256" y="20" width="30" height="80" rx="9" fill="url(#gpBar)" opacity="0.88"></rect>
+              </svg>
+              <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:540;color:rgba(255,255,255,0.4);margin-top:6px;"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+            </div>
+
+            <div style="border-radius:28px;padding:20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;"><div style="font-size:16.5px;font-weight:600;letter-spacing:-0.015em;">Monthly income</div><div style="font-size:15px;font-weight:620;">$5,940</div></div>
+              <svg width="100%" height="104" viewBox="0 0 300 104" preserveAspectRatio="none" style="margin-top:16px;">
+                <defs><linearGradient id="gpArea2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7DD3FC" stop-opacity="0.42"></stop><stop offset="1" stop-color="#7DD3FC" stop-opacity="0"></stop></linearGradient></defs>
+                <path d="M0 78 C30 74 42 56 70 58 C100 60 112 40 140 44 C170 48 182 28 210 30 C240 32 258 14 300 10 L300 104 L0 104 Z" fill="url(#gpArea2)"></path>
+                <path d="M0 78 C30 74 42 56 70 58 C100 60 112 40 140 44 C170 48 182 28 210 30 C240 32 258 14 300 10" fill="none" stroke="#7DD3FC" stroke-width="2.4" stroke-linecap="round"></path>
+              </svg>
+              <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:540;color:rgba(255,255,255,0.4);margin-top:6px;"><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span></div>
+            </div>
+
+            <div style="border-radius:28px;padding:20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);display:flex;flex-direction:column;gap:14px;">
+              <div style="font-size:16.5px;font-weight:600;letter-spacing:-0.015em;">App comparison</div>
+              <sc-for list="{{ apps }}" as="app" hint-placeholder-count="6">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:64px;font-size:12.5px;font-weight:520;color:rgba(255,255,255,0.55);flex:none;">{{ app.short }}</div>
+                  <div style="flex:1;height:9px;border-radius:999px;background:rgba(255,255,255,0.07);overflow:hidden;"><div style="height:100%;border-radius:999px;width:{{ app.pct }};background:{{ app.grad }};"></div></div>
+                  <div style="width:58px;text-align:right;font-size:12.5px;font-weight:600;flex:none;">{{ app.hourly }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="border-radius:28px;padding:20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;"><div style="font-size:16.5px;font-weight:600;letter-spacing:-0.015em;">Hourly earnings</div><div style="font-size:13px;font-weight:520;color:rgba(255,255,255,0.42);">Peak 6–8pm</div></div>
+              <svg width="100%" height="96" viewBox="0 0 300 96" style="margin-top:16px;">
+                <rect x="2" y="62" width="20" height="26" rx="7" fill="#6366F1" opacity="0.45"></rect>
+                <rect x="27" y="52" width="20" height="36" rx="7" fill="#6366F1" opacity="0.5"></rect>
+                <rect x="52" y="40" width="20" height="48" rx="7" fill="#7C6CF6" opacity="0.6"></rect>
+                <rect x="77" y="46" width="20" height="42" rx="7" fill="#7C6CF6" opacity="0.55"></rect>
+                <rect x="102" y="30" width="20" height="58" rx="7" fill="#8B5CF6" opacity="0.7"></rect>
+                <rect x="127" y="34" width="20" height="54" rx="7" fill="#8B5CF6" opacity="0.66"></rect>
+                <rect x="152" y="22" width="20" height="66" rx="7" fill="#9B6CFA" opacity="0.8"></rect>
+                <rect x="177" y="10" width="20" height="78" rx="7" fill="#A78BFA"></rect>
+                <rect x="202" y="16" width="20" height="72" rx="7" fill="#A78BFA" opacity="0.9"></rect>
+                <rect x="227" y="36" width="20" height="52" rx="7" fill="#818CF8" opacity="0.6"></rect>
+                <rect x="252" y="50" width="20" height="38" rx="7" fill="#818CF8" opacity="0.5"></rect>
+                <rect x="277" y="66" width="20" height="22" rx="7" fill="#818CF8" opacity="0.4"></rect>
+              </svg>
+              <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:540;color:rgba(255,255,255,0.4);margin-top:6px;"><span>8a</span><span>12p</span><span>4p</span><span>8p</span><span>12a</span></div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Mileage</div>
+                <div style="font-size:26px;font-weight:660;letter-spacing:-0.03em;margin-top:8px;">612 <span style="font-size:14px;color:rgba(255,255,255,0.42);font-weight:540;">mi</span></div>
+                <svg width="100%" height="40" viewBox="0 0 100 40" preserveAspectRatio="none" style="margin-top:10px;"><defs><linearGradient id="gpMi" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A78BFA" stop-opacity="0.4"></stop><stop offset="1" stop-color="#A78BFA" stop-opacity="0"></stop></linearGradient></defs><path d="M0 30 L20 26 L40 28 L60 18 L80 20 L100 10 L100 40 L0 40 Z" fill="url(#gpMi)"></path><path d="M0 30 L20 26 L40 28 L60 18 L80 20 L100 10" fill="none" stroke="#A78BFA" stroke-width="2" stroke-linecap="round"></path></svg>
+              </div>
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Net profit</div>
+                <div style="font-size:26px;font-weight:660;letter-spacing:-0.03em;margin-top:8px;">$994</div>
+                <svg width="100%" height="40" viewBox="0 0 100 40" preserveAspectRatio="none" style="margin-top:10px;"><defs><linearGradient id="gpPr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5EEAB0" stop-opacity="0.36"></stop><stop offset="1" stop-color="#5EEAB0" stop-opacity="0"></stop></linearGradient></defs><path d="M0 32 L20 24 L40 26 L60 16 L80 14 L100 6 L100 40 L0 40 Z" fill="url(#gpPr)"></path><path d="M0 32 L20 24 L40 26 L60 16 L80 14 L100 6" fill="none" stroke="#5EEAB0" stroke-width="2" stroke-linecap="round"></path></svg>
+              </div>
+            </div>
+
+            <div style="border-radius:28px;padding:20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);display:flex;flex-direction:column;gap:18px;">
+              <div style="font-size:16.5px;font-weight:600;letter-spacing:-0.015em;">Set aside this year</div>
+              <div style="display:flex;align-items:center;gap:22px;">
+                <div style="position:relative;width:106px;height:106px;flex:none;">
+                  <svg width="106" height="106" viewBox="0 0 106 106">
+                    <circle cx="53" cy="53" r="45" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="11"></circle>
+                    <circle cx="53" cy="53" r="45" fill="none" stroke="#A78BFA" stroke-width="11" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="82" transform="rotate(-90 53 53)"></circle>
+                    <circle cx="53" cy="53" r="31" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="9"></circle>
+                    <circle cx="53" cy="53" r="31" fill="none" stroke="#60A5FA" stroke-width="9" stroke-linecap="round" stroke-dasharray="195" stroke-dashoffset="88" transform="rotate(-90 53 53)"></circle>
+                  </svg>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                  <div style="display:flex;flex-direction:column;gap:3px;">
+                    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:540;color:rgba(255,255,255,0.5);"><span style="width:8px;height:8px;border-radius:50%;background:#A78BFA;"></span>Tax savings</div>
+                    <div style="font-size:23px;font-weight:660;letter-spacing:-0.025em;">$8,420</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:3px;">
+                    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:540;color:rgba(255,255,255,0.5);"><span style="width:8px;height:8px;border-radius:50%;background:#60A5FA;"></span>Maintenance</div>
+                    <div style="font-size:23px;font-weight:660;letter-spacing:-0.025em;">$2,684</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="position:absolute;left:0;right:0;bottom:0;height:96px;padding:12px 14px 0;background:linear-gradient(to top,rgba(8,8,13,0.96),rgba(8,8,13,0.6) 60%,rgba(8,8,13,0));backdrop-filter:blur(24px);border-top:1px solid rgba(255,255,255,0.07);display:flex;align-items:flex-start;justify-content:space-between;z-index:6;">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="3" y="13.5" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2.4"></rect></svg>
+              <span style="font-size:10.5px;font-weight:560;">Dashboard</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4"></circle><circle cx="17" cy="17" r="4"></circle><circle cx="17" cy="7" r="4"></circle><circle cx="7" cy="17" r="4"></circle></svg>
+              <span style="font-size:10.5px;font-weight:560;">Apps</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:#A78BFA;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V11"></path><path d="M10 19V5"></path><path d="M16 19v-6"></path><path d="M21 19H3"></path></svg>
+              <span style="font-size:10.5px;font-weight:600;">Analytics</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-3.2L6 7h12l2 5.8V16"></path><path d="M4 16h16"></path><circle cx="7.5" cy="16.5" r="1.6"></circle><circle cx="16.5" cy="16.5" r="1.6"></circle></svg>
+              <span style="font-size:10.5px;font-weight:560;">Vehicle</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"></path></svg>
+              <span style="font-size:10.5px;font-weight:560;">Settings</span>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:999px;background:rgba(255,255,255,0.32);z-index:7;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ VEHICLE ══ -->
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding-left:6px;"><span style="font-size:13px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.32);">04</span><span style="font-size:19px;font-weight:560;letter-spacing:-0.01em;">Vehicle</span></div>
+      <div data-screen-label="Vehicle" style="position:relative;width:393px;height:852px;border-radius:56px;padding:11px;background:linear-gradient(160deg,#2A2A34,#101015 40%,#26262F);box-shadow:0 50px 90px -30px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.06);flex:none;">
+        <div style="position:relative;width:100%;height:100%;border-radius:45px;overflow:hidden;background:#08080D;">
+          <div style="position:absolute;inset:0;background:radial-gradient(360px 320px at 50% -8%, rgba(124,92,246,0.30), transparent 72%),radial-gradient(300px 300px at 100% 55%, rgba(59,130,246,0.14), transparent 70%);"></div>
+          <div style="position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;z-index:5;font-size:15px;font-weight:600;">
+            <span>9:41</span>
+            <span style="display:flex;align-items:center;gap:6px;"><svg width="17" height="11" viewBox="0 0 17 11" fill="rgba(255,255,255,0.95)"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4.6" y="5" width="3" height="6" rx="1"></rect><rect x="9.2" y="2.6" width="3" height="8.4" rx="1"></rect><rect x="13.8" y="0" width="3" height="11" rx="1"></rect></svg><svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="19" height="11" rx="3.4" stroke="rgba(255,255,255,0.4)"></rect><rect x="2.4" y="2.4" width="13" height="7.2" rx="2" fill="#fff"></rect><path d="M21.4 4v4c1.2-.4 1.2-3.6 0-4z" fill="rgba(255,255,255,0.5)"></path></svg></span>
+          </div>
+          <div class="gp-scroll" style="position:absolute;inset:0;padding:62px 20px 118px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;z-index:2;">
+            <div style="font-size:30px;font-weight:680;letter-spacing:-0.035em;">Vehicle</div>
+
+            <div style="border-radius:30px;padding:22px;background:linear-gradient(155deg,rgba(139,92,246,0.26),rgba(59,130,246,0.14) 65%,rgba(255,255,255,0.03));border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(30px);display:flex;flex-direction:column;gap:20px;">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <div style="font-size:22px;font-weight:640;letter-spacing:-0.025em;">2022 Toyota RAV4</div>
+                  <div style="font-size:13.5px;font-weight:500;color:rgba(255,255,255,0.5);">Hybrid · 7KJD812</div>
+                </div>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-3.2L6 7h12l2 5.8V16"></path><path d="M4 16h16"></path><circle cx="7.5" cy="16.5" r="1.6"></circle><circle cx="16.5" cy="16.5" r="1.6"></circle></svg>
+              </div>
+              <div style="display:flex;gap:26px;">
+                <div style="display:flex;flex-direction:column;gap:5px;">
+                  <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.5);">Odometer</div>
+                  <div style="font-size:26px;font-weight:660;letter-spacing:-0.03em;">84,210</div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:5px;">
+                  <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.5);">This week</div>
+                  <div style="font-size:26px;font-weight:660;letter-spacing:-0.03em;">612 mi</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="border-radius:28px;padding:22px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);display:flex;flex-direction:column;gap:16px;">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;">
+                <div style="font-size:16.5px;font-weight:600;letter-spacing:-0.015em;">Maintenance fund</div>
+                <div style="font-size:13px;font-weight:520;color:rgba(255,255,255,0.42);">Goal $3,000</div>
+              </div>
+              <div style="font-size:44px;font-weight:700;letter-spacing:-0.04em;line-height:1;">{{ maintTotalFmt }}</div>
+              <div style="height:10px;border-radius:999px;background:rgba(255,255,255,0.07);overflow:hidden;"><div style="height:100%;width:89%;border-radius:999px;background:linear-gradient(90deg,#8B5CF6,#60A5FA);"></div></div>
+              <div style="font-size:13.5px;font-weight:500;color:rgba(255,255,255,0.45);">{{ maintFmt }} added this week · 89% of goal</div>
+            </div>
+
+            <div style="border-radius:28px;padding:6px 20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+              <sc-for list="{{ service }}" as="row" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+                  <div style="display:flex;flex-direction:column;gap:3px;">
+                    <div style="font-size:15.5px;font-weight:540;">{{ row.name }}</div>
+                    <div style="font-size:12.5px;font-weight:480;color:rgba(255,255,255,0.4);">{{ row.due }}</div>
+                  </div>
+                  <div style="font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:999px;background:{{ row.tagBg }};color:{{ row.tagColor }};">{{ row.tag }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Fuel cost / mi</div>
+                <div style="font-size:26px;font-weight:660;letter-spacing:-0.03em;margin-top:8px;">$0.11</div>
+              </div>
+              <div style="border-radius:26px;padding:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                <div style="font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);">Avg efficiency</div>
+                <div style="font-size:26px;font-weight:660;letter-spacing:-0.03em;margin-top:8px;">39 mpg</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="position:absolute;left:0;right:0;bottom:0;height:96px;padding:12px 14px 0;background:linear-gradient(to top,rgba(8,8,13,0.96),rgba(8,8,13,0.6) 60%,rgba(8,8,13,0));backdrop-filter:blur(24px);border-top:1px solid rgba(255,255,255,0.07);display:flex;align-items:flex-start;justify-content:space-between;z-index:6;">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="3" y="13.5" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2.4"></rect></svg>
+              <span style="font-size:10.5px;font-weight:560;">Dashboard</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4"></circle><circle cx="17" cy="17" r="4"></circle><circle cx="17" cy="7" r="4"></circle><circle cx="7" cy="17" r="4"></circle></svg>
+              <span style="font-size:10.5px;font-weight:560;">Apps</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V11"></path><path d="M10 19V5"></path><path d="M16 19v-6"></path><path d="M21 19H3"></path></svg>
+              <span style="font-size:10.5px;font-weight:560;">Analytics</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:#A78BFA;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-3.2L6 7h12l2 5.8V16"></path><path d="M4 16h16"></path><circle cx="7.5" cy="16.5" r="1.6"></circle><circle cx="16.5" cy="16.5" r="1.6"></circle></svg>
+              <span style="font-size:10.5px;font-weight:600;">Vehicle</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"></path></svg>
+              <span style="font-size:10.5px;font-weight:560;">Settings</span>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:999px;background:rgba(255,255,255,0.32);z-index:7;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SETTINGS ══ -->
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding-left:6px;"><span style="font-size:13px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.32);">05</span><span style="font-size:19px;font-weight:560;letter-spacing:-0.01em;">Settings</span></div>
+      <div data-screen-label="Settings" style="position:relative;width:393px;height:852px;border-radius:56px;padding:11px;background:linear-gradient(160deg,#2A2A34,#101015 40%,#26262F);box-shadow:0 50px 90px -30px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.06);flex:none;">
+        <div style="position:relative;width:100%;height:100%;border-radius:45px;overflow:hidden;background:#08080D;">
+          <div style="position:absolute;inset:0;background:radial-gradient(320px 300px at 20% -6%, rgba(99,102,241,0.24), transparent 70%);"></div>
+          <div style="position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;z-index:5;font-size:15px;font-weight:600;">
+            <span>9:41</span>
+            <span style="display:flex;align-items:center;gap:6px;"><svg width="17" height="11" viewBox="0 0 17 11" fill="rgba(255,255,255,0.95)"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4.6" y="5" width="3" height="6" rx="1"></rect><rect x="9.2" y="2.6" width="3" height="8.4" rx="1"></rect><rect x="13.8" y="0" width="3" height="11" rx="1"></rect></svg><svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="19" height="11" rx="3.4" stroke="rgba(255,255,255,0.4)"></rect><rect x="2.4" y="2.4" width="13" height="7.2" rx="2" fill="#fff"></rect><path d="M21.4 4v4c1.2-.4 1.2-3.6 0-4z" fill="rgba(255,255,255,0.5)"></path></svg></span>
+          </div>
+          <div class="gp-scroll" style="position:absolute;inset:0;padding:62px 20px 118px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;z-index:2;">
+            <div style="font-size:30px;font-weight:680;letter-spacing:-0.035em;">Settings</div>
+
+            <div style="border-radius:28px;padding:20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);display:flex;align-items:center;gap:15px;">
+              <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(145deg,#8B5CF6,#3B82F6);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:660;flex:none;">M</div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+                <div style="font-size:18px;font-weight:600;letter-spacing:-0.02em;">Marco Delgado</div>
+                <div style="font-size:13.5px;font-weight:480;color:rgba(255,255,255,0.42);">Phoenix, AZ · Since 2023</div>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"></path></svg>
+            </div>
+
+            <div style="border-radius:28px;padding:20px;background:linear-gradient(150deg,rgba(139,92,246,0.28),rgba(59,130,246,0.15) 70%,rgba(255,255,255,0.03));border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(30px);display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <div style="font-size:17px;font-weight:620;letter-spacing:-0.015em;">GigPilot Pro</div>
+                <div style="font-size:13.5px;font-weight:480;color:rgba(255,255,255,0.55);">$20 / month · renews Aug 12</div>
+              </div>
+              <div style="padding:9px 16px;border-radius:999px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);font-size:13.5px;font-weight:600;">Manage</div>
+            </div>
+
+            <sc-for list="{{ settingGroups }}" as="group" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:9px;margin-top:6px;">
+                <div style="font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.35);padding-left:6px;">{{ group.title }}</div>
+                <div style="border-radius:26px;padding:4px 18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);backdrop-filter:blur(24px);">
+                  <sc-for list="{{ group.rows }}" as="row" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 0;border-bottom:1px solid rgba(255,255,255,0.055);">
+                      <div style="font-size:15.5px;font-weight:520;">{{ row.label }}</div>
+                      <div style="display:flex;align-items:center;gap:9px;font-size:14.5px;font-weight:500;color:rgba(255,255,255,0.42);">{{ row.value }}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"></path></svg></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+
+            <div style="text-align:center;font-size:12.5px;font-weight:480;color:rgba(255,255,255,0.28);margin-top:14px;">GigPilot 3.2.1 · Built for drivers</div>
+          </div>
+
+          <div style="position:absolute;left:0;right:0;bottom:0;height:96px;padding:12px 14px 0;background:linear-gradient(to top,rgba(8,8,13,0.96),rgba(8,8,13,0.6) 60%,rgba(8,8,13,0));backdrop-filter:blur(24px);border-top:1px solid rgba(255,255,255,0.07);display:flex;align-items:flex-start;justify-content:space-between;z-index:6;">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="3" width="7.5" height="7.5" rx="2.4"></rect><rect x="3" y="13.5" width="7.5" height="7.5" rx="2.4"></rect><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2.4"></rect></svg>
+              <span style="font-size:10.5px;font-weight:560;">Dashboard</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4"></circle><circle cx="17" cy="17" r="4"></circle><circle cx="17" cy="7" r="4"></circle><circle cx="7" cy="17" r="4"></circle></svg>
+              <span style="font-size:10.5px;font-weight:560;">Apps</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V11"></path><path d="M10 19V5"></path><path d="M16 19v-6"></path><path d="M21 19H3"></path></svg>
+              <span style="font-size:10.5px;font-weight:560;">Analytics</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,0.35);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-3.2L6 7h12l2 5.8V16"></path><path d="M4 16h16"></path><circle cx="7.5" cy="16.5" r="1.6"></circle><circle cx="16.5" cy="16.5" r="1.6"></circle></svg>
+              <span style="font-size:10.5px;font-weight:560;">Vehicle</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:#A78BFA;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"></path></svg>
+              <span style="font-size:10.5px;font-weight:600;">Settings</span>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:999px;background:rgba(255,255,255,0.32);z-index:7;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;weeklyTotal&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;default&quot;:1482.6,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:0,&quot;max&quot;:5000,&quot;step&quot;:10,&quot;section&quot;:&quot;Data&quot;},&quot;taxRate&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:20,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:10,&quot;max&quot;:40,&quot;step&quot;:1,&quot;unit&quot;:&quot;%&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;maintenanceRate&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:10,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:0,&quot;max&quot;:20,&quot;step&quot;:1,&quot;unit&quot;:&quot;%&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const total = this.props.weeklyTotal ?? 1482.6;
+    const taxRate = this.props.taxRate ?? 25;
+    const maintRate = this.props.maintenanceRate ?? 8;
+    const money = (n, d) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: d ?? 0, maximumFractionDigits: d ?? 0 });
+    const shares = [
+      { name: "Uber", short: "Uber", initial: "U", pct: 0.29, hourly: "$41.20", trips: "58 trips · 128 mi", delta: "+9%", grad: "linear-gradient(120deg,#A78BFA,#7C5CF6)" },
+      { name: "Lyft", short: "Lyft", initial: "L", pct: 0.21, hourly: "$36.80", trips: "41 trips · 96 mi", delta: "+14%", grad: "linear-gradient(120deg,#C084FC,#8B5CF6)" },
+      { name: "DoorDash", short: "DoorDash", initial: "D", pct: 0.18, hourly: "$34.10", trips: "47 orders · 104 mi", delta: "+6%", grad: "linear-gradient(120deg,#818CF8,#4F76F6)" },
+      { name: "Instacart", short: "Instacart", initial: "I", pct: 0.14, hourly: "$32.40", trips: "22 batches · 88 mi", delta: "+3%", grad: "linear-gradient(120deg,#60A5FA,#3B82F6)" },
+      { name: "Amazon Flex", short: "Flex", initial: "F", pct: 0.11, hourly: "$30.90", trips: "6 blocks · 132 mi", delta: "+11%", grad: "linear-gradient(120deg,#7DD3FC,#38BDF8)" },
+      { name: "Walmart Spark", short: "Spark", initial: "S", pct: 0.07, hourly: "$28.50", trips: "19 trips · 64 mi", delta: "+5%", grad: "linear-gradient(120deg,#93C5FD,#60A5FA)" }
+    ];
+    const max = shares[0].pct;
+    return {
+      weeklyTotalFmt: money(total, 2),
+      taxFmt: money(total * taxRate / 100, 0),
+      taxRateLabel: taxRate + "%",
+      maintFmt: money(total * maintRate / 100, 0),
+      maintTotalFmt: money(2684, 0),
+      apps: shares.map(a => ({
+        name: a.name, short: a.short, initial: a.initial, grad: a.grad,
+        amount: money(total * a.pct, 2), pct: Math.round(a.pct / max * 100) + "%",
+        hourly: a.hourly, meta: a.trips, delta: a.delta
+      })),
+      service: [
+        { name: "Oil change", due: "In 1,790 mi · Sep 2026", tag: "Scheduled", tagBg: "rgba(255,255,255,0.08)", tagColor: "rgba(255,255,255,0.6)" },
+        { name: "Tire rotation", due: "Overdue by 420 mi", tag: "Due now", tagBg: "rgba(251,146,60,0.18)", tagColor: "#FDBA74" },
+        { name: "Brake pads", due: "In 8,200 mi", tag: "Healthy", tagBg: "rgba(52,211,153,0.16)", tagColor: "#5EEAB0" },
+        { name: "Registration", due: "Renews Mar 2027", tag: "Healthy", tagBg: "rgba(52,211,153,0.16)", tagColor: "#5EEAB0" }
+      ],
+      settingGroups: [
+        { title: "Money", rows: [
+          { label: "Tax set-aside", value: taxRate + "%" },
+          { label: "Maintenance set-aside", value: maintRate + "%" },
+          { label: "Mileage rate", value: "$0.70 / mi" },
+          { label: "Payout account", value: "•••• 4417" }
+        ] },
+        { title: "Tracking", rows: [
+          { label: "Auto mileage tracking", value: "On" },
+          { label: "Shift detection", value: "Automatic" },
+          { label: "Idle threshold", value: "8 min" }
+        ] },
+        { title: "General", rows: [
+          { label: "Notifications", value: "Weekly digest" },
+          { label: "Export data", value: "CSV, PDF" },
+          { label: "Privacy", value: "" }
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
