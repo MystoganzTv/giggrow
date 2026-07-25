@@ -59,13 +59,6 @@ extension EarningsSnapshot {
                      gradient: [Color(hex: 0x93C5FD), Color(hex: 0x60A5FA)])
         ],
 
-        service: [
-            ServiceItem(name: "Oil change",    due: "In 1,790 mi · Sep 2026",  status: .scheduled),
-            ServiceItem(name: "Tire rotation", due: "Overdue by 420 mi",       status: .dueNow),
-            ServiceItem(name: "Brake pads",    due: "In 8,200 mi",             status: .healthy),
-            ServiceItem(name: "Registration",  due: "Renews Mar 2027",         status: .healthy)
-        ],
-
         driver: Driver(name: "Marco Delgado", detail: "Phoenix, AZ · Since 2023"),
 
         vehicle: Vehicle(
@@ -111,7 +104,6 @@ extension EarningsSnapshot {
         reserveDraw: 0,
 
         platforms: [],
-        service: [],
 
         driver: Driver(name: "", detail: ""),
         vehicle: Vehicle(

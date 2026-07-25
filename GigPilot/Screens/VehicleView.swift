@@ -4,64 +4,108 @@
 //
 //  Screen 04 — the car, the fund that keeps it running, and what's due.
 //
+//  Service rows are queried from the store rather than taken off the
+//  snapshot. Coming through the snapshot they were display-only values with
+//  no route back to the record — the same shape that left every Settings
+//  chevron dead.
+//
 
 import SwiftUI
+import SwiftData
 
 struct VehicleView: View {
     let snapshot: EarningsSnapshot
 
+    @Environment(\.modelContext) private var context
+    @Query private var vehicles: [VehicleRecord]
+    @Query(sort: \Shift.start) private var shifts: [Shift]
+
     @State private var isUpgrading = false
+    @State private var isEditingVehicle = false
+    @State private var addingService = false
+    @State private var editingService: ServiceRecord?
 
-    private var vehicle: Vehicle { snapshot.vehicle }
     private var entitlement: Entitlement { snapshot.entitlement }
+    private var vehicle: VehicleRecord? { vehicles.first }
 
-    /// Onboarding lets the vehicle step be skipped, so this can be false.
-    private var hasVehicle: Bool { vehicle.odometer > 0 || vehicle.name != "No vehicle" }
+    /// Baseline plus everything driven since it was recorded. Same rule the
+    /// projection uses, so the two can't disagree.
+    private var odometer: Int {
+        guard let vehicle else { return 0 }
+        let since = shifts
+            .filter { $0.start >= vehicle.odometerAsOf }
+            .reduce(0.0) { $0 + $1.miles }
+        return vehicle.odometerBaseline + Int(since.rounded())
+    }
+
+    private var service: [ServiceRecord] {
+        (vehicle?.service ?? []).sorted {
+            $0.status(currentMileage: odometer).urgency
+                < $1.status(currentMileage: odometer).urgency
+        }
+    }
 
     var body: some View {
         ScreenScaffold {
             GP.Gradients.vehicleWash()
         } content: {
-            Text("Vehicle")
-                .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
+            header
 
-            if hasVehicle {
-                vehicleCard
-            } else {
-                EmptyStateCard(
-                    title: "No vehicle yet",
-                    message: "Add your car and GigPilot tracks what it costs per mile and when it's next due for service."
-                )
-            }
+            if let vehicle {
+                vehicleCard(vehicle)
 
-            // The reserve is the differentiator, so free users see the figure
-            // they would have banked rather than an empty locked box.
-            ProLock(isLocked: !entitlement.allows(.maintenanceReserve)) {
-                isUpgrading = true
-            } content: {
-                maintenanceFundCard
-            }
+                ProLock(isLocked: !entitlement.allows(.maintenanceReserve)) {
+                    isUpgrading = true
+                } content: {
+                    maintenanceFundCard
+                }
 
-            if !snapshot.service.isEmpty {
                 serviceCard
-            }
 
-            if hasVehicle {
                 ProLock(isLocked: !entitlement.allows(.costPerMile)) {
                     isUpgrading = true
                 } content: {
-                    efficiencyTiles
+                    efficiencyTiles(vehicle)
                 }
+            } else {
+                EmptyStateCard(
+                    title: "No vehicle yet",
+                    message: "Add your car and GigPilot tracks what it costs per mile, what to set aside for repairs, and when it's next due for service.",
+                    actionTitle: "Add your vehicle",
+                    action: { isEditingVehicle = true }
+                )
             }
         }
         .sheet(isPresented: $isUpgrading) {
             UpgradeView(previewReserve: snapshot.maintenanceFund)
         }
+        .sheet(isPresented: $isEditingVehicle) {
+            VehicleEditorView(editing: vehicle)
+        }
+        .sheet(isPresented: $addingService) {
+            ServiceEditorView(vehicle: vehicle, currentMileage: odometer)
+        }
+        .sheet(item: $editingService) { record in
+            ServiceEditorView(editing: record, vehicle: vehicle, currentMileage: odometer)
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Vehicle")
+                .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
+            Spacer()
+            if vehicle != nil {
+                Button("Edit") { isEditingVehicle = true }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(GP.Palette.violet400)
+            }
+        }
     }
 
     // MARK: Vehicle header
 
-    private var vehicleCard: some View {
+    private func vehicleCard(_ vehicle: VehicleRecord) -> some View {
         HeroCard(padding: EdgeInsets(top: 22, leading: 22, bottom: 22, trailing: 22),
                  gradient: GP.Gradients.heroVehicle) {
             VStack(alignment: .leading, spacing: 20) {
@@ -69,8 +113,10 @@ struct VehicleView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(vehicle.name)
                             .gpText(GP.Typo.headline, tracking: GP.Typo.headlineTracking)
-                        Text(vehicle.detail)
-                            .gpText(.system(size: 13.5, weight: .medium), color: GP.Ink.secondary)
+                        if !vehicle.detail.isEmpty {
+                            Text(vehicle.detail)
+                                .gpText(.system(size: 13.5, weight: .medium), color: GP.Ink.secondary)
+                        }
                     }
 
                     Spacer(minLength: 12)
@@ -84,12 +130,12 @@ struct VehicleView: View {
                 HStack(alignment: .top, spacing: 26) {
                     VStack(alignment: .leading, spacing: 5) {
                         Eyebrow(text: "Odometer", color: Color.white.opacity(0.5))
-                        Text(Num.grouped(vehicle.odometer))
+                        Text(Num.grouped(odometer))
                             .gpText(GP.Typo.metricSmall, tracking: GP.Typo.metricSmallTracking)
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         Eyebrow(text: "This week", color: Color.white.opacity(0.5))
-                        Text("\(Num.grouped(vehicle.milesThisWeek)) mi")
+                        Text("\(Num.grouped(snapshot.mileage)) mi")
                             .gpText(GP.Typo.metricSmall, tracking: GP.Typo.metricSmallTracking)
                     }
                     Spacer(minLength: 0)
@@ -106,9 +152,7 @@ struct VehicleView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Maintenance fund")
                         .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
-                    if !entitlement.allows(.maintenanceReserve) {
-                        ProBadge()
-                    }
+                    if !entitlement.allows(.maintenanceReserve) { ProBadge() }
                     Spacer()
                     Text("Goal \(Money.whole(snapshot.maintenanceGoal))")
                         .gpText(GP.Typo.captionMuted, color: GP.Ink.tertiary)
@@ -127,50 +171,105 @@ struct VehicleView: View {
         }
     }
 
-    // MARK: Service schedule
+    // MARK: Service
 
     private var serviceCard: some View {
-        GlassCard(padding: EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20)) {
-            VStack(spacing: 0) {
-                ForEach(Array(snapshot.service.enumerated()), id: \.element.id) { index, item in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.name)
-                                .gpText(GP.Typo.rowLabel)
-                            Text(item.due)
-                                .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
-                        }
-
-                        Spacer(minLength: 12)
-
-                        Pill(text: item.status.label,
-                             foreground: item.status.tint,
-                             background: item.status.background)
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Text("SERVICE")
+                    .gpText(GP.Typo.groupLabel,
+                            tracking: GP.Typo.groupLabelTracking,
+                            color: GP.Ink.muted)
+                Spacer()
+                Button {
+                    addingService = true
+                } label: {
+                    HStack(spacing: 5) {
+                        PlusGlyph()
+                            .stroke(GP.Palette.violet400,
+                                    style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                            .frame(width: 12, height: 12)
+                        Text("Add")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(GP.Palette.violet400)
                     }
-                    .padding(.vertical, 16)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 6)
 
-                    if index < snapshot.service.count - 1 {
-                        RowDivider()
+            GlassCard(padding: EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20)) {
+                if service.isEmpty {
+                    Text("Nothing scheduled. Add oil changes, tyres, registration — anything you'd rather not be surprised by.")
+                        .gpText(GP.Typo.footnote, color: GP.Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 16)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(service.enumerated()), id: \.element.id) { index, record in
+                            serviceRow(record)
+                            if index < service.count - 1 { RowDivider() }
+                        }
                     }
                 }
             }
         }
     }
 
+    private func serviceRow(_ record: ServiceRecord) -> some View {
+        let status = record.status(currentMileage: odometer)
+
+        return Button {
+            editingService = record
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(record.name)
+                        .gpText(GP.Typo.rowLabel)
+                    Text(record.dueDescription(currentMileage: odometer))
+                        .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                }
+
+                Spacer(minLength: 12)
+
+                Pill(text: status.label,
+                     foreground: status.tint,
+                     background: status.background)
+            }
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Mark done today") {
+                record.markDone(currentMileage: odometer)
+                try? context.save()
+            }
+            Button("Edit") { editingService = record }
+            Button("Delete", role: .destructive) {
+                context.delete(record)
+                try? context.save()
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(record.name), \(status.label), \(record.dueDescription(currentMileage: odometer))")
+    }
+
     // MARK: Efficiency
 
-    private var efficiencyTiles: some View {
+    private func efficiencyTiles(_ vehicle: VehicleRecord) -> some View {
         TilePair {
             StatTile(
                 eyebrow: "Fuel cost / mi",
-                value: String(format: "$%.2f", vehicle.fuelCostPerMile),
+                value: vehicle.fuelCostPerMile > 0
+                    ? String(format: "$%.2f", vehicle.fuelCostPerMile) : "—",
                 valueFont: GP.Typo.metricSmall,
                 valueTracking: GP.Typo.metricSmallTracking
             )
         } right: {
             StatTile(
                 eyebrow: "Avg efficiency",
-                value: "\(vehicle.averageMPG) mpg",
+                value: vehicle.averageMPG > 0 ? "\(vehicle.averageMPG) mpg" : "—",
                 valueFont: GP.Typo.metricSmall,
                 valueTracking: GP.Typo.metricSmallTracking
             )
@@ -178,7 +277,23 @@ struct VehicleView: View {
     }
 }
 
+/// Most urgent first in the vehicle list.
+extension ServiceStatus {
+    var urgency: Int {
+        switch self {
+        case .dueNow:    return 0
+        case .scheduled: return 1
+        case .healthy:   return 2
+        }
+    }
+}
+
 #Preview("Vehicle") {
     VehicleView(snapshot: .mock)
-        .preferredColorScheme(.dark)
+        .modelContainer(.preview)
+}
+
+#Preview("Vehicle — no car") {
+    VehicleView(snapshot: .empty)
+        .modelContainer(.previewEmpty)
 }

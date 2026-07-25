@@ -128,11 +128,18 @@ enum Seed {
     /// the kind of fabricated detail that costs trust on first launch.
     static func defaultService(baseOdometer: Int) -> [ServiceRecord] {
         [
-            ServiceRecord(name: "Oil change",    dueAtMileage: baseOdometer + 5_000),
-            ServiceRecord(name: "Tire rotation", dueAtMileage: baseOdometer + 6_000),
-            ServiceRecord(name: "Brake pads",    dueAtMileage: baseOdometer + 20_000),
+            ServiceRecord(name: "Oil change",
+                          dueAtMileage: baseOdometer + 5_000,
+                          intervalMiles: 5_000),
+            ServiceRecord(name: "Tire rotation",
+                          dueAtMileage: baseOdometer + 6_000,
+                          intervalMiles: 6_000),
+            ServiceRecord(name: "Brake pads",
+                          dueAtMileage: baseOdometer + 20_000,
+                          intervalMiles: 20_000),
             ServiceRecord(name: "Registration",
-                          dueOn: Calendar.gigPilot.date(byAdding: .year, value: 1, to: .now))
+                          dueOn: Calendar.gigPilot.date(byAdding: .year, value: 1, to: .now),
+                          intervalMonths: 12)
         ]
     }
 }

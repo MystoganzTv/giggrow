@@ -215,22 +215,13 @@ extension EarningsSnapshot {
             - gross * profile.taxRate / 100
             - gross * profile.maintenanceRate / 100
 
-        // MARK: Vehicle & service
+        // MARK: Vehicle
 
+        // The service schedule is not projected here. VehicleView queries the
+        // records directly, because rows that arrive as display-only values
+        // have no route back to the object — the shape that left every
+        // Settings chevron dead.
         let odometer = liveOdometer(vehicleRecord, shifts: shifts)
-
-        let service: [ServiceItem] = (vehicleRecord?.service ?? [])
-            .sorted { lhs, rhs in
-                lhs.status(currentMileage: odometer, now: now).urgency
-                    < rhs.status(currentMileage: odometer, now: now).urgency
-            }
-            .map {
-                ServiceItem(
-                    name: $0.name,
-                    due: $0.dueDescription(currentMileage: odometer),
-                    status: $0.status(currentMileage: odometer, now: now)
-                )
-            }
 
         let vehicle = Vehicle(
             name: vehicleRecord?.name ?? "No vehicle",
@@ -267,7 +258,6 @@ extension EarningsSnapshot {
             reserveDraw: reserveDraw,
 
             platforms: platforms,
-            service: service,
 
             driver: Driver(name: profile.name, detail: profile.detail),
             vehicle: vehicle,
@@ -432,15 +422,3 @@ extension EarningsSnapshot {
 
 }
 
-// MARK: - Ordering
-
-private extension ServiceStatus {
-    /// Most urgent first in the vehicle list.
-    var urgency: Int {
-        switch self {
-        case .dueNow:    return 0
-        case .scheduled: return 1
-        case .healthy:   return 2
-        }
-    }
-}

@@ -270,17 +270,56 @@ final class ServiceRecord {
     var dueNote: String?
     var vehicle: VehicleRecord?
 
+    /// How far apart these fall due. Without it there is nothing to reset to,
+    /// which is why the schedule used to be frozen: you could watch a row go
+    /// overdue and never clear it.
+    var intervalMiles: Int = 0
+    /// Interval for date-driven items, in months.
+    var intervalMonths: Int = 0
+
+    var lastDoneAtMileage: Int?
+    var lastDoneOn: Date?
+
     init(
         name: String,
         dueAtMileage: Int = 0,
         dueOn: Date? = nil,
-        dueNote: String? = nil
+        dueNote: String? = nil,
+        intervalMiles: Int = 0,
+        intervalMonths: Int = 0
     ) {
         self.name = name
         self.dueAtMileage = dueAtMileage
         self.dueOn = dueOn
         self.dueNote = dueNote
+        self.intervalMiles = intervalMiles
+        self.intervalMonths = intervalMonths
     }
+
+    /// Records the service and rolls the next one forward.
+    ///
+    /// Measured from the odometer *now*, not from when it was previously due
+    /// — a driver who changes the oil 800 miles late should get a full
+    /// interval from today, not an interval that's already partly spent.
+    func markDone(currentMileage: Int, on date: Date = .now) {
+        lastDoneAtMileage = currentMileage
+        lastDoneOn = date
+
+        if intervalMiles > 0 {
+            dueAtMileage = currentMileage + intervalMiles
+            dueNote = nil
+        }
+        if intervalMonths > 0 {
+            dueOn = Calendar.gigPilot.date(byAdding: .month, value: intervalMonths, to: date)
+        } else if intervalMiles == 0, let existing = dueOn {
+            // Neither interval set: keep it a year out rather than leaving a
+            // row permanently overdue.
+            dueOn = Calendar.gigPilot.date(byAdding: .year, value: 1, to: max(existing, date))
+        }
+    }
+
+    /// Whether completing it means anything — a one-off has no next due.
+    var isRecurring: Bool { intervalMiles > 0 || intervalMonths > 0 }
 
     /// Status is computed from the live odometer rather than stored, so a row
     /// can't drift out of date while the app is closed.

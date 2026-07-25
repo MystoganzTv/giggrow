@@ -75,14 +75,9 @@ enum ServiceStatus: Hashable {
     }
 }
 
-/// A row in the vehicle service schedule.
-struct ServiceItem: Identifiable, Hashable {
-    let id = UUID()
-    let name: String
-    /// When it's next due — "In 1,790 mi · Sep 2026".
-    let due: String
-    let status: ServiceStatus
-}
+// Service rows are queried from the store by VehicleView, not projected here.
+// As snapshot values they carried no identity, so a row could be drawn but
+// never opened, completed or deleted.
 
 // MARK: - Settings
 
@@ -308,7 +303,6 @@ struct EarningsSnapshot {
 
     // Collections
     let platforms: [Platform]
-    let service: [ServiceItem]
 
     let driver: Driver
     let vehicle: Vehicle
