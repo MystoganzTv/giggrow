@@ -10,7 +10,10 @@ import SwiftUI
 struct VehicleView: View {
     let snapshot: EarningsSnapshot
 
+    @State private var isUpgrading = false
+
     private var vehicle: Vehicle { snapshot.vehicle }
+    private var entitlement: Entitlement { snapshot.entitlement }
 
     var body: some View {
         ScreenScaffold {
@@ -20,9 +23,25 @@ struct VehicleView: View {
                 .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
 
             vehicleCard
-            maintenanceFundCard
+
+            // The reserve is the differentiator, so free users see the figure
+            // they would have banked rather than an empty locked box.
+            ProLock(isLocked: !entitlement.allows(.maintenanceReserve)) {
+                isUpgrading = true
+            } content: {
+                maintenanceFundCard
+            }
+
             serviceCard
-            efficiencyTiles
+
+            ProLock(isLocked: !entitlement.allows(.costPerMile)) {
+                isUpgrading = true
+            } content: {
+                efficiencyTiles
+            }
+        }
+        .sheet(isPresented: $isUpgrading) {
+            UpgradeView(previewReserve: snapshot.maintenanceFund)
         }
     }
 
@@ -73,6 +92,9 @@ struct VehicleView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Maintenance fund")
                         .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
+                    if !entitlement.allows(.maintenanceReserve) {
+                        ProBadge()
+                    }
                     Spacer()
                     Text("Goal \(Money.whole(snapshot.maintenanceGoal))")
                         .gpText(GP.Typo.captionMuted, color: GP.Ink.tertiary)

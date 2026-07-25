@@ -221,6 +221,11 @@ struct EarningsSnapshot {
     /// Everything the charts plot.
     let series: ChartSeries
 
+    /// What this user is allowed to see.
+    let entitlement: Entitlement
+    /// End of the current paid period, when subscribed.
+    let planRenewsOn: Date?
+
     // MARK: Derived
 
     var idleHours: Double { max(onlineHours - activeHours, 0) }

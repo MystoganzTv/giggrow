@@ -93,7 +93,11 @@ extension EarningsSnapshot {
             averageMPG: 39
         ),
 
-        series: .mock
+        series: .mock,
+
+        // Previews show the subscribed state so every card renders unlocked.
+        entitlement: .pro,
+        planRenewsOn: Calendar.gigPilot.date(byAdding: .month, value: 1, to: .now)
     )
 }
 

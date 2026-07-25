@@ -116,6 +116,40 @@ it, the caption could contradict the bars directly beneath it.
 The monthly curve falls back to the design's series until two months of history
 exist, since a new account has nothing to plot.
 
+## Pricing
+
+`Model/Subscription.swift` holds every price; none is typed into a view.
+
+Pro is **$9.99/month or $79.99/year**. That was set against the market, not
+picked: Gridwise Plus is $14.99/mo or $107.99/yr, Solo runs $8–$15/mo billed
+annually, Stride is free. The design's original $20/mo sat above every
+competitor for a smaller product.
+
+**Sync is not the paid feature, and shouldn't be.** Gridwise and Solo both buy
+automatic earnings sync from the same class of aggregator, so it's the price of
+entry rather than a reason to subscribe. The paywall leads with the maintenance
+reserve, which neither competitor offers — they treat the car as a mileage
+number, not as an asset that needs a repair budget.
+
+Free keeps manual entry, the dashboard, analytics and the tax set-aside.
+Pro adds the reserve, true cost per mile, sync and export.
+
+Free users see the maintenance card with the figure they *would* have banked,
+rather than an empty locked box. A wedge nobody can see isn't a wedge.
+
+## Providers
+
+`EarningsProvider` is the seam between where shifts come from and everything
+that reads them. `ManualEarningsProvider` ships today;
+`AggregatorEarningsProvider` is a deliberate stub, because connecting one costs
+money per account per month and that's a commercial decision before it's a
+technical one.
+
+The note in that file worth keeping: an aggregator returns per-gig rows, and
+mapping each one to its own `Shift` would reintroduce exactly the
+double-counted hours this data model exists to avoid. Overlapping windows have
+to be merged.
+
 ## Not yet built
 
 No networking, no platform OAuth. Expenses have a model but no entry UI. The

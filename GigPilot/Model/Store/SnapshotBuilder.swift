@@ -264,7 +264,12 @@ extension EarningsSnapshot {
                 range: range,
                 now: now,
                 calendar: calendar
-            )
+            ),
+
+            entitlement: Entitlement(
+                tier: PlanTier(rawValue: profile.planTierRaw) ?? .free
+            ),
+            planRenewsOn: profile.planRenewsOn
         )
     }
 

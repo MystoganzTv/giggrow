@@ -11,6 +11,11 @@ struct SettingsView: View {
     let snapshot: EarningsSnapshot
     var appVersion: String = "3.2.1"
 
+    @Environment(\.openURL) private var openURL
+    @State private var isUpgrading = false
+
+    private var entitlement: Entitlement { snapshot.entitlement }
+
     var body: some View {
         ScreenScaffold {
             GP.Gradients.settingsWash()
@@ -26,6 +31,9 @@ struct SettingsView: View {
             }
 
             footer
+        }
+        .sheet(isPresented: $isUpgrading) {
+            UpgradeView(previewReserve: snapshot.maintenanceFund)
         }
     }
 
@@ -56,28 +64,61 @@ struct SettingsView: View {
     // MARK: Subscription
 
     private var subscriptionCard: some View {
-        HeroCard(radius: GP.Radius.card,
-                 padding: EdgeInsets(top: 20, leading: 20, bottom: 20, trailing: 20),
-                 gradient: GP.Gradients.heroPro) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("GigPilot Pro")
-                        .gpText(.system(size: 17, weight: .semibold), tracking: -0.26)
-                    Text("$20 / month · renews Aug 12")
-                        .gpText(.system(size: 13.5, weight: .regular),
-                                color: Color.white.opacity(0.55))
-                }
-
-                Spacer(minLength: 8)
-
-                Text("Manage")
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 9)
-                    .background(Color.white.opacity(0.15), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
+        Button {
+            // Subscribers land in the App Store's management screen; everyone
+            // else sees the paywall. Same card, two destinations.
+            if entitlement.isPro {
+                openSubscriptionManagement()
+            } else {
+                isUpgrading = true
             }
+        } label: {
+            HeroCard(radius: GP.Radius.card,
+                     padding: EdgeInsets(top: 20, leading: 20, bottom: 20, trailing: 20),
+                     gradient: GP.Gradients.heroPro) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(entitlement.isPro ? "GigPilot Pro" : "Upgrade to Pro")
+                            .gpText(.system(size: 17, weight: .semibold), tracking: -0.26)
+                        Text(subscriptionCaption)
+                            .gpText(.system(size: 13.5, weight: .regular),
+                                    color: Color.white.opacity(0.55))
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Text(entitlement.isPro ? "Manage" : "See plans")
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(Color.white.opacity(0.15), in: Capsule())
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var subscriptionCaption: String {
+        guard entitlement.isPro else {
+            // Priced from the model, never typed into a view.
+            return "From \(Plan.proAnnual.monthlyEquivalent) / month"
+        }
+        guard let renews = snapshot.planRenewsOn else {
+            return Plan.proMonthly.perPeriodLabel
+        }
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return "\(Plan.proMonthly.perPeriodLabel) · renews \(f.string(from: renews))"
+    }
+
+    private func openSubscriptionManagement() {
+        // Apple requires cancellation to go through the system screen.
+        // `openURL` rather than UIApplication.shared — this file imports
+        // SwiftUI only, and SwiftUI does not re-export UIKit.
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            openURL(url)
         }
     }
 

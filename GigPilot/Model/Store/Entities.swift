@@ -125,6 +125,13 @@ final class PlatformAccount {
     /// Display order on the Apps screen.
     var sortIndex: Int
 
+    // Sync state. Populated once an earnings provider is connected; until
+    // then every account is manual and these stay at their defaults.
+    /// Provider-side account id, for tracing a row back to its source.
+    var providerAccountId: String?
+    var connectionStatusRaw: String = ConnectionStatus.disconnected.rawValue
+    var lastSyncedAt: Date?
+
     @Relationship(deleteRule: .cascade, inverse: \PlatformEarning.account)
     var earnings: [PlatformEarning]
 
@@ -147,6 +154,18 @@ final class PlatformAccount {
         self.isActive = isActive
         self.sortIndex = sortIndex
         self.earnings = []
+    }
+
+    // MARK: Sync
+
+    var connectionStatus: ConnectionStatus {
+        get { ConnectionStatus(rawValue: connectionStatusRaw) ?? .disconnected }
+        set { connectionStatusRaw = newValue.rawValue }
+    }
+
+    /// True once an aggregator is behind this account.
+    var isLinked: Bool {
+        providerAccountId != nil && connectionStatus != .disconnected
     }
 }
 
@@ -323,6 +342,13 @@ final class DriverProfile {
     var autoMileageTracking: Bool
     var shiftDetectionAutomatic: Bool
     var idleThresholdMinutes: Int
+
+    /// Persisted so the UI has an answer before StoreKit finishes loading.
+    /// StoreKit remains the source of truth; this is a cache, and
+    /// `Entitlement` is the only type that should read it.
+    var planTierRaw: String = PlanTier.free.rawValue
+    /// End of the current paid period, when there is one.
+    var planRenewsOn: Date?
 
     init(
         name: String = "",

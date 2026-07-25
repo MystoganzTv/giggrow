@@ -293,6 +293,92 @@ private struct ChevronShape: Shape {
     }
 }
 
+// MARK: - Pro gating
+
+/// Small "PRO" tag on a locked card.
+struct ProBadge: View {
+    var body: some View {
+        Text("PRO")
+            .font(.system(size: 10, weight: .bold))
+            .tracking(0.8)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(GP.Gradients.brandMark, in: Capsule())
+    }
+}
+
+/// Wraps a Pro-only card for free users.
+///
+/// The content stays legible rather than being blurred out. Hiding the
+/// maintenance reserve entirely would hide the only reason to subscribe —
+/// the driver has to see the number they're not getting.
+struct ProLock<Content: View>: View {
+    let isLocked: Bool
+    var action: () -> Void
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if !isLocked {
+            content
+        } else {
+            Button(action: action) {
+                VStack(spacing: 0) {
+                    content
+                        .allowsHitTesting(false)
+
+                    HStack(spacing: 8) {
+                        LockGlyph()
+                            .stroke(GP.Palette.violet300,
+                                    style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                            .frame(width: 13, height: 13)
+
+                        Text("Unlock with Pro")
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundStyle(GP.Palette.violet300)
+
+                        Spacer(minLength: 0)
+
+                        Chevron(size: 14, color: GP.Palette.violet300.opacity(0.6))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(GP.Palette.violet500.opacity(0.14))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: GP.Radius.card, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: GP.Radius.card, style: .continuous)
+                        .strokeBorder(GP.Palette.violet400.opacity(0.30), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+/// Padlock outline.
+struct LockGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        var p = Path()
+        p.addRoundedRect(
+            in: CGRect(x: 4 * s, y: 10 * s, width: 16 * s, height: 11 * s),
+            cornerSize: CGSize(width: 3 * s, height: 3 * s),
+            style: .continuous
+        )
+        // Shackle
+        p.move(to: CGPoint(x: 8 * s, y: 10 * s))
+        p.addLine(to: CGPoint(x: 8 * s, y: 7 * s))
+        p.addCurve(
+            to: CGPoint(x: 16 * s, y: 7 * s),
+            control1: CGPoint(x: 8 * s, y: 2.5 * s),
+            control2: CGPoint(x: 16 * s, y: 2.5 * s)
+        )
+        p.addLine(to: CGPoint(x: 16 * s, y: 10 * s))
+        return p
+    }
+}
+
 // MARK: - Divider
 
 /// Hairline used between rows inside a grouped card. Omitted after the last row.
