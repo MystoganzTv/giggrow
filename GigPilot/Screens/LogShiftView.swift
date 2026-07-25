@@ -15,6 +15,7 @@ struct LogShiftView: View {
     @Environment(\.dismiss) private var dismiss
 
     @Query(sort: \PlatformAccount.sortIndex) private var accounts: [PlatformAccount]
+    @Query private var profiles: [DriverProfile]
 
     /// Editing an existing shift, or nil when creating one.
     var editing: Shift?
@@ -297,6 +298,11 @@ struct LogShiftView: View {
         guard let shift = editing else {
             for account in accounts where rows[account.name] == nil {
                 rows[account.name] = EntryRow()
+            }
+            // The Settings idle threshold is the starting point, so the
+            // preference isn't a number that sits there doing nothing.
+            if let minutes = profiles.first?.idleThresholdMinutes, minutes > 0 {
+                idleText = "\(minutes)"
             }
             return
         }

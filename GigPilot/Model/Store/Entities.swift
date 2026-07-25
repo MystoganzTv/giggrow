@@ -338,9 +338,15 @@ final class DriverProfile {
     /// Opening balance of the maintenance fund, for drivers who already had one.
     var maintenanceOpeningBalance: Double
 
-    // Tracking preferences — the Settings rows that were inert.
+    // Tracking preferences.
+    //
+    // `autoMileageTracking` and `shiftDetectionAutomatic` are stored but not
+    // yet honoured — there is no Core Location work in the app. Settings must
+    // not present them as active; see `TrackingCapability`.
     var autoMileageTracking: Bool
     var shiftDetectionAutomatic: Bool
+    /// Minutes of waiting before time counts as idle. Used as the default in
+    /// the shift entry sheet.
     var idleThresholdMinutes: Int
 
     /// Persisted so the UI has an answer before StoreKit finishes loading.

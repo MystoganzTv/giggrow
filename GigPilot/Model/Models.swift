@@ -86,18 +86,9 @@ struct ServiceItem: Identifiable, Hashable {
 
 // MARK: - Settings
 
-struct SettingRow: Identifiable, Hashable {
-    let id = UUID()
-    let label: String
-    /// Trailing value; empty string renders the chevron alone.
-    let value: String
-}
-
-struct SettingGroup: Identifiable, Hashable {
-    let id = UUID()
-    let title: String
-    let rows: [SettingRow]
-}
+// Settings rows are built in SettingsView from the live DriverProfile rather
+// than passed through the snapshot. They were plain display data here, with
+// no way to carry an action — which is exactly why every chevron led nowhere.
 
 // MARK: - Vehicle
 
@@ -318,7 +309,6 @@ struct EarningsSnapshot {
     // Collections
     let platforms: [Platform]
     let service: [ServiceItem]
-    let settingGroups: [SettingGroup]
 
     let driver: Driver
     let vehicle: Vehicle

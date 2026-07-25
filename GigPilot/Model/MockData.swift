@@ -66,25 +66,6 @@ extension EarningsSnapshot {
             ServiceItem(name: "Registration",  due: "Renews Mar 2027",         status: .healthy)
         ],
 
-        settingGroups: [
-            SettingGroup(title: "Money", rows: [
-                SettingRow(label: "Tax set-aside",         value: "25%"),
-                SettingRow(label: "Maintenance set-aside", value: "8%"),
-                SettingRow(label: "Mileage rate",          value: "$0.70 / mi"),
-                SettingRow(label: "Payout account",        value: "•••• 4417")
-            ]),
-            SettingGroup(title: "Tracking", rows: [
-                SettingRow(label: "Auto mileage tracking", value: "On"),
-                SettingRow(label: "Shift detection",       value: "Automatic"),
-                SettingRow(label: "Idle threshold",        value: "8 min")
-            ]),
-            SettingGroup(title: "General", rows: [
-                SettingRow(label: "Notifications", value: "Weekly digest"),
-                SettingRow(label: "Export data",   value: "CSV, PDF"),
-                SettingRow(label: "Privacy",       value: "")
-            ])
-        ],
-
         driver: Driver(name: "Marco Delgado", detail: "Phoenix, AZ · Since 2023"),
 
         vehicle: Vehicle(
@@ -131,7 +112,6 @@ extension EarningsSnapshot {
 
         platforms: [],
         service: [],
-        settingGroups: [],
 
         driver: Driver(name: "", detail: ""),
         vehicle: Vehicle(

@@ -268,7 +268,6 @@ extension EarningsSnapshot {
 
             platforms: platforms,
             service: service,
-            settingGroups: settingGroups(for: profile),
 
             driver: Driver(name: profile.name, detail: profile.detail),
             vehicle: vehicle,
@@ -431,35 +430,6 @@ extension EarningsSnapshot {
         return "\(sign)\(text)%"
     }
 
-    /// Builds the grouped Settings rows from live preferences.
-    private static func settingGroups(for profile: DriverProfile) -> [SettingGroup] {
-        func pct(_ value: Double) -> String {
-            value == value.rounded()
-                ? "\(Int(value))%"
-                : String(format: "%.1f%%", value)
-        }
-
-        return [
-            SettingGroup(title: "Money", rows: [
-                SettingRow(label: "Tax set-aside", value: pct(profile.taxRate)),
-                SettingRow(label: "Maintenance set-aside", value: pct(profile.maintenanceRate)),
-                SettingRow(label: "Mileage rate", value: String(format: "$%.2f / mi", profile.mileageRate)),
-                SettingRow(label: "Payout account",
-                           value: profile.payoutLast4.isEmpty ? "Not set" : "•••• \(profile.payoutLast4)")
-            ]),
-            SettingGroup(title: "Tracking", rows: [
-                SettingRow(label: "Auto mileage tracking", value: profile.autoMileageTracking ? "On" : "Off"),
-                SettingRow(label: "Shift detection",
-                           value: profile.shiftDetectionAutomatic ? "Automatic" : "Manual"),
-                SettingRow(label: "Idle threshold", value: "\(profile.idleThresholdMinutes) min")
-            ]),
-            SettingGroup(title: "General", rows: [
-                SettingRow(label: "Notifications", value: "Weekly digest"),
-                SettingRow(label: "Export data", value: "CSV, PDF"),
-                SettingRow(label: "Privacy", value: "")
-            ])
-        ]
-    }
 }
 
 // MARK: - Ordering
