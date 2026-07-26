@@ -18,10 +18,11 @@ import Foundation
 
 enum TrackingCapability {
 
-    /// Automatic mileage capture via Core Location. Not built.
-    static let automaticMileage = false
+    /// Automatic mileage capture via Core Location. Built — see MileageTracker.
+    static let automaticMileage = true
 
-    /// Detecting shift start/end from driving activity. Not built.
+    /// Detecting shift start/end from driving activity. Drives are captured,
+    /// but nothing yet decides where one shift ends and the next begins.
     static let automaticShiftDetection = false
 
     /// Whether any automatic tracking exists, which decides whether the

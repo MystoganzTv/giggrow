@@ -21,6 +21,11 @@ struct RootView: View {
     @State private var isImporting = false
     @State private var analyticsRange: AnalyticsRange = .week
 
+    /// One tracker for the whole app. It owns a CLLocationManager, so a second
+    /// instance would mean a second set of permission prompts and duplicate
+    /// drives. Settings gets this one handed to it rather than making its own.
+    @State private var tracker = MileageTracker()
+
     /// Re-running the projection on every change is what keeps all five
     /// screens live. @Query supplies the change notification; the work
     /// happens in `EarningsSnapshot.build`.
@@ -75,6 +80,22 @@ struct RootView: View {
             // The platform catalogue is reference data, not user data, so it
             // is safe to create before onboarding runs.
             Seed.bootstrapPlatformsIfNeeded(context)
+            configureTracker()
+        }
+        .onChange(of: profiles.first?.idleThresholdMinutes) { _, _ in
+            configureTracker()
+        }
+    }
+
+    /// Hands the tracker its context and the driver's idle threshold, then
+    /// re-arms it if tracking was on when the app was last closed. Permission
+    /// is never requested here — only `enable()` from the switch does that,
+    /// and `enable()` no-ops into `.denied` if the driver said no.
+    private func configureTracker() {
+        guard let profile = profiles.first else { return }
+        tracker.configure(context: context, idleMinutes: profile.idleThresholdMinutes)
+        if profile.autoMileageTracking && tracker.status == .off {
+            tracker.enable()
         }
     }
 
@@ -117,7 +138,7 @@ struct RootView: View {
                                        range: $analyticsRange,
                                        onShowExpenses: { isShowingExpenses = true })
         case .vehicle:   VehicleView(snapshot: snapshot)
-        case .settings:  SettingsView(snapshot: snapshot)
+        case .settings:  SettingsView(snapshot: snapshot, tracker: tracker)
         }
     }
 

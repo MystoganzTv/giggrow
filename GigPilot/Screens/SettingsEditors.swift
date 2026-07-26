@@ -392,6 +392,20 @@ struct PrivacySheet: View {
                             }
                         }
 
+                        // Location tracking changed what this page can claim.
+                        // Leaving the old wording would have made it false.
+                        GlassCard {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Text("If you turn on mileage tracking")
+                                    .gpText(GP.Typo.cardTitle, tracking: GP.Typo.cardTitleTracking)
+
+                                point("GigPilot reads your location to measure how far you drove. It stays on this device like everything else — there is no server to send it to.")
+                                point("Only the distance and the times are kept. Your route isn't stored, and neither are coordinates.")
+                                point("GPS switches on when motion says you're driving and off again when you stop, which is what keeps it from draining the battery.")
+                                point("Turn it off in Settings and recording stops immediately. Drives already recorded stay until you delete them.")
+                            }
+                        }
+
                         Text("This describes the app as it stands today. If a future version connects to your gig platforms, that connection will be something you opt into explicitly, and this page will say so.")
                             .gpText(GP.Typo.footnote, color: GP.Ink.muted)
                             .fixedSize(horizontal: false, vertical: true)

@@ -22,8 +22,14 @@ struct SettingsView: View {
     @Query private var profiles: [DriverProfile]
     @Query(sort: \Shift.start) private var shifts: [Shift]
     @Query(sort: \Expense.date) private var expenses: [Expense]
+    @Query private var drives: [DriveRecord]
+
+    /// Injected from the root so the switch reflects the live tracker rather
+    /// than a stored flag that could disagree with reality.
+    var tracker: MileageTracker? = nil
 
     @State private var isUpgrading = false
+    @State private var isShowingDrives = false
     @State private var isPickingState = false
     @State private var route: Route?
 
@@ -70,6 +76,9 @@ struct SettingsView: View {
         }
         .sheet(item: $route) { destination in
             editor(for: destination)
+        }
+        .sheet(isPresented: $isShowingDrives) {
+            DrivesView(tracker: tracker)
         }
         .sheet(isPresented: $isPickingState) {
             StatePickerView(selection: stateBinding) { state in
@@ -189,30 +198,83 @@ struct SettingsView: View {
 
     private var trackingGroup: some View {
         SettingsGroup(title: "Tracking") {
+            if TrackingCapability.automaticMileage { mileageToggle }
+
+            RowDivider(color: GP.Surface.dividerSoft)
+            SettingsRow(label: "Recorded drives",
+                        value: drives.isEmpty ? "None yet" : "\(drives.count)") {
+                isShowingDrives = true
+            }
+
+            RowDivider(color: GP.Surface.dividerSoft)
             SettingsRow(label: "Idle threshold",
                         value: "\(profile?.idleThresholdMinutes ?? 8) min") {
                 route = .idleThreshold
             }
 
-            // Automatic tracking isn't built. Showing a switch here — or worse,
-            // "On" — would stop drivers logging miles they'd then lose.
-            if !TrackingCapability.hasAnyAutomation {
+            // Shift detection still isn't built; drives are captured but
+            // nothing decides where one shift ends and the next begins.
+            if !TrackingCapability.automaticShiftDetection {
                 RowDivider(color: GP.Surface.dividerSoft)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("Automatic mileage & shift detection")
-                            .gpText(GP.Typo.rowLabel, color: GP.Ink.tertiary)
-                        Spacer(minLength: 12)
-                        Text(TrackingCapability.notYetLabel)
-                            .gpText(.system(size: 14.5, weight: .regular), color: GP.Ink.muted)
-                    }
-                    Text("Not built yet. Log shifts by hand for now — GigPilot won't pretend it's recording when it isn't.")
-                        .gpText(GP.Typo.footnote, color: GP.Ink.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text("Automatic shift detection")
+                        .gpText(GP.Typo.rowLabel, color: GP.Ink.tertiary)
+                    Spacer(minLength: 12)
+                    Text(TrackingCapability.notYetLabel)
+                        .gpText(.system(size: 14.5, weight: .regular), color: GP.Ink.muted)
                 }
                 .padding(.vertical, 15)
             }
         }
+    }
+
+    private var mileageToggle: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: Binding(
+                get: { tracker?.status.isArmed ?? false },
+                set: { on in
+                    profile?.autoMileageTracking = on
+                    save()
+                    if on { tracker?.enable() } else { tracker?.disable() }
+                }
+            )) {
+                Text("Track miles automatically")
+                    .gpText(GP.Typo.rowLabel)
+            }
+            .tint(GP.Palette.violet500)
+
+            // Whatever the tracker actually reports, not what the switch says.
+            // A denied permission with the switch left on is exactly the lie
+            // this screen used to tell.
+            if let tracker {
+                switch tracker.status {
+                case .denied:
+                    trackingNote("Location is off for GigPilot. Turn it on in iOS Settings and drives will record again.",
+                                 colour: GP.Palette.amber)
+                case .restricted:
+                    trackingNote("Location is restricted on this device, so miles can't be recorded automatically.",
+                                 colour: GP.Palette.amber)
+                case .recording:
+                    trackingNote("Recording a drive now.", colour: GP.Palette.mint)
+                case .waiting:
+                    trackingNote("Watching for driving. GPS only switches on once you're moving, which is what keeps the battery cost down.",
+                                 colour: GP.Ink.muted)
+                case .off:
+                    trackingNote("Off. Miles are whatever you enter by hand.", colour: GP.Ink.muted)
+                }
+
+                if let notice = tracker.notice {
+                    trackingNote(notice, colour: GP.Palette.amber)
+                }
+            }
+        }
+        .padding(.vertical, 13)
+    }
+
+    private func trackingNote(_ text: String, colour: Color) -> some View {
+        Text(text)
+            .gpText(GP.Typo.footnote, color: colour)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: General
@@ -237,6 +299,20 @@ struct SettingsView: View {
                 shareRowLabel("Export expenses", value: "\(expenses.count) logged")
             }
             .disabled(expenses.isEmpty)
+
+            if !drives.isEmpty {
+                RowDivider(color: GP.Surface.dividerSoft)
+
+                ShareLink(
+                    item: CSVDocument(
+                        name: "gigpilot-drives",
+                        text: CSVExport.drives(drives, overrideRate: profile?.mileageRate ?? 0)
+                    ),
+                    preview: SharePreview("GigPilot drives")
+                ) {
+                    shareRowLabel("Export drives", value: "\(drives.count) recorded")
+                }
+            }
 
             RowDivider(color: GP.Surface.dividerSoft)
 

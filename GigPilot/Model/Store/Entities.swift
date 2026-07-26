@@ -188,6 +188,84 @@ final class PlatformAccount {
     }
 }
 
+// MARK: - Drive
+
+/// What a recorded drive was for. Only business miles are deductible, and
+/// the IRS expects the classification to be the driver's, not an algorithm's.
+enum DrivePurpose: String, Codable, CaseIterable, Identifiable {
+    case unclassified
+    case business
+    case personal
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .unclassified: return "Not set"
+        case .business:     return "Business"
+        case .personal:     return "Personal"
+        }
+    }
+
+    var isDeductible: Bool { self == .business }
+}
+
+/// One drive captured by the tracker.
+///
+/// Kept separate from a shift's `miles`. GPS distance and an odometer
+/// reading disagree by a few percent, and a deduction is a tax figure — so
+/// a recorded estimate never silently overwrites a number the driver read
+/// off the dashboard. The shift can adopt it, explicitly.
+@Model
+final class DriveRecord {
+    var start: Date
+    var end: Date
+    /// Metres, as Core Location reports them. Converted for display.
+    var distanceMeters: Double
+    var purposeRaw: String
+
+    /// Human-readable end points, when reverse geocoding succeeded. Never
+    /// coordinates: a stored trail of where a driver has been is a liability
+    /// this app has no use for.
+    var startPlace: String?
+    var endPlace: String?
+
+    /// Set when the driver attaches the drive to a shift.
+    var shift: Shift?
+
+    init(
+        start: Date,
+        end: Date,
+        distanceMeters: Double,
+        purpose: DrivePurpose = .unclassified,
+        startPlace: String? = nil,
+        endPlace: String? = nil
+    ) {
+        self.start = start
+        self.end = end
+        self.distanceMeters = distanceMeters
+        self.purposeRaw = purpose.rawValue
+        self.startPlace = startPlace
+        self.endPlace = endPlace
+    }
+
+    var purpose: DrivePurpose {
+        get { DrivePurpose(rawValue: purposeRaw) ?? .unclassified }
+        set { purposeRaw = newValue.rawValue }
+    }
+
+    var miles: Double { distanceMeters / 1_609.344 }
+    var duration: TimeInterval { max(end.timeIntervalSince(start), 0) }
+
+    /// The deduction this drive is worth, at the rate in force the day it
+    /// happened. Unclassified drives are worth nothing until decided.
+    func deduction(overrideRate: Double = 0) -> Double {
+        guard purpose.isDeductible else { return 0 }
+        let rate = overrideRate > 0 ? overrideRate : MileageRates.rate(on: start)
+        return miles * rate
+    }
+}
+
 // MARK: - Expense
 
 enum ExpenseCategory: String, Codable, CaseIterable, Identifiable {
@@ -459,9 +537,10 @@ final class DriverProfile {
 
     // Tracking preferences.
     //
-    // `autoMileageTracking` and `shiftDetectionAutomatic` are stored but not
-    // yet honoured — there is no Core Location work in the app. Settings must
-    // not present them as active; see `TrackingCapability`.
+    // `autoMileageTracking` is honoured by `MileageTracker` and defaults to
+    // off: reading someone's location is not a thing to switch on for them.
+    // `shiftDetectionAutomatic` is still stored but unimplemented — Settings
+    // must not present it as active; see `TrackingCapability`.
     var autoMileageTracking: Bool
     var shiftDetectionAutomatic: Bool
     /// Minutes of waiting before time counts as idle. Used as the default in
@@ -494,7 +573,7 @@ final class DriverProfile {
         payoutLast4: String = "",
         maintenanceGoal: Double = 3_000,
         maintenanceOpeningBalance: Double = 0,
-        autoMileageTracking: Bool = true,
+        autoMileageTracking: Bool = false,
         shiftDetectionAutomatic: Bool = true,
         idleThresholdMinutes: Int = 8
     ) {
@@ -519,6 +598,7 @@ enum GigPilotSchema {
         Shift.self,
         PlatformEarning.self,
         PlatformAccount.self,
+        DriveRecord.self,
         Expense.self,
         VehicleRecord.self,
         ServiceRecord.self,

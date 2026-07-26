@@ -97,6 +97,37 @@ enum CSVExport {
         return rows.joined(separator: "\n")
     }
 
+    /// One row per recorded drive.
+    ///
+    /// The rate is written per row rather than once at the top, because it
+    /// changes mid-year — 2026 went from 72.5¢ to 76¢ on 1 July. An export
+    /// that applied a single rate to a whole year would be wrong by a few
+    /// hundred dollars and look authoritative doing it.
+    ///
+    /// Unclassified drives are still exported, marked as such and worth zero.
+    /// Dropping them would hide miles the driver may want to go back and claim.
+    static func drives(_ drives: [DriveRecord], overrideRate: Double = 0) -> String {
+        var rows = ["date,start,end,minutes,miles,purpose,rate_per_mile,deduction"]
+
+        let day = formatter("yyyy-MM-dd")
+        let time = formatter("HH:mm")
+
+        for drive in drives.sorted(by: { $0.start < $1.start }) {
+            let rate = overrideRate > 0 ? overrideRate : MileageRates.rate(on: drive.start)
+            rows.append([
+                day.string(from: drive.start),
+                time.string(from: drive.start),
+                time.string(from: drive.end),
+                "\(Int(drive.duration / 60))",
+                num(drive.miles),
+                drive.purpose.rawValue,
+                String(format: "%.3f", rate),
+                num(drive.deduction(overrideRate: overrideRate))
+            ].joined(separator: ","))
+        }
+        return rows.joined(separator: "\n")
+    }
+
     // MARK: Helpers
 
     private static func formatter(_ format: String) -> DateFormatter {

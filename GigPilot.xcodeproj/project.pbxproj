@@ -305,8 +305,12 @@
 				DEVELOPMENT_TEAM = V6F97AK8AD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GigPilot records driving in the background so a shift's miles are captured without you opening the app. Your location stays on this device and is never sent anywhere.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GigPilot records the miles you drive so they can be claimed as a deduction. Your location is never sent anywhere.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "GigPilot uses motion activity to tell driving from walking, so it only turns on GPS when you're actually behind the wheel. This is what keeps it from draining your battery.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = location;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -336,8 +340,12 @@
 				DEVELOPMENT_TEAM = V6F97AK8AD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GigPilot records driving in the background so a shift's miles are captured without you opening the app. Your location stays on this device and is never sent anywhere.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GigPilot records the miles you drive so they can be claimed as a deduction. Your location is never sent anywhere.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "GigPilot uses motion activity to tell driving from walking, so it only turns on GPS when you're actually behind the wheel. This is what keeps it from draining your battery.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = location;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
