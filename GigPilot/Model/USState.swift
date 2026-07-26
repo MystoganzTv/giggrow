@@ -71,19 +71,4 @@ enum StateDirectory {
         all.first { $0.code.caseInsensitiveCompare(code) == .orderedSame }
     }
 
-    /// Matches on name or abbreviation, so "tex", "TX" and "Texas" all land.
-    static func search(_ query: String) -> [USState] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return all }
-        return all.filter {
-            $0.name.localizedCaseInsensitiveContains(trimmed)
-                || $0.code.localizedCaseInsensitiveHasPrefix(trimmed)
-        }
-    }
-}
-
-private extension String {
-    func localizedCaseInsensitiveHasPrefix(_ prefix: String) -> Bool {
-        lowercased().hasPrefix(prefix.lowercased())
-    }
 }

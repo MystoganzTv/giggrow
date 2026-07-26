@@ -2,16 +2,14 @@
 //  StatePickerView.swift
 //  GigPilot
 //
-//  Picking where you drive.
+//  Picking where you drive, in the CDLGenius onboarding style: a full-width
+//  wheel with a thin selection band as the only chrome, so it reads as a big
+//  dial the rows scroll through rather than a control sitting in a card.
 //
-//  A wheel picker hides 50 options behind a scroll and shows three at a time.
-//  This is a searchable grid of abbreviation tiles: everything is on screen,
-//  typing two letters narrows it instantly, and the tiles are big enough to
-//  hit without looking — which matters for an app used in a parked car.
-//
-//  The panel underneath is the point. Choosing a state changes what GigPilot
-//  suggests holding back, so the consequence is shown at the moment of the
-//  choice rather than buried in Settings afterwards.
+//  CDLGenius confirms the choice by naming the agency whose manual it will
+//  use. The same idea applies here with a different payoff: the line under
+//  the wheel names what the state does to your tax hold-back, because that's
+//  the consequence of the choice.
 //
 
 import SwiftUI
@@ -21,21 +19,13 @@ struct StatePickerView: View {
 
     /// Currently selected USPS code, or empty.
     @Binding var selection: String
-    /// Called with the state's suggested rate when the driver confirms, so
-    /// the caller can offer to apply it.
+    /// Called with the state when confirmed, so the caller can adopt its
+    /// suggested rate.
     var onConfirm: (USState) -> Void = { _ in }
 
-    @State private var query = ""
-    @FocusState private var searchFocused: Bool
+    @State private var draft = ""
 
-    private var results: [USState] { StateDirectory.search(query) }
-    private var chosen: USState? { StateDirectory.state(code: selection) }
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
-    ]
+    private var chosen: USState? { StateDirectory.state(code: draft) }
 
     var body: some View {
         NavigationStack {
@@ -43,30 +33,24 @@ struct StatePickerView: View {
                 GP.Palette.screen.ignoresSafeArea()
                 GP.Gradients.settingsWash().ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    searchField
+                VStack(spacing: 16) {
+                    header
 
-                    ScrollView {
-                        LazyVGrid(columns: columns, spacing: 10) {
-                            ForEach(results) { state in
-                                tile(state)
-                            }
-                        }
-                        .padding(.horizontal, GP.Layout.screenInset)
-                        .padding(.top, 4)
-                        .padding(.bottom, 20)
+                    Spacer(minLength: 4)
 
-                        if results.isEmpty {
-                            Text("No state matches “\(query)”.")
-                                .gpText(GP.Typo.footnote, color: GP.Ink.muted)
-                                .padding(.top, 40)
-                        }
-                    }
+                    wheel
 
-                    if let chosen { consequencePanel(chosen) }
+                    // Confirms the choice by naming its consequence, the way
+                    // CDLGenius names the agency.
+                    confirmation
+                        .frame(minHeight: 56)
+                        .padding(.horizontal, 24)
+
+                    Spacer(minLength: 0)
+
+                    continueButton
                 }
             }
-            .navigationTitle("Where do you drive?")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(GP.Palette.screen, for: .navigationBar)
             .toolbar {
@@ -75,165 +59,120 @@ struct StatePickerView: View {
                         .foregroundStyle(GP.Ink.secondary)
                 }
             }
+            .onAppear { draft = selection }
         }
         .preferredColorScheme(.dark)
     }
 
-    // MARK: Search
+    // MARK: Header
 
-    private var searchField: some View {
-        HStack(spacing: 10) {
-            SearchGlyph()
-                .stroke(GP.Ink.muted, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .frame(width: 16, height: 16)
-
-            TextField("Search states", text: $query)
-                .focused($searchFocused)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.characters)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.white)
-
-            if !query.isEmpty {
-                Button {
-                    query = ""
-                } label: {
-                    Text("Clear")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(GP.Palette.violet400)
-                }
-                .buttonStyle(.plain)
-            }
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Where do you drive?")
+                .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
+            Text("Sets your starting tax hold-back — it varies a lot by state.")
+                .gpText(GP.Typo.subtitle, color: Color.white.opacity(0.5))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 13)
-        .background(GP.Surface.glass, in: Capsule())
-        .overlay(Capsule().strokeBorder(GP.Surface.stroke, lineWidth: 1))
-        .padding(.horizontal, GP.Layout.screenInset)
-        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
     }
 
-    // MARK: Tile
+    // MARK: Wheel
 
-    private func tile(_ state: USState) -> some View {
-        let isSelected = state.code == selection
+    private var wheel: some View {
+        ZStack {
+            // The band is the only chrome. No box, so the rows feel like
+            // they're passing through a dial rather than sitting in a field.
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(GP.Palette.violet500.opacity(0.16))
+                .frame(height: 46)
+                .padding(.horizontal, 20)
 
-        return Button {
-            withAnimation(.easeOut(duration: 0.15)) {
-                selection = state.code
-                searchFocused = false
+            Picker("State", selection: $draft) {
+                Text("Select your state").tag("")
+                ForEach(StateDirectory.all) { state in
+                    Text(state.name).tag(state.code)
+                }
             }
-        } label: {
+            .pickerStyle(.wheel)
+            .frame(height: 260)
+            .clipped()
+            .accessibilityLabel("Choose the state where you drive")
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Confirmation
+
+    @ViewBuilder
+    private var confirmation: some View {
+        if let state = chosen {
             VStack(spacing: 6) {
-                Text(state.code)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .tracking(0.5)
-                    .foregroundStyle(isSelected ? .white : GP.Ink.body)
+                HStack(spacing: 7) {
+                    ZStack {
+                        Circle()
+                            .fill(state.hasIncomeTax
+                                  ? GP.Palette.violet500.opacity(0.2)
+                                  : Color(hex: 0x34D399, opacity: 0.18))
+                        CheckGlyph()
+                            .stroke(state.hasIncomeTax ? GP.Palette.violet300 : GP.Palette.mint,
+                                    style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                            .frame(width: 10, height: 10)
+                    }
+                    .frame(width: 20, height: 20)
 
-                Text(state.name)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.8) : GP.Ink.muted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                    Text(state.hasIncomeTax
+                         ? "\(Int(state.suggestedTaxRate))% suggested hold-back"
+                         : "No state income tax · \(Int(state.suggestedTaxRate))% suggested")
+                        .gpText(.system(size: 13.5, weight: .semibold),
+                                color: state.hasIncomeTax ? GP.Palette.violet300 : GP.Palette.mint)
+                }
 
-                // A quiet marker on the nine states where the set-aside is
-                // materially lower. Visible without being a claim.
-                Circle()
-                    .fill(state.hasIncomeTax ? Color.clear : GP.Palette.mint)
-                    .frame(width: 5, height: 5)
+                Text("A starting point, not tax advice. Editable in Settings.")
+                    .gpText(.system(size: 11.5, weight: .regular), color: GP.Ink.muted)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(
-                isSelected ? AnyShapeStyle(GP.Gradients.brandMark)
-                           : AnyShapeStyle(GP.Surface.glass),
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(isSelected ? Color.clear : GP.Surface.stroke, lineWidth: 1)
-            )
-            .shadow(color: isSelected ? Color(hex: 0x5C3CDC, opacity: 0.4) : .clear,
-                    radius: 12, y: 4)
+            .multilineTextAlignment(.center)
+        } else {
+            Text("Spin to pick your state — nothing is chosen yet.")
+                .gpText(GP.Typo.captionMuted, color: GP.Ink.tertiary)
+        }
+    }
+
+    // MARK: Continue
+
+    private var continueButton: some View {
+        Button {
+            guard let state = chosen else { return }
+            selection = state.code
+            onConfirm(state)
+            dismiss()
+        } label: {
+            Text("Continue")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    chosen == nil
+                        ? AnyShapeStyle(Color.white.opacity(0.10))
+                        : AnyShapeStyle(GP.Gradients.brandMark),
+                    in: Capsule()
+                )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(state.name)
-        .accessibilityValue(state.hasIncomeTax ? "" : "No state income tax")
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
-
-    // MARK: Consequence
-
-    private func consequencePanel(_ state: USState) -> some View {
-        VStack(spacing: 14) {
-            HeroCard(radius: GP.Radius.card, glow: true) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text(state.name)
-                            .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
-                        if !state.hasIncomeTax {
-                            Pill(text: "No state income tax",
-                                 foreground: GP.Palette.mint,
-                                 background: Color(hex: 0x34D399, opacity: 0.16),
-                                 font: .system(size: 11, weight: .semibold))
-                        }
-                        Spacer(minLength: 0)
-                    }
-
-                    HStack(alignment: .lastTextBaseline, spacing: 8) {
-                        Text("\(Int(state.suggestedTaxRate))%")
-                            .gpText(GP.Typo.metricLarge, tracking: GP.Typo.metricLargeTracking)
-                        Text("suggested set-aside")
-                            .gpText(GP.Typo.captionMuted, color: Color.white.opacity(0.6))
-                    }
-
-                    Text(state.taxNote)
-                        .gpText(GP.Typo.footnote, color: Color.white.opacity(0.6))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Text("A starting point, not tax advice — you can change it any time in Settings, and it's worth confirming with a tax professional.")
-                .gpText(.system(size: 11.5, weight: .regular), color: GP.Ink.muted)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Button {
-                onConfirm(state)
-                dismiss()
-            } label: {
-                Text("Use \(state.code)")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(GP.Gradients.brandMark, in: Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, GP.Layout.screenInset)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
-        .background(GP.Palette.screen.opacity(0.94))
+        .disabled(chosen == nil)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 20)
     }
 }
 
-// MARK: - Glyph
-
-/// Magnifying glass for the search field.
-struct SearchGlyph: Shape {
-    func path(in rect: CGRect) -> Path {
-        let s = min(rect.width, rect.height) / 24
-        var p = Path()
-        p.addEllipse(in: CGRect(x: 3 * s, y: 3 * s, width: 13 * s, height: 13 * s))
-        p.move(to: CGPoint(x: 15.5 * s, y: 15.5 * s))
-        p.addLine(to: CGPoint(x: 21 * s, y: 21 * s))
-        return p
-    }
-}
+// CheckGlyph lives in UpgradeView.swift — same module, so it's reused here
+// rather than declared twice.
 
 #Preview("State picker") {
-    StatePickerView(selection: .constant("TX"))
+    StatePickerView(selection: .constant("AZ"))
 }
 
 #Preview("State picker — nothing chosen") {
