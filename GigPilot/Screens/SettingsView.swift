@@ -173,8 +173,7 @@ struct SettingsView: View {
                 route = .maintenanceRate
             }
             RowDivider(color: GP.Surface.dividerSoft)
-            SettingsRow(label: "Mileage rate",
-                        value: String(format: "$%.2f / mi", profile?.mileageRate ?? 0.70)) {
+            SettingsRow(label: "Mileage rate", value: mileageRateLabel) {
                 route = .mileageRate
             }
             RowDivider(color: GP.Surface.dividerSoft)
@@ -316,6 +315,14 @@ struct SettingsView: View {
 
     private func percent(_ value: Double) -> String {
         value == value.rounded() ? "\(Int(value))%" : String(format: "%.1f%%", value)
+    }
+
+    /// Shows the rate actually in force, and says where it came from. A
+    /// stored zero means "follow the IRS schedule", which changed mid-2026.
+    private var mileageRateLabel: String {
+        let override = profile?.mileageRate ?? 0
+        if override > 0 { return String(format: "$%.2f / mi", override) }
+        return "\(MileageRates.formatted(MileageRates.current)) / mi · IRS"
     }
 
     private func openSubscriptionManagement() {

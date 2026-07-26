@@ -180,6 +180,8 @@ final class PlatformAccount {
         set { connectionStatusRaw = newValue.rawValue }
     }
 
+    // MARK: Sync helpers
+
     /// True once an aggregator is behind this account.
     var isLinked: Bool {
         providerAccountId != nil && connectionStatus != .disconnected
@@ -444,7 +446,11 @@ final class DriverProfile {
     var taxRate: Double
     /// Percent of gross reserved for maintenance.
     var maintenanceRate: Double
-    /// IRS standard mileage rate, dollars per mile.
+    /// Manual override of the IRS standard mileage rate, in dollars per mile.
+    ///
+    /// Zero means "use the published schedule", which is the right default:
+    /// the rate is set by date, and in 2026 it changed mid-year. Storing one
+    /// number would misstate whichever half of the year it didn't match.
     var mileageRate: Double
     var payoutLast4: String
     var maintenanceGoal: Double
@@ -461,6 +467,12 @@ final class DriverProfile {
     /// Minutes of waiting before time counts as idle. Used as the default in
     /// the shift entry sheet.
     var idleThresholdMinutes: Int
+
+    /// The rate to apply to miles driven on `date` — the driver's override
+    /// if they set one, otherwise the IRS figure in force that day.
+    func mileageRate(on date: Date) -> Double {
+        mileageRate > 0 ? mileageRate : MileageRates.rate(on: date)
+    }
 
     /// USPS code for where the driver works. Drives the suggested tax
     /// hold-back, since state income tax runs from nothing to over 13%.

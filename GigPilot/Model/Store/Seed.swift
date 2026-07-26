@@ -63,7 +63,7 @@ enum Seed {
             detail: detail,
             taxRate: taxRate,
             maintenanceRate: maintenanceRate,
-            mileageRate: 0.70,
+            mileageRate: 0,   // 0 = follow the IRS schedule by date
             payoutLast4: "",
             maintenanceGoal: 3_000,
             maintenanceOpeningBalance: 0
@@ -173,7 +173,7 @@ extension Seed {
             detail: "Phoenix, AZ · Since 2023",
             taxRate: 25,
             maintenanceRate: 8,
-            mileageRate: 0.70,
+            mileageRate: 0,   // 0 = follow the IRS schedule by date
             payoutLast4: "4417",
             maintenanceGoal: 3_000,
             // The design's fund is $2,684; the demo week contributes 8% of
