@@ -6,110 +6,64 @@
 //  wheel with a thin selection band as the only chrome, so it reads as a big
 //  dial the rows scroll through rather than a control sitting in a card.
 //
+//  `StateWheel` is the control itself, used inline during onboarding — one
+//  fewer layer on the first screen someone ever sees. `StatePickerView` wraps
+//  it in a sheet for Settings, where it's reached from a row and a sheet is
+//  what a row implies.
+//
 //  CDLGenius confirms the choice by naming the agency whose manual it will
-//  use. The same idea applies here with a different payoff: the line under
-//  the wheel names what the state does to your tax hold-back, because that's
-//  the consequence of the choice.
+//  use. Same shape here, different payoff: the line under the wheel names
+//  what the state does to your tax hold-back, because that's what the choice
+//  actually changes.
 //
 
 import SwiftUI
 
-struct StatePickerView: View {
-    @Environment(\.dismiss) private var dismiss
+// MARK: - The wheel
 
-    /// Currently selected USPS code, or empty.
+struct StateWheel: View {
     @Binding var selection: String
-    /// Called with the state when confirmed, so the caller can adopt its
-    /// suggested rate.
-    var onConfirm: (USState) -> Void = { _ in }
+    /// Shorter inline, taller in a sheet where there's room.
+    var height: CGFloat = 200
+    /// Fired whenever the selection lands on a real state.
+    var onChange: (USState) -> Void = { _ in }
 
-    @State private var draft = ""
-
-    private var chosen: USState? { StateDirectory.state(code: draft) }
+    private var chosen: USState? { StateDirectory.state(code: selection) }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 14) {
             ZStack {
-                GP.Palette.screen.ignoresSafeArea()
-                GP.Gradients.settingsWash().ignoresSafeArea()
+                // The band is the only chrome. No box, so the rows feel like
+                // they're passing through a dial rather than sitting in a field.
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(GP.Palette.violet500.opacity(0.16))
+                    .frame(height: 42)
 
-                VStack(spacing: 16) {
-                    header
-
-                    Spacer(minLength: 4)
-
-                    wheel
-
-                    // Confirms the choice by naming its consequence, the way
-                    // CDLGenius names the agency.
-                    confirmation
-                        .frame(minHeight: 56)
-                        .padding(.horizontal, 24)
-
-                    Spacer(minLength: 0)
-
-                    continueButton
+                Picker("State", selection: $selection) {
+                    Text("Select your state").tag("")
+                    ForEach(StateDirectory.all) { state in
+                        Text(state.name).tag(state.code)
+                    }
                 }
+                .pickerStyle(.wheel)
+                .frame(height: height)
+                .clipped()
+                .accessibilityLabel("Choose the state where you drive")
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(GP.Palette.screen, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundStyle(GP.Ink.secondary)
-                }
+            .frame(maxWidth: .infinity)
+            .onChange(of: selection) { _, new in
+                if let state = StateDirectory.state(code: new) { onChange(state) }
             }
-            .onAppear { draft = selection }
+
+            confirmation
+                .frame(minHeight: 40)
         }
-        .preferredColorScheme(.dark)
     }
-
-    // MARK: Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Where do you drive?")
-                .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
-            Text("Sets your starting tax hold-back — it varies a lot by state.")
-                .gpText(GP.Typo.subtitle, color: Color.white.opacity(0.5))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24)
-        .padding(.top, 8)
-    }
-
-    // MARK: Wheel
-
-    private var wheel: some View {
-        ZStack {
-            // The band is the only chrome. No box, so the rows feel like
-            // they're passing through a dial rather than sitting in a field.
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(GP.Palette.violet500.opacity(0.16))
-                .frame(height: 46)
-                .padding(.horizontal, 20)
-
-            Picker("State", selection: $draft) {
-                Text("Select your state").tag("")
-                ForEach(StateDirectory.all) { state in
-                    Text(state.name).tag(state.code)
-                }
-            }
-            .pickerStyle(.wheel)
-            .frame(height: 260)
-            .clipped()
-            .accessibilityLabel("Choose the state where you drive")
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: Confirmation
 
     @ViewBuilder
     private var confirmation: some View {
         if let state = chosen {
-            VStack(spacing: 6) {
+            VStack(spacing: 5) {
                 HStack(spacing: 7) {
                     ZStack {
                         Circle()
@@ -134,47 +88,101 @@ struct StatePickerView: View {
                     .gpText(.system(size: 11.5, weight: .regular), color: GP.Ink.muted)
             }
             .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
         } else {
             Text("Spin to pick your state — nothing is chosen yet.")
                 .gpText(GP.Typo.captionMuted, color: GP.Ink.tertiary)
-        }
-    }
-
-    // MARK: Continue
-
-    private var continueButton: some View {
-        Button {
-            guard let state = chosen else { return }
-            selection = state.code
-            onConfirm(state)
-            dismiss()
-        } label: {
-            Text("Continue")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    chosen == nil
-                        ? AnyShapeStyle(Color.white.opacity(0.10))
-                        : AnyShapeStyle(GP.Gradients.brandMark),
-                    in: Capsule()
-                )
         }
-        .buttonStyle(.plain)
-        .disabled(chosen == nil)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 20)
     }
 }
 
-// CheckGlyph lives in UpgradeView.swift — same module, so it's reused here
-// rather than declared twice.
+// MARK: - Sheet wrapper
 
-#Preview("State picker") {
-    StatePickerView(selection: .constant("AZ"))
+/// The same wheel behind Cancel/Continue, for the Settings row.
+struct StatePickerView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @Binding var selection: String
+    var onConfirm: (USState) -> Void = { _ in }
+
+    @State private var draft = ""
+
+    private var chosen: USState? { StateDirectory.state(code: draft) }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                GP.Palette.screen.ignoresSafeArea()
+                GP.Gradients.settingsWash().ignoresSafeArea()
+
+                VStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Where do you drive?")
+                            .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
+                        Text("Sets your starting tax hold-back — it varies a lot by state.")
+                            .gpText(GP.Typo.subtitle, color: Color.white.opacity(0.5))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+
+                    Spacer(minLength: 4)
+
+                    StateWheel(selection: $draft, height: 260)
+                        .padding(.horizontal, 20)
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        guard let state = chosen else { return }
+                        selection = state.code
+                        onConfirm(state)
+                        dismiss()
+                    } label: {
+                        Text("Continue")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                chosen == nil
+                                    ? AnyShapeStyle(Color.white.opacity(0.10))
+                                    : AnyShapeStyle(GP.Gradients.brandMark),
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(chosen == nil)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(GP.Palette.screen, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(GP.Ink.secondary)
+                }
+            }
+            .onAppear { draft = selection }
+        }
+        .preferredColorScheme(.dark)
+    }
 }
 
-#Preview("State picker — nothing chosen") {
+// CheckGlyph lives in UpgradeView.swift — same module, reused here.
+
+#Preview("Inline wheel") {
+    ZStack {
+        GP.Palette.screen.ignoresSafeArea()
+        StateWheel(selection: .constant("AZ"))
+            .padding(.horizontal, 20)
+    }
+}
+
+#Preview("Sheet") {
     StatePickerView(selection: .constant(""))
 }

@@ -37,7 +37,6 @@ struct OnboardingView: View {
     @State private var name = ""
     @State private var stateCode = ""
     @State private var taxRate: Double = 25
-    @State private var isPickingState = false
 
     // Step 2
     @State private var vehicleName = ""
@@ -74,13 +73,6 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $isPickingState) {
-            StatePickerView(selection: $stateCode) { state in
-                // Adopt the suggestion at the moment of choosing, which is
-                // when the driver has just been told what it means.
-                taxRate = state.suggestedTaxRate
-            }
-        }
         .task {
             // A beat for the view to settle, or the focus is set before the
             // field exists and the keyboard never appears.
@@ -122,23 +114,32 @@ struct OnboardingView: View {
                 subtitle: "Every app you drive for, in one ledger. Let's set it up — takes a minute."
             )
 
-            // Two fields, both of which do something. There was a City box
-            // here; nothing in the app read it, so it was asking for typing
-            // on the first screen and giving nothing back.
+            // One field. There was a City box here; nothing in the app read
+            // it, so it asked for typing on the first screen and gave nothing
+            // back.
             GlassCard {
-                VStack(spacing: 0) {
-                    field("Your name", text: $name, placeholder: "Marco")
-                        .focused($focused, equals: .name)
-                        .submitLabel(.done)
-                        .onSubmit { focused = nil }
-                    RowDivider()
-                    stateRow
+                field("Your name", text: $name, placeholder: "Marco")
+                    .focused($focused, equals: .name)
+                    .submitLabel(.done)
+                    .onSubmit { focused = nil }
+            }
+
+            // The wheel sits in the step rather than behind a row and a sheet.
+            // One fewer layer on the first screen anyone ever sees.
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Where do you drive?")
+                    .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
+                    .padding(.leading, 6)
+
+                StateWheel(selection: $stateCode, height: 180) { state in
+                    // Adopt the suggestion as the wheel lands, so the number
+                    // and the explanation under it always agree.
+                    taxRate = state.suggestedTaxRate
                 }
             }
 
-            Text("Only stored on this device. Your state sets the starting tax hold-back — it varies a lot, and you can change it later.")
+            Text("Only stored on this device.")
                 .gpText(GP.Typo.footnote, color: GP.Ink.muted)
-                .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 6)
         }
     }
@@ -255,39 +256,6 @@ struct OnboardingView: View {
                 .gpText(GP.Typo.subtitle, color: Color.white.opacity(0.5))
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    /// Opens the visual picker rather than being a field. Fifty options with
-    /// a real consequence attached deserve more than a text box.
-    private var stateRow: some View {
-        Button {
-            focused = nil
-            isPickingState = true
-        } label: {
-            HStack {
-                Text("State")
-                    .gpText(GP.Typo.rowLabel)
-                Spacer(minLength: 12)
-
-                if let state = StateDirectory.state(code: stateCode) {
-                    HStack(spacing: 8) {
-                        if !state.hasIncomeTax {
-                            Circle().fill(GP.Palette.mint).frame(width: 5, height: 5)
-                        }
-                        Text(state.name)
-                            .gpText(.system(size: 15.5, weight: .medium))
-                    }
-                } else {
-                    Text("Choose")
-                        .gpText(.system(size: 15.5, weight: .medium), color: GP.Ink.muted)
-                }
-
-                Chevron()
-            }
-            .padding(.vertical, 15)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     private func field(_ label: String, text: Binding<String>,
