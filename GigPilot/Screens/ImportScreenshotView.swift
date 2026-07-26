@@ -2,13 +2,17 @@
 //  ImportScreenshotView.swift
 //  GigPilot
 //
-//  Read a shift off screenshots of gig apps' earnings screens.
+//  Read shifts off screenshots of gig apps' earnings screens.
 //
-//  One screenshot per platform, all landing in the same block of time. That
-//  mirrors the data model exactly — a Shift with a PlatformEarning per app —
-//  and it's the case the whole product is built around: a driver running
-//  Uber and DoorDash together screenshots both and gets one honest shift,
-//  with the hours counted once.
+//  This used to assume one block of time and one screenshot per app. That is
+//  a real case — Uber and DoorDash running together, hours counted once — but
+//  it is not the only one, and a driver who imported a week of daily screens
+//  got seven days piled onto a single date with one day's hours.
+//
+//  So each screenshot now carries its own day. Screenshots that land on the
+//  same date are merged into one shift, which preserves the multi-app case
+//  exactly; screenshots on different dates become different shifts, which is
+//  what a week of dailies actually is.
 //
 //  The parser is heuristic, so nothing is saved until the driver has seen
 //  what was read next to the image it came from. Every field is editable and
@@ -28,6 +32,10 @@ enum ImportPeriod: String, CaseIterable, Identifiable {
 }
 
 /// One screenshot and what was read from it.
+///
+/// Time lives here rather than on the screen as a whole. Two screenshots of
+/// the same day still share a shift — they're merged on save — but nothing
+/// forces a Tuesday and a Thursday to pretend they happened together.
 private struct ImportedSource: Identifiable {
     let id = UUID()
     let image: UIImage
@@ -35,6 +43,25 @@ private struct ImportedSource: Identifiable {
     var platform: String
     var amountText: String
     var unitsText: String
+    var hoursText: String
+    var milesText: String
+    var period: ImportPeriod
+    var date: Date
+    /// What the chart said, when it said anything. Shown so the driver can
+    /// see the app's reasoning instead of a date appearing from nowhere.
+    var detectedNote: String?
+
+    var gross: Double { Double(amountText) ?? 0 }
+    var hours: Double { Double(hoursText) ?? 0 }
+    var miles: Double { Double(milesText) ?? 0 }
+
+    /// The key screenshots are merged on. Same day and same period means the
+    /// same block of time.
+    func groupKey(_ calendar: Calendar) -> String {
+        let anchor = period == .week ? calendar.startOfWeek(for: date)
+                                     : calendar.startOfDay(for: date)
+        return "\(period.rawValue)-\(anchor.timeIntervalSince1970)"
+    }
 }
 
 struct ImportScreenshotView: View {
@@ -48,11 +75,9 @@ struct ImportScreenshotView: View {
     @State private var isReading = false
     @State private var errorMessage: String?
 
-    // Shared across every screenshot: one block of time, one odometer.
-    @State private var hoursText = ""
-    @State private var milesText = ""
-    @State private var date = Date.now
-    @State private var period: ImportPeriod = .week
+    /// Which card is expanded. With a week of dailies on screen, showing
+    /// every field of every screenshot at once is unreadable.
+    @State private var expanded: UUID?
 
     var body: some View {
         NavigationStack {
@@ -67,11 +92,11 @@ struct ImportScreenshotView: View {
                             picker
                         } else {
                             thumbnails
+                            if let overlapWarning { overlapCard(overlapWarning) }
                             ForEach($sources) { $source in
                                 sourceCard($source)
                             }
                             addMore
-                            sharedCard
                             summaryCard
                         }
 
@@ -119,10 +144,10 @@ struct ImportScreenshotView: View {
     private var intro: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                Text("One screenshot per app")
+                Text("Send as many as you like")
                     .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
 
-                Text("Screenshot each app's earnings screen and pick them all. They land in the same block of time, so your hours are counted once instead of once per app.")
+                Text("A whole week of daily screens, several apps from one day, or both. Screenshots from the same day are merged into one shift so your hours are counted once; different days become different shifts.")
                     .gpText(.system(size: 14, weight: .regular), color: GP.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -130,6 +155,8 @@ struct ImportScreenshotView: View {
                        "Nothing leaves your phone — the text is read on-device.")
                 bullet(GP.Palette.violet400,
                        "Use the screen that shows earnings, online time and trips together. The fare breakdown has the money but none of the rest.")
+                bullet(GP.Palette.violet300,
+                       "Don't send a weekly total and its days together — the week already contains them, and both would count the money twice.")
                 bullet(GP.Palette.amber,
                        "Reading a screenshot is guesswork, so check every figure. Anything wrong here quietly skews your hourly rate and tax set-aside.")
             }
@@ -147,7 +174,7 @@ struct ImportScreenshotView: View {
 
     private var picker: some View {
         PhotosPicker(selection: $pickerItems,
-                     maxSelectionCount: 6,
+                     maxSelectionCount: 20,
                      matching: .images,
                      photoLibrary: .shared()) {
             HStack(spacing: 8) {
@@ -166,7 +193,7 @@ struct ImportScreenshotView: View {
 
     private var addMore: some View {
         PhotosPicker(selection: $pickerItems,
-                     maxSelectionCount: 6,
+                     maxSelectionCount: 20,
                      matching: .images,
                      photoLibrary: .shared()) {
             HStack(spacing: 8) {
@@ -223,43 +250,140 @@ struct ImportScreenshotView: View {
     }
 
     private func sourceCard(_ source: Binding<ImportedSource>) -> some View {
-        GlassCard {
+        let value = source.wrappedValue
+        let isOpen = expanded == value.id
+
+        return GlassCard {
             VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text(source.wrappedValue.platform.isEmpty
-                         ? "Which app is this?"
-                         : source.wrappedValue.platform)
-                        .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
-                    Spacer()
-                    Button {
-                        remove(source.wrappedValue.id)
-                    } label: {
+                // Identity first. With seven near-identical screenshots on
+                // screen, a card that doesn't say which one it is can't be
+                // edited or removed with any confidence.
+                HStack(spacing: 12) {
+                    Image(uiImage: value.image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 40, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(GP.Surface.stroke, lineWidth: 1))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(value.platform.isEmpty ? "Which app is this?" : value.platform)
+                            .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
+                        HStack(spacing: 6) {
+                            Text(dayLabel(value))
+                                .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                            if value.gross > 0 {
+                                Text("·").gpText(GP.Typo.footnote, color: GP.Ink.muted)
+                                Text(Money.cents(value.gross))
+                                    .gpText(.system(size: 13, weight: .semibold),
+                                            color: GP.Palette.mint)
+                            }
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Button { remove(value.id) } label: {
                         Text("Remove")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(Color(hex: 0xFB7185))
                     }
                     .buttonStyle(.plain)
                 }
-
-                let columns = [GridItem(.flexible(), spacing: 10),
-                               GridItem(.flexible(), spacing: 10)]
-                LazyVGrid(columns: columns, spacing: 10) {
-                    ForEach(accounts.filter(\.isActive)) { account in
-                        platformChip(account, selected: source.platform)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        expanded = isOpen ? nil : value.id
                     }
                 }
 
-                RowDivider()
+                if let note = value.detectedNote {
+                    Text(note)
+                        .gpText(.system(size: 11.5, weight: .regular), color: GP.Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-                figureRow("Gross", text: source.amountText, prefix: "$",
-                          alternatives: source.wrappedValue.parsed.amounts.map {
-                              String(format: "%.2f", $0.value)
-                          })
-                RowDivider()
-                figureRow("Units", text: source.unitsText, prefix: "",
-                          alternatives: source.wrappedValue.parsed.units.map { "\($0.value)" })
+                if isOpen {
+                    let columns = [GridItem(.flexible(), spacing: 10),
+                                   GridItem(.flexible(), spacing: 10)]
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(accounts.filter(\.isActive)) { account in
+                            platformChip(account, selected: source.platform)
+                        }
+                    }
+
+                    RowDivider()
+                    figureRow("Gross", text: source.amountText, prefix: "$",
+                              alternatives: value.parsed.amounts.map {
+                                  String(format: "%.2f", $0.value)
+                              })
+                    RowDivider()
+                    // "Units" meant nothing to anyone. Every app has its own
+                    // word for the thing it counts, and it is on the screen
+                    // being imported.
+                    figureRow(unitNoun(for: value.platform), text: source.unitsText,
+                              prefix: "",
+                              alternatives: value.parsed.units.map { "\($0.value)" })
+                    RowDivider()
+                    figureRow("Hours online", text: source.hoursText, prefix: "",
+                              required: true,
+                              alternatives: value.parsed.hours.map {
+                                  String(format: "%.2f", $0.value)
+                              })
+                    RowDivider()
+                    figureRow("Miles", text: source.milesText, prefix: "",
+                              alternatives: value.parsed.miles.map {
+                                  String(format: "%.0f", $0.value)
+                              })
+                    RowDivider()
+                    periodRow(source.period)
+                    DatePicker(value.period == .day ? "Date" : "Week starting",
+                               selection: source.date, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .tint(GP.Palette.violet400)
+                        .padding(.vertical, 6)
+                } else {
+                    HStack(spacing: 14) {
+                        miniStat(value.period == .day ? "Day" : "Week")
+                        if value.hours > 0 {
+                            miniStat(String(format: "%.2f h", value.hours))
+                        } else {
+                            Text("Hours missing")
+                                .gpText(.system(size: 12, weight: .medium), color: GP.Palette.amber)
+                        }
+                        Spacer(minLength: 0)
+                        Text("Tap to edit")
+                            .gpText(.system(size: 12, weight: .medium), color: GP.Ink.muted)
+                    }
+                }
             }
         }
+    }
+
+    private func miniStat(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(GP.Ink.tertiary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(GP.Surface.glassFaint, in: Capsule())
+    }
+
+    /// What this platform calls the thing it counts.
+    private func unitNoun(for platform: String) -> String {
+        let noun = accounts.first { $0.name == platform }?.unitNoun ?? "trips"
+        return noun.prefix(1).uppercased() + noun.dropFirst()
+    }
+
+    private func dayLabel(_ source: ImportedSource) -> String {
+        let f = DateFormatter()
+        if source.period == .week {
+            f.dateFormat = "'Week of' MMM d"
+            return f.string(from: Calendar.gigPilot.startOfWeek(for: source.date))
+        }
+        f.dateFormat = "EEEE d MMM"
+        return f.string(from: source.date)
     }
 
     private func platformChip(_ account: PlatformAccount, selected: Binding<String>) -> some View {
@@ -298,62 +422,12 @@ struct ImportScreenshotView: View {
         .buttonStyle(.plain)
     }
 
-    /// Hours, miles and the period belong to the block, not to any one app.
-    /// Asking per screenshot would invite counting the same hours twice.
-    private var sharedCard: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("The block of time")
-                    .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
-                    .padding(.bottom, 6)
-
-                Text("Shared by every screenshot above — this is what stops two apps double-counting the same hours.")
-                    .gpText(GP.Typo.footnote, color: GP.Ink.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 12)
-
-                figureRow("Hours", text: $hoursText, prefix: "", required: true,
-                          alternatives: allHourCandidates)
-
-                if (Double(hoursText) ?? 0) <= 0 {
-                    HStack(alignment: .top, spacing: 10) {
-                        Circle().fill(GP.Palette.amber)
-                            .frame(width: 6, height: 6).padding(.top, 6)
-                        Text("How long were you online? Without it there's no hourly rate, and GigPilot won't guess one.")
-                            .gpText(GP.Typo.footnote, color: GP.Palette.amber.opacity(0.9))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.bottom, 12)
-                }
-
-                RowDivider()
-                figureRow("Miles", text: $milesText, prefix: "",
-                          alternatives: allMileCandidates)
-                RowDivider()
-                periodRow
-                RowDivider()
-                DatePicker(period == .day ? "Date" : "Week starting",
-                           selection: $date, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .tint(GP.Palette.violet400)
-                    .padding(.vertical, 6)
-
-                Text(period == .day
-                     ? "One day's driving. It'll show on that day's bar and feed your peak-hours chart."
-                     : "A whole week's totals. The figures are exact, but GigPilot won't know which hours of the day they came from, so this one sits out of the peak-hours chart.")
-                    .gpText(GP.Typo.footnote, color: GP.Ink.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
-            }
-        }
-    }
-
-    private var periodRow: some View {
+    private func periodRow(_ period: Binding<ImportPeriod>) -> some View {
         HStack(spacing: 7) {
             ForEach(ImportPeriod.allCases) { option in
-                let isSelected = option == period
+                let isSelected = option == period.wrappedValue
                 Button {
-                    withAnimation(.easeOut(duration: 0.14)) { period = option }
+                    withAnimation(.easeOut(duration: 0.14)) { period.wrappedValue = option }
                 } label: {
                     Text(option.label)
                         .font(.system(size: 13.5, weight: isSelected ? .semibold : .medium))
@@ -373,10 +447,27 @@ struct ImportScreenshotView: View {
         .padding(.vertical, 12)
     }
 
+    /// A weekly total already contains the days inside it. Importing both is
+    /// the one mistake this screen can make that silently doubles a year's
+    /// income, so it is called out by name rather than left to the driver to
+    /// spot in a chart three weeks later.
+    private func overlapCard(_ message: String) -> some View {
+        GlassCard(radius: GP.Radius.tile,
+                  padding: EdgeInsets(top: 16, leading: 18, bottom: 16, trailing: 18)) {
+            HStack(alignment: .top, spacing: 11) {
+                Circle().fill(GP.Palette.amber)
+                    .frame(width: 6, height: 6).padding(.top, 7)
+                Text(message)
+                    .gpText(GP.Typo.footnote, color: GP.Palette.amber.opacity(0.95))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private var summaryCard: some View {
         HeroCard(glow: true) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("This block".uppercased())
+                Text((blockCount == 1 ? "This block" : "\(blockCount) shifts").uppercased())
                     .gpText(GP.Typo.heroEyebrow,
                             tracking: GP.Typo.heroEyebrowTracking,
                             color: Color.white.opacity(0.55))
@@ -386,10 +477,10 @@ struct ImportScreenshotView: View {
 
                 HStack(spacing: 18) {
                     summaryStat("Per hour",
-                                hours > 0 ? Money.cents(totalGross / hours) : "—")
+                                totalHours > 0 ? Money.cents(totalGross / totalHours) : "—")
                     summaryStat("Per mile",
-                                miles > 0 ? Money.cents(totalGross / miles) : "—")
-                    summaryStat("Apps", "\(sources.filter { !$0.platform.isEmpty }.count)")
+                                totalMiles > 0 ? Money.cents(totalGross / totalMiles) : "—")
+                    summaryStat(blockCount == 1 ? "Shift" : "Shifts", "\(blockCount)")
                 }
             }
         }
@@ -456,26 +547,48 @@ struct ImportScreenshotView: View {
 
     // MARK: Derived
 
-    private var hours: Double { Double(hoursText) ?? 0 }
-    private var miles: Double { Double(milesText) ?? 0 }
+    private var totalGross: Double { sources.reduce(0) { $0 + $1.gross } }
 
-    private var totalGross: Double {
-        sources.reduce(0) { $0 + (Double($1.amountText) ?? 0) }
+    /// Summed across blocks, not across screenshots: two apps in the same
+    /// block share those hours, and adding them would halve every rate.
+    private var totalHours: Double {
+        Dictionary(grouping: sources) { $0.groupKey(Calendar.gigPilot) }
+            .values
+            .reduce(0) { $0 + ($1.map(\.hours).max() ?? 0) }
     }
 
-    /// Hours and miles can come from any of the screenshots, so every
-    /// reading across all of them is offered.
-    private var allHourCandidates: [String] {
-        sources.flatMap { $0.parsed.hours }.map { String(format: "%.2f", $0.value) }
+    private var totalMiles: Double {
+        Dictionary(grouping: sources) { $0.groupKey(Calendar.gigPilot) }
+            .values
+            .reduce(0) { $0 + ($1.map(\.miles).max() ?? 0) }
     }
 
-    private var allMileCandidates: [String] {
-        sources.flatMap { $0.parsed.miles }.map { String(format: "%.0f", $0.value) }
+    private var blockCount: Int {
+        Set(sources.map { $0.groupKey(Calendar.gigPilot) }).count
+    }
+
+    /// Names the actual clash rather than warning in general terms.
+    private var overlapWarning: String? {
+        let calendar = Calendar.gigPilot
+        let weeks = sources.filter { $0.period == .week }
+        guard !weeks.isEmpty else { return nil }
+
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+
+        for week in weeks {
+            let start = calendar.startOfWeek(for: week.date)
+            guard let end = calendar.date(byAdding: .day, value: 7, to: start) else { continue }
+            let inside = sources.filter { $0.period == .day && $0.date >= start && $0.date < end }
+            guard !inside.isEmpty else { continue }
+            return "The weekly total for \(f.string(from: start)) already includes \(inside.count) of the daily screenshots below. Saving both counts that money twice — remove the week, or remove the days."
+        }
+        return nil
     }
 
     private var canSave: Bool {
-        hours > 0
-            && sources.contains { !$0.platform.isEmpty && (Double($0.amountText) ?? 0) > 0 }
+        sources.contains { !$0.platform.isEmpty && $0.gross > 0 }
+            && sources.allSatisfy { $0.platform.isEmpty || $0.hours > 0 }
     }
 
     // MARK: Loading
@@ -498,35 +611,61 @@ struct ImportScreenshotView: View {
                 continue
             }
 
+            let lines: [RecognisedLine]
             let parsed: ParsedEarnings
             do {
-                parsed = EarningsParser.parse(try TextRecognizer.recognise(in: cgImage))
+                lines = try TextRecognizer.recognise(in: cgImage)
+                parsed = EarningsParser.parse(lines)
             } catch {
                 failures += 1
                 continue
             }
 
             let best = parsed.best
+
+            // Which day is this? Uber's daily screens are textually identical
+            // — same header, same day labels — so the only thing that says
+            // Wednesday is that Wednesday's bar is the solid one.
+            let reading = ChartDayDetector.read(image: cgImage, lines: lines)
+            let weekStart = Calendar.gigPilot.startOfWeek(for: best.date ?? .now)
+
+            var period: ImportPeriod = .week
+            var resolved = best.date ?? .now
+            var note: String?
+
+            switch reading {
+            case .day:
+                period = .day
+                if let day = ChartDayDetector.date(for: reading, weekStart: weekStart) {
+                    resolved = day
+                    let f = DateFormatter()
+                    f.dateFormat = "EEEE"
+                    note = "Read as \(f.string(from: day)) from the highlighted bar. Change it if that's wrong."
+                }
+            case .aggregate:
+                period = .week
+                resolved = weekStart
+                note = "Every bar is filled, so this looks like a whole week rather than one day."
+            case .inconclusive:
+                note = "Couldn't tell which day this is from the chart — check the date below."
+            }
+
             sources.append(
                 ImportedSource(
                     image: uiImage,
                     parsed: parsed,
                     // Don't reuse a platform already claimed by another
-                    // screenshot — two cards on the same app would double it.
-                    platform: alreadyUsed(parsed.platformName) ? "" : (parsed.platformName ?? ""),
+                    // screenshot of the same block — that would double it.
+                    platform: parsed.platformName ?? "",
                     amountText: best.amount.map { String(format: "%.2f", $0) } ?? "",
-                    unitsText: best.units.map(String.init) ?? ""
+                    unitsText: best.units.map(String.init) ?? "",
+                    hoursText: best.hours.map { String(format: "%.2f", $0) } ?? "",
+                    milesText: best.miles.map { String(format: "%.0f", $0) } ?? "",
+                    period: period,
+                    date: resolved,
+                    detectedNote: note
                 )
             )
-
-            // Shared fields take the first screenshot that offers them.
-            if hoursText.isEmpty, let value = best.hours {
-                hoursText = String(format: "%.2f", value)
-            }
-            if milesText.isEmpty, let value = best.miles {
-                milesText = String(format: "%.0f", value)
-            }
-            if let parsedDate = best.date { date = parsedDate }
         }
 
         if failures > 0 {
@@ -536,60 +675,80 @@ struct ImportScreenshotView: View {
         }
     }
 
-    private func alreadyUsed(_ name: String?) -> Bool {
-        guard let name else { return false }
-        return sources.contains { $0.platform == name }
-    }
-
     private func remove(_ id: UUID) {
         sources.removeAll { $0.id == id }
     }
 
     // MARK: Save
 
+    /// Screenshots are grouped by the block they describe, and each group
+    /// becomes one shift. Two apps on the same Tuesday share a shift and its
+    /// hours; Tuesday and Wednesday do not.
     private func save() {
         guard canSave else { return }
 
-        let cal = Calendar.gigPilot
-        let shift: Shift
+        let calendar = Calendar.gigPilot
+        let usable = sources.filter { !$0.platform.isEmpty && $0.gross > 0 && $0.hours > 0 }
+        let groups = Dictionary(grouping: usable) { $0.groupKey(calendar) }
 
-        switch period {
-        case .day:
-            let start = cal.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
-            shift = Shift(start: start,
-                          end: start.addingTimeInterval(hours * 3600),
-                          miles: miles)
+        for group in groups.values {
+            guard let first = group.first else { continue }
 
-        case .week:
-            // Spans the week it covers. `recordedHours` carries the real
-            // figure so nothing reads 168 hours off the span.
-            let start = cal.startOfWeek(for: date)
-            let end = cal.date(byAdding: .day, value: 7, to: start) ?? start
-            shift = Shift(start: start, end: end, miles: miles)
-            shift.recordedHours = hours
-            shift.isAggregate = true
+            // The block's hours are the longest any app reported, not the
+            // sum. Running two apps at once doesn't create more hours.
+            let hours = group.map(\.hours).max() ?? 0
+            let miles = group.map(\.miles).max() ?? 0
+            let shift: Shift
+
+            switch first.period {
+            case .day:
+                let start = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: first.date)
+                    ?? first.date
+                shift = Shift(start: start,
+                              end: start.addingTimeInterval(hours * 3600),
+                              miles: miles)
+
+            case .week:
+                // Spans the week it covers. `recordedHours` carries the real
+                // figure so nothing reads 168 hours off the span.
+                let start = calendar.startOfWeek(for: first.date)
+                let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
+                shift = Shift(start: start, end: end, miles: miles)
+                shift.recordedHours = hours
+                shift.isAggregate = true
+            }
+
+            context.insert(shift)
+
+            // One earning per screenshot in the block. Two screenshots of the
+            // same app on the same day are added together rather than
+            // creating a duplicate account row.
+            var byAccount: [String: PlatformEarning] = [:]
+            for source in group {
+                guard let account = accounts.first(where: { $0.name == source.platform })
+                else { continue }
+
+                if let existing = byAccount[source.platform] {
+                    existing.gross += source.gross
+                    existing.trips += Int(source.unitsText) ?? 0
+                    continue
+                }
+
+                let earning = PlatformEarning(account: account,
+                                              gross: source.gross,
+                                              trips: Int(source.unitsText) ?? 0)
+                context.insert(earning)
+                earning.shift = shift
+                shift.earnings.append(earning)
+                byAccount[source.platform] = earning
+            }
+
+            shift.note = first.period == .week
+                ? "Imported from a weekly summary"
+                : (group.count > 1
+                   ? "Imported from \(group.count) screenshots"
+                   : "Imported from screenshot")
         }
-
-        context.insert(shift)
-
-        // One earning per screenshot. The hours stay on the shift, counted
-        // once however many apps were running.
-        for source in sources {
-            guard !source.platform.isEmpty,
-                  let account = accounts.first(where: { $0.name == source.platform }),
-                  let gross = Double(source.amountText), gross > 0 else { continue }
-
-            let earning = PlatformEarning(account: account,
-                                          gross: gross,
-                                          trips: Int(source.unitsText) ?? 0)
-            context.insert(earning)
-            earning.shift = shift
-            shift.earnings.append(earning)
-        }
-
-        shift.note = sources.count > 1
-            ? "Imported from \(sources.count) screenshots"
-            : (period == .day ? "Imported from screenshot" : "Imported from a weekly summary")
 
         try? context.save()
         dismiss()

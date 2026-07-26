@@ -261,31 +261,45 @@ enum EarningsParser {
 
 
     /// "6h 30m", "6.5 hrs", "6:30". Returns hours as a decimal.
+    ///
+    /// The colon form is the dangerous one. Every iOS screenshot has a clock
+    /// in the top-left, and "17:52" reads as a perfectly plausible 17.87-hour
+    /// shift — which is exactly what it did, producing a week that claimed
+    /// eighteen hours online. So the colon form now needs a reason to be
+    /// believed: an explicit unit, or a nearby "online"/"hours" label.
     static func duration(in text: String, context: String) -> Double? {
         let lower = text.lowercased()
+        let hasCue = context.contains("online") || context.contains("hour")
+            || context.contains("time") || context.contains("active")
 
-        // 6:30 → 6.5
-        if let groups = matches(#"\b(\d{1,2}):([0-5]\d)\b"#, in: lower).first,
-           let h = groups.first.flatMap({ $0 }).flatMap(Double.init),
-           groups.count > 1, let m = groups[1].flatMap(Double.init) {
-            return h + m / 60
-        }
-
-        // 6h 30m
+        // 6h 30m — unambiguous, no cue needed.
         if let groups = matches(#"\b(\d{1,2})\s*h(?:r|rs|ours)?\s*(\d{1,2})\s*m"#, in: lower).first,
            let h = groups.first.flatMap({ $0 }).flatMap(Double.init),
            groups.count > 1, let m = groups[1].flatMap(Double.init) {
-            return h + m / 60
+            return sane(h + m / 60)
+        }
+
+        // 6:30 → 6.5, but only where something says this is a duration.
+        if hasCue,
+           let groups = matches(#"\b(\d{1,2}):([0-5]\d)\b"#, in: lower).first,
+           let h = groups.first.flatMap({ $0 }).flatMap(Double.init),
+           groups.count > 1, let m = groups[1].flatMap(Double.init) {
+            return sane(h + m / 60)
         }
 
         // 6.5 hrs
-        guard lower.contains("h") || context.contains("online") || context.contains("hour")
-        else { return nil }
+        guard lower.contains("h") || hasCue else { return nil }
         if let groups = matches(#"\b(\d{1,2}(?:\.\d+)?)\s*h(?:r|rs|ours)?\b"#, in: lower).first,
            let h = groups.first.flatMap({ $0 }).flatMap(Double.init) {
-            return h
+            return sane(h)
         }
         return nil
+    }
+
+    /// A day has 24 hours and a week has 168. Anything outside that was a
+    /// misread, and a misread here divides into every rate on the dashboard.
+    private static func sane(_ hours: Double) -> Double? {
+        (hours > 0 && hours <= 168) ? hours : nil
     }
 
     /// Every date in a line. Uber's header is a range — "Jul 13 - Jul 20" —
