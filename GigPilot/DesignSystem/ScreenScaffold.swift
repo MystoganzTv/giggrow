@@ -14,19 +14,25 @@ struct ScreenScaffold<Wash: View, Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        ZStack {
-            GP.Palette.screen.ignoresSafeArea()
-            wash.ignoresSafeArea()
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
-                    content
-                }
-                .padding(.horizontal, GP.Layout.screenInset)
-                .padding(.top, 8)
-                .padding(.bottom, GP.Layout.tabBarHeight + GP.Layout.scrollBottomPadding)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
+                content
             }
-            .scrollBounceBehavior(.basedOnSize)
+            .padding(.horizontal, GP.Layout.screenInset)
+            .padding(.top, 8)
+            .padding(.bottom, GP.Layout.tabBarHeight + GP.Layout.scrollBottomPadding)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        // The background goes on as a modifier, not as a ZStack sibling.
+        // As siblings, `ignoresSafeArea()` on the base and the wash expanded
+        // the stack itself, and the scroll content came up with it — the
+        // screen title ended up against the Dynamic Island.
+        .background {
+            ZStack {
+                GP.Palette.screen
+                wash
+            }
+            .ignoresSafeArea()
         }
     }
 }

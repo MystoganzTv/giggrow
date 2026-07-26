@@ -37,19 +37,19 @@ struct DashboardView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
+            // The screenshot is the fast path, so it gets the primary button.
+            // Typing eight figures in is the fallback, not the headline.
             EmptyStateCard(
                 title: "No shifts yet this week",
-                message: "Log one and GigPilot works out your hourly rate, what to set aside for taxes, and what the car is costing you.",
-                actionTitle: "Log your first shift",
-                action: onLogShift,
+                message: "Screenshot your gig app's earnings screen and GigPilot reads the figures off it. Faster than typing, and you're not transcribing numbers by hand.",
+                actionTitle: "Import a screenshot",
+                action: onImport,
                 showsLogo: true
             )
 
-            // The faster route in: screenshot the app's earnings screen and
-            // let GigPilot read it, rather than typing everything out.
-            Button(action: onImport) {
+            Button(action: onLogShift) {
                 HStack(spacing: 9) {
-                    Text("Or import from a screenshot")
+                    Text("Or enter a shift by hand")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(GP.Palette.violet300)
                     Spacer(minLength: 0)
@@ -239,9 +239,14 @@ struct DashboardView: View {
 
     private var rateTiles: some View {
         TilePair {
-            StatTile(eyebrow: "Per hour", value: Money.cents(snapshot.perHour))
+            StatTile(eyebrow: "Per hour", value: snapshot.perHourLabel)
         } right: {
-            StatTile(eyebrow: "Per mile", value: Money.cents(snapshot.perMile))
+            StatTile(
+                eyebrow: "Per mile",
+                value: snapshot.perMileLabel,
+                footnote: snapshot.mileage == 0 ? "Add miles to a shift" : nil,
+                footnoteColor: GP.Ink.muted
+            )
         }
     }
 

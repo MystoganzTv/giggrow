@@ -111,10 +111,12 @@ struct VehicleView: View {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(vehicle.name)
+                        // Composed from make/model/year and fuel type, falling
+                        // back to the legacy free-text line for older records.
+                        Text(vehicle.displayName)
                             .gpText(GP.Typo.headline, tracking: GP.Typo.headlineTracking)
-                        if !vehicle.detail.isEmpty {
-                            Text(vehicle.detail)
+                        if !vehicle.displayDetail.isEmpty {
+                            Text(vehicle.displayDetail)
                                 .gpText(.system(size: 13.5, weight: .medium), color: GP.Ink.secondary)
                         }
                     }
@@ -259,8 +261,10 @@ struct VehicleView: View {
 
     private func efficiencyTiles(_ vehicle: VehicleRecord) -> some View {
         TilePair {
+            // Both labels come from the fuel type: an EV is charged, not
+            // fuelled, and its efficiency has no gallons in it.
             StatTile(
-                eyebrow: "Fuel cost / mi",
+                eyebrow: vehicle.fuelType.costPerMileTitle,
                 value: vehicle.fuelCostPerMile > 0
                     ? String(format: "$%.2f", vehicle.fuelCostPerMile) : "—",
                 valueFont: GP.Typo.metricSmall,
@@ -268,8 +272,8 @@ struct VehicleView: View {
             )
         } right: {
             StatTile(
-                eyebrow: "Avg efficiency",
-                value: vehicle.averageMPG > 0 ? "\(vehicle.averageMPG) mpg" : "—",
+                eyebrow: vehicle.fuelType.efficiencyTitle,
+                value: vehicle.efficiencyLabel,
                 valueFont: GP.Typo.metricSmall,
                 valueTracking: GP.Typo.metricSmallTracking
             )

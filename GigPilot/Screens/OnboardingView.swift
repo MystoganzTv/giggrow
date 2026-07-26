@@ -24,6 +24,15 @@ struct OnboardingView: View {
 
     @State private var step = 0
 
+    /// Which field the keyboard is on. Without this the first screen asks for
+    /// a name and then sits there until you tap the field, which reads as the
+    /// app being stuck rather than waiting.
+    @FocusState private var focused: Field?
+
+    private enum Field: Hashable {
+        case name, location, vehicle, odometer
+    }
+
     // Step 1
     @State private var name = ""
     @State private var location = ""
@@ -63,6 +72,21 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            // A beat for the view to settle, or the focus is set before the
+            // field exists and the keyboard never appears.
+            try? await Task.sleep(for: .milliseconds(350))
+            if step == 0 { focused = .name }
+        }
+        .onChange(of: step) { _, newStep in
+            // Move the keyboard to whatever the new step asks for first, and
+            // dismiss it on the platform step, which is all taps.
+            switch newStep {
+            case 0: focused = .name
+            case 1: focused = .vehicle
+            default: focused = nil
+            }
+        }
     }
 
     // MARK: Progress
@@ -92,8 +116,14 @@ struct OnboardingView: View {
             GlassCard {
                 VStack(spacing: 0) {
                     field("Your name", text: $name, placeholder: "Marco")
+                        .focused($focused, equals: .name)
+                        .submitLabel(.next)
+                        .onSubmit { focused = .location }
                     RowDivider()
                     field("City", text: $location, placeholder: "Phoenix, AZ", optional: true)
+                        .focused($focused, equals: .location)
+                        .submitLabel(.done)
+                        .onSubmit { focused = nil }
                 }
             }
 

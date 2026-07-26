@@ -325,6 +325,14 @@ struct EarningsSnapshot {
     /// True once the driver has logged anything at all, this week or not.
     var hasEverLoggedShift: Bool { hasData || maintenanceFund > 0 || taxSavingsYTD > 0 }
 
+    /// Rates only mean something when their denominator is real.
+    ///
+    /// `$0.00 per mile` after importing a screenshot with no distance on it
+    /// reads as a measurement, not as a gap. A dash says "not known", which
+    /// is the truth and is what sends the driver to fill it in.
+    var perHourLabel: String { onlineHours > 0 ? Money.cents(perHour) : "—" }
+    var perMileLabel: String { mileage > 0 ? Money.cents(perMile) : "—" }
+
     var idleHours: Double { max(onlineHours - activeHours, 0) }
     var activeShare: Double { onlineHours > 0 ? activeHours / onlineHours : 0 }
 

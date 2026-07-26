@@ -225,9 +225,20 @@ final class Expense {
 
 @Model
 final class VehicleRecord {
+    /// Legacy free-text name, kept so existing installs migrate cleanly.
+    /// New records fill the structured fields below and `displayName`
+    /// composes from those.
     var name: String
-    /// "Hybrid · 7KJD812"
+    /// Legacy free-text subtitle. Superseded by `displayDetail`.
     var detail: String
+
+    // Structured identity. One free-text line couldn't be queried, validated
+    // or used to work out what the car actually costs to run.
+    var make: String = ""
+    var model: String = ""
+    var year: Int = 0
+    var plate: String = ""
+    var fuelTypeRaw: String = FuelType.gasoline.rawValue
     /// Odometer at the moment `odometerAsOf` was recorded; live mileage is this
     /// plus everything driven since.
     var odometerBaseline: Int
@@ -239,12 +250,17 @@ final class VehicleRecord {
     var service: [ServiceRecord]
 
     init(
-        name: String,
-        detail: String,
+        name: String = "",
+        detail: String = "",
         odometerBaseline: Int,
         odometerAsOf: Date = .now,
         fuelCostPerMile: Double = 0,
-        averageMPG: Int = 0
+        averageMPG: Int = 0,
+        make: String = "",
+        model: String = "",
+        year: Int = 0,
+        plate: String = "",
+        fuelType: FuelType = .gasoline
     ) {
         self.name = name
         self.detail = detail
@@ -252,7 +268,48 @@ final class VehicleRecord {
         self.odometerAsOf = odometerAsOf
         self.fuelCostPerMile = fuelCostPerMile
         self.averageMPG = averageMPG
+        self.make = make
+        self.model = model
+        self.year = year
+        self.plate = plate
+        self.fuelTypeRaw = fuelType.rawValue
         self.service = []
+    }
+
+    // MARK: Derived
+
+    var fuelType: FuelType {
+        get { FuelType(rawValue: fuelTypeRaw) ?? .gasoline }
+        set { fuelTypeRaw = newValue.rawValue }
+    }
+
+    /// "2024 Tesla Model Y", falling back to the legacy free-text name for
+    /// records created before the fields were split out.
+    var displayName: String {
+        let parts = [year > 0 ? "\(year)" : "", make, model]
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? name : parts.joined(separator: " ")
+    }
+
+    /// "Electric · SVERIGE"
+    var displayDetail: String {
+        let parts = [fuelType.shortLabel, plate].filter { !$0.isEmpty }
+        return parts.isEmpty ? detail : parts.joined(separator: " · ")
+    }
+
+    /// Efficiency with the unit that actually applies — an EV has no mpg.
+    var efficiencyLabel: String {
+        guard averageMPG > 0 || efficiency > 0 else { return "—" }
+        return fuelType.burnsFuel
+            ? "\(averageMPG) \(fuelType.efficiencyUnit)"
+            : String(format: "%.1f %@", efficiency, fuelType.efficiencyUnit)
+    }
+
+    /// Miles per kWh for an EV, stored in the same column as mpg but read
+    /// with one decimal, since the useful range is roughly 2–5.
+    var efficiency: Double {
+        get { Double(averageMPG) / (fuelType.burnsFuel ? 1 : 10) }
+        set { averageMPG = Int((newValue * (fuelType.burnsFuel ? 1 : 10)).rounded()) }
     }
 }
 

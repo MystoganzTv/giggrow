@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AppsView: View {
     let snapshot: EarningsSnapshot
+    var onLogShift: () -> Void = {}
 
     @State private var isManagingPlatforms = false
 
@@ -16,12 +17,7 @@ struct AppsView: View {
         ScreenScaffold {
             GP.Gradients.appsWash()
         } content: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Apps")
-                    .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
-                Text(subtitle)
-                    .gpText(GP.Typo.subtitle, color: Color.white.opacity(0.45))
-            }
+            header
 
             if snapshot.hasData {
                 combinedCard
@@ -31,23 +27,46 @@ struct AppsView: View {
                 }
             } else {
                 EmptyStateCard(
-                    title: "Nothing logged yet",
-                    message: "Once you log a shift, each app you drove for shows up here with what it paid, its share of the week, and its own hourly rate."
+                    title: "Nothing to compare yet",
+                    message: "This screen ranks your apps against each other — what each paid, its share of the week, and its own hourly rate. It needs a logged shift first.",
+                    actionTitle: "Log a shift",
+                    action: onLogShift
                 )
             }
-
-            connectRow
         }
         .sheet(isPresented: $isManagingPlatforms) { ManagePlatformsView() }
     }
 
-    /// Honest about state instead of asserting a sync that hasn't happened.
+    /// "Manage" sits in the header rather than as a card in the list. Choosing
+    /// which apps you drive for is a preference, not content, and a dashed
+    /// button at the bottom of a data screen read as though it belonged to
+    /// the data above it.
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Apps")
+                    .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
+                Text(subtitle)
+                    .gpText(GP.Typo.subtitle, color: Color.white.opacity(0.45))
+            }
+
+            Spacer(minLength: 12)
+
+            Button("Manage") { isManagingPlatforms = true }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(GP.Palette.violet400)
+        }
+    }
+
+    /// Describes what's actually on screen rather than what the screen is for.
     private var subtitle: String {
         guard snapshot.hasData else {
-            return "Every platform you drive for, side by side."
+            return "Nothing logged this week."
         }
         let count = snapshot.platforms.count
-        return "\(count) platform\(count == 1 ? "" : "s") active this week."
+        return count == 1
+            ? "One app this week."
+            : "\(count) apps, ranked by earnings."
     }
 
     // MARK: Combined week
@@ -121,39 +140,6 @@ struct AppsView: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: Connect
-
-    private var connectRow: some View {
-        Button {
-            isManagingPlatforms = true
-        } label: {
-            HStack(spacing: 9) {
-                PlusGlyph()
-                    .stroke(Color.white.opacity(0.55),
-                            style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .frame(width: 18, height: 18)
-                // "Connect" would promise a link that doesn't exist. This
-                // toggles which apps you log against.
-                Text("Manage your apps")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.55))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(18)
-            .background(
-                GP.Surface.glassFaint,
-                in: RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous)
-                    .strokeBorder(
-                        GP.Surface.strokeDashed,
-                        style: StrokeStyle(lineWidth: 1, dash: [6, 5])
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 #Preview("Apps") {

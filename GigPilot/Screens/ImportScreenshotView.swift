@@ -250,9 +250,22 @@ struct ImportScreenshotView: View {
                           alternatives: (parsed?.units ?? []).map { ("\($0.value)", $0.source) })
                 RowDivider()
                 figureRow("Hours", text: $hoursText, prefix: "",
+                          required: true,
                           alternatives: (parsed?.hours ?? []).map {
                               (String(format: "%.2f", $0.value), $0.source)
                           })
+
+                if missingHours {
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle().fill(GP.Palette.amber)
+                            .frame(width: 6, height: 6).padding(.top, 6)
+                        Text("How long were you online? Without it there's no hourly rate, and GigPilot won't guess one.")
+                            .gpText(GP.Typo.footnote, color: GP.Palette.amber.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.bottom, 12)
+                }
+
                 RowDivider()
                 figureRow("Miles", text: $milesText, prefix: "",
                           alternatives: (parsed?.miles ?? []).map {
@@ -268,11 +281,16 @@ struct ImportScreenshotView: View {
     }
 
     private func figureRow(_ label: String, text: Binding<String>, prefix: String,
+                           required: Bool = false,
                            alternatives: [(String, String)]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(label)
                     .gpText(GP.Typo.rowLabel)
+                if required && (Double(text.wrappedValue) ?? 0) <= 0 {
+                    Text("required")
+                        .gpText(.system(size: 11, weight: .medium), color: GP.Palette.amber)
+                }
                 Spacer(minLength: 12)
                 if !prefix.isEmpty {
                     Text(prefix)
@@ -337,8 +355,20 @@ struct ImportScreenshotView: View {
 
     // MARK: Actions
 
+    /// Hours are required, not optional.
+    ///
+    /// They used to default to one when the screenshot didn't show them,
+    /// which turned $185.27 of Spark earnings into $185.27 per hour. An
+    /// invented denominator is worse than a missing figure: the app can't
+    /// tell it's wrong, and neither can the driver reading the dashboard.
     private var canSave: Bool {
-        !selectedPlatform.isEmpty && (Double(amountText) ?? 0) > 0
+        !selectedPlatform.isEmpty
+            && (Double(amountText) ?? 0) > 0
+            && (Double(hoursText) ?? 0) > 0
+    }
+
+    private var missingHours: Bool {
+        (Double(hoursText) ?? 0) <= 0
     }
 
     private func load(_ item: PhotosPickerItem) async {
@@ -387,11 +417,13 @@ struct ImportScreenshotView: View {
               let account = accounts.first(where: { $0.name == selectedPlatform })
         else { return }
 
+        // `canSave` already guarantees this is above zero — the block is only
+        // ever as long as the hours the driver confirmed.
         let hours = Double(hoursText) ?? 0
+        guard hours > 0 else { return }
+
         let start = Calendar.gigPilot.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
-        // With no times on the screenshot, the block is anchored to the hours
-        // the driver confirmed rather than invented from nothing.
-        let end = start.addingTimeInterval((hours > 0 ? hours : 1) * 3600)
+        let end = start.addingTimeInterval(hours * 3600)
 
         let shift = Shift(start: start, end: end, miles: Double(milesText) ?? 0)
         context.insert(shift)

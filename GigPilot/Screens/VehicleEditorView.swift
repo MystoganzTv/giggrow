@@ -20,35 +20,60 @@ struct VehicleEditorView: View {
     /// Existing car, or nil to add one.
     var editing: VehicleRecord?
 
-    @State private var name = ""
-    @State private var detail = ""
+    @State private var make = ""
+    @State private var model = ""
+    @State private var yearText = ""
+    @State private var plate = ""
+    @State private var fuelType: FuelType = .gasoline
     @State private var odometerText = ""
     @State private var fuelCostText = ""
-    @State private var mpgText = ""
+    @State private var efficiencyText = ""
     @State private var loaded = false
 
     var body: some View {
         EditorScaffold(
             title: editing == nil ? "Add vehicle" : "Vehicle",
-            canSave: !name.trimmingCharacters(in: .whitespaces).isEmpty,
+            canSave: !model.trimmingCharacters(in: .whitespaces).isEmpty
+                  || !make.trimmingCharacters(in: .whitespaces).isEmpty,
             onCancel: { dismiss() },
             onSave: save
         ) {
             GlassCard {
                 VStack(spacing: 0) {
-                    field("Vehicle", text: $name, placeholder: "2022 Toyota RAV4")
+                    field("Make", text: $make, placeholder: "Tesla")
                     RowDivider()
-                    field("Details", text: $detail, placeholder: "Hybrid · 7KJD812")
+                    field("Model", text: $model, placeholder: "Model Y")
+                    RowDivider()
+                    numberField("Year", text: $yearText, suffix: "", decimal: false)
+                    RowDivider()
+                    field("Plate", text: $plate, placeholder: "SVERIGE")
                 }
             }
+
+            fuelTypeCard
 
             GlassCard {
                 VStack(spacing: 0) {
                     numberField("Odometer", text: $odometerText, suffix: "mi", decimal: false)
                     RowDivider()
-                    numberField("Fuel cost", text: $fuelCostText, suffix: "/ mi", decimal: true, prefix: "$")
+                    numberField(fuelType.costPerMileTitle, text: $fuelCostText,
+                                suffix: "/ mi", decimal: true, prefix: "$")
                     RowDivider()
-                    numberField("Average", text: $mpgText, suffix: "mpg", decimal: false)
+                    numberField(fuelType.efficiencyTitle, text: $efficiencyText,
+                                suffix: fuelType.efficiencyUnit,
+                                decimal: !fuelType.burnsFuel,
+                                placeholder: fuelType.efficiencyPlaceholder)
+
+                    if let warning = efficiencyWarning {
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle().fill(GP.Palette.amber)
+                                .frame(width: 6, height: 6).padding(.top, 6)
+                            Text(warning)
+                                .gpText(GP.Typo.footnote, color: GP.Palette.amber.opacity(0.9))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.bottom, 14)
+                    }
                 }
             }
 
@@ -79,8 +104,62 @@ struct VehicleEditorView: View {
         .padding(.vertical, 15)
     }
 
+    /// Fuel type changes the arithmetic downstream, so it's a visible choice
+    /// rather than a word buried in a free-text subtitle.
+    private var fuelTypeCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Runs on")
+                    .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
+
+                let columns = [GridItem(.flexible(), spacing: 10),
+                               GridItem(.flexible(), spacing: 10)]
+                LazyVGrid(columns: columns, spacing: 10) {
+                    ForEach(FuelType.allCases) { option in
+                        Button {
+                            withAnimation(.easeOut(duration: 0.14)) { fuelType = option }
+                        } label: {
+                            Text(option.label)
+                                .font(.system(size: 13.5,
+                                              weight: option == fuelType ? .semibold : .medium))
+                                .foregroundStyle(option == fuelType ? GP.Ink.primary : GP.Ink.tertiary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
+                                .background(option == fuelType ? GP.Surface.glassBright
+                                                              : GP.Surface.glassFaint,
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(option == fuelType
+                                                      ? GP.Palette.violet400.opacity(0.5)
+                                                      : GP.Surface.stroke, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                Text(fuelType.burnsFuel
+                     ? "Efficiency in \(fuelType.efficiencyUnit), and the per-mile cost is fuel."
+                     : "No mpg on an EV — efficiency is \(fuelType.efficiencyUnit), and the per-mile cost is charging.")
+                    .gpText(GP.Typo.footnote, color: GP.Ink.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Catches an mpg typed into an EV, and the reverse.
+    private var efficiencyWarning: String? {
+        guard let value = Double(efficiencyText), value > 0 else { return nil }
+        guard !fuelType.isPlausibleEfficiency(value) else { return nil }
+        return fuelType.burnsFuel
+            ? "\(Int(value)) mpg looks off for a \(fuelType.label.lowercased()) car."
+            : "\(value) mi/kWh looks off for an EV — most sit between 2 and 5."
+    }
+
     private func numberField(_ label: String, text: Binding<String>, suffix: String,
-                             decimal: Bool, prefix: String = "") -> some View {
+                             decimal: Bool, prefix: String = "",
+                             placeholder: String = "0") -> some View {
         HStack {
             Text(label)
                 .gpText(GP.Typo.rowLabel)
@@ -89,7 +168,7 @@ struct VehicleEditorView: View {
                 Text(prefix)
                     .gpText(.system(size: 15, weight: .medium), color: GP.Ink.muted)
             }
-            TextField("0", text: text)
+            TextField(placeholder, text: text)
                 .keyboardType(decimal ? .decimalPad : .numberPad)
                 .multilineTextAlignment(.trailing)
                 .font(.system(size: 15.5, weight: .semibold))
@@ -130,39 +209,65 @@ struct VehicleEditorView: View {
         guard !loaded else { return }
         loaded = true
         guard let vehicle = editing else { return }
-        name = vehicle.name
-        detail = vehicle.detail
+
+        make = vehicle.make
+        model = vehicle.model
+        yearText = vehicle.year > 0 ? "\(vehicle.year)" : ""
+        plate = vehicle.plate
+        fuelType = vehicle.fuelType
+
+        // Records created before the fields were split carry everything in
+        // one line; drop it into Model so nothing is lost on first edit.
+        if make.isEmpty && model.isEmpty && !vehicle.name.isEmpty {
+            model = vehicle.name
+        }
+
         odometerText = "\(vehicle.odometerBaseline)"
         fuelCostText = vehicle.fuelCostPerMile > 0
             ? String(format: "%.2f", vehicle.fuelCostPerMile) : ""
-        mpgText = vehicle.averageMPG > 0 ? "\(vehicle.averageMPG)" : ""
+        if vehicle.averageMPG > 0 {
+            efficiencyText = vehicle.fuelType.burnsFuel
+                ? "\(vehicle.averageMPG)"
+                : String(format: "%.1f", vehicle.efficiency)
+        }
     }
 
     private func save() {
         let odometer = Int(odometerText.filter(\.isNumber)) ?? 0
+        let vehicle = editing ?? VehicleRecord(odometerBaseline: odometer)
+        let isNew = editing == nil
+        if isNew { context.insert(vehicle) }
 
-        if let vehicle = editing {
-            vehicle.name = name.trimmingCharacters(in: .whitespaces)
-            vehicle.detail = detail.trimmingCharacters(in: .whitespaces)
-            // Re-baseline: the reading is true as of now, so miles logged
-            // before this edit must not be added on top of it again.
-            if odometer != vehicle.odometerBaseline {
-                vehicle.odometerBaseline = odometer
-                vehicle.odometerAsOf = .now
+        vehicle.make = make.trimmingCharacters(in: .whitespaces)
+        vehicle.model = model.trimmingCharacters(in: .whitespaces)
+        vehicle.year = Int(yearText.filter(\.isNumber)) ?? 0
+        vehicle.plate = plate.trimmingCharacters(in: .whitespaces).uppercased()
+        vehicle.fuelType = fuelType
+
+        // Keep the legacy fields in step so anything still reading them
+        // shows the same thing.
+        vehicle.name = vehicle.displayName
+        vehicle.detail = vehicle.displayDetail
+
+        // Re-baseline: the reading is true as of now, so miles logged before
+        // this edit must not be added on top of it again.
+        if odometer != vehicle.odometerBaseline || isNew {
+            vehicle.odometerBaseline = odometer
+            vehicle.odometerAsOf = .now
+        }
+
+        vehicle.fuelCostPerMile = Double(fuelCostText) ?? 0
+        if let value = Double(efficiencyText), value > 0 {
+            if fuelType.burnsFuel {
+                vehicle.averageMPG = Int(value.rounded())
+            } else {
+                vehicle.efficiency = value
             }
-            vehicle.fuelCostPerMile = Double(fuelCostText) ?? 0
-            vehicle.averageMPG = Int(mpgText.filter(\.isNumber)) ?? 0
         } else {
-            let vehicle = VehicleRecord(
-                name: name.trimmingCharacters(in: .whitespaces),
-                detail: detail.trimmingCharacters(in: .whitespaces),
-                odometerBaseline: odometer,
-                odometerAsOf: .now,
-                fuelCostPerMile: Double(fuelCostText) ?? 0,
-                averageMPG: Int(mpgText.filter(\.isNumber)) ?? 0
-            )
-            context.insert(vehicle)
+            vehicle.averageMPG = 0
+        }
 
+        if isNew {
             for record in Seed.defaultService(baseOdometer: odometer) {
                 context.insert(record)
                 record.vehicle = vehicle

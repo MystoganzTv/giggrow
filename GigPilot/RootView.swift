@@ -111,7 +111,8 @@ struct RootView: View {
                                        onShowHistory: { isShowingHistory = true },
                                        onShowProfile: { isShowingProfile = true },
                                        onImport: { isImporting = true })
-        case .apps:      AppsView(snapshot: snapshot)
+        case .apps:      AppsView(snapshot: snapshot,
+                                  onLogShift: { isImporting = true })
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
                                        range: $analyticsRange,
                                        onShowExpenses: { isShowingExpenses = true })
@@ -131,8 +132,10 @@ struct RootView: View {
             // case and stays one tap from the label, while expenses get a
             // home without adding a second floating control.
             Menu {
-                Button("Log shift") { isLoggingShift = true }
-                Button("Import from screenshot") { isImporting = true }
+                // Screenshot first: it's the faster route and the one worth
+                // forming a habit around.
+                Button("Import screenshot") { isImporting = true }
+                Button("Enter shift by hand") { isLoggingShift = true }
                 Button("Add expense") { isLoggingExpense = true }
                 Divider()
                 Button("Shift history") { isShowingHistory = true }
@@ -151,7 +154,7 @@ struct RootView: View {
                 .background(GP.Gradients.brandMark, in: Capsule())
                 .shadow(color: Color(hex: 0x5C3CDC, opacity: 0.55), radius: 18, y: 8)
             } primaryAction: {
-                isLoggingShift = true
+                isImporting = true
             }
             .padding(.bottom, GP.Layout.tabBarHeight + 18)
             .transition(.scale.combined(with: .opacity))
