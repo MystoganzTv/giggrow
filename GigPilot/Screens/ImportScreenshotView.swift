@@ -2,12 +2,17 @@
 //  ImportScreenshotView.swift
 //  GigPilot
 //
-//  Read a shift off a screenshot of a gig app's earnings screen.
+//  Read a shift off screenshots of gig apps' earnings screens.
 //
-//  Phase 1 of getting real data in without a vendor contract. The parser is
-//  heuristic, so nothing is saved until the driver has seen what was read
-//  next to the image it came from and confirmed it. Every field is editable
-//  and every alternative reading is one tap away.
+//  One screenshot per platform, all landing in the same block of time. That
+//  mirrors the data model exactly — a Shift with a PlatformEarning per app —
+//  and it's the case the whole product is built around: a driver running
+//  Uber and DoorDash together screenshots both and gets one honest shift,
+//  with the hours counted once.
+//
+//  The parser is heuristic, so nothing is saved until the driver has seen
+//  what was read next to the image it came from. Every field is editable and
+//  every alternative reading is one tap away.
 //
 
 import SwiftUI
@@ -22,24 +27,28 @@ enum ImportPeriod: String, CaseIterable, Identifiable {
     var label: String { self == .day ? "One day" : "A week" }
 }
 
+/// One screenshot and what was read from it.
+private struct ImportedSource: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let parsed: ParsedEarnings
+    var platform: String
+    var amountText: String
+    var unitsText: String
+}
+
 struct ImportScreenshotView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
     @Query(sort: \PlatformAccount.sortIndex) private var accounts: [PlatformAccount]
-    @Query private var profiles: [DriverProfile]
 
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var image: UIImage?
-    @State private var parsed: ParsedEarnings?
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var sources: [ImportedSource] = []
     @State private var isReading = false
     @State private var errorMessage: String?
-    @State private var showsAllLines = false
 
-    // Confirmed values
-    @State private var selectedPlatform: String = ""
-    @State private var amountText = ""
-    @State private var unitsText = ""
+    // Shared across every screenshot: one block of time, one odometer.
     @State private var hoursText = ""
     @State private var milesText = ""
     @State private var date = Date.now
@@ -53,20 +62,23 @@ struct ImportScreenshotView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
-                        if parsed == nil {
+                        if sources.isEmpty {
                             intro
                             picker
                         } else {
-                            reviewHeader
-                            imagePreview
-                            platformCard
-                            figuresCard
-                            if let parsed, !parsed.allLines.isEmpty { rawTextCard(parsed) }
+                            thumbnails
+                            ForEach($sources) { $source in
+                                sourceCard($source)
+                            }
+                            addMore
+                            sharedCard
+                            summaryCard
                         }
 
                         if let errorMessage {
                             Text(errorMessage)
                                 .gpText(GP.Typo.footnote, color: GP.Palette.amber)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, 6)
                         }
                     }
@@ -77,7 +89,7 @@ struct ImportScreenshotView: View {
 
                 if isReading { readingOverlay }
             }
-            .navigationTitle("Import screenshot")
+            .navigationTitle("Import screenshots")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(GP.Palette.screen, for: .navigationBar)
             .toolbar {
@@ -85,7 +97,7 @@ struct ImportScreenshotView: View {
                     Button("Cancel") { dismiss() }
                         .foregroundStyle(GP.Ink.secondary)
                 }
-                if parsed != nil {
+                if !sources.isEmpty {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save") { save() }
                             .fontWeight(.semibold)
@@ -94,9 +106,9 @@ struct ImportScreenshotView: View {
                     }
                 }
             }
-            .onChange(of: pickerItem) { _, item in
-                guard let item else { return }
-                Task { await load(item) }
+            .onChange(of: pickerItems) { _, items in
+                guard !items.isEmpty else { return }
+                Task { await load(items) }
             }
         }
         .preferredColorScheme(.dark)
@@ -107,39 +119,42 @@ struct ImportScreenshotView: View {
     private var intro: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Read a shift off a screenshot")
+                Text("One screenshot per app")
                     .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
 
-                Text("Open your gig app's earnings screen, screenshot it, and pick it here. GigPilot reads the figures and shows you what it found before anything is saved.")
+                Text("Screenshot each app's earnings screen and pick them all. They land in the same block of time, so your hours are counted once instead of once per app.")
                     .gpText(.system(size: 14, weight: .regular), color: GP.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack(alignment: .top, spacing: 11) {
-                    Circle().fill(GP.Palette.mint)
-                        .frame(width: 6, height: 6).padding(.top, 7)
-                    Text("The image never leaves your phone — the text is read on-device.")
-                        .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(alignment: .top, spacing: 11) {
-                    Circle().fill(GP.Palette.amber)
-                        .frame(width: 6, height: 6).padding(.top, 7)
-                    Text("Reading a screenshot is guesswork, so check every figure before saving. Anything wrong here quietly skews your hourly rate and tax set-aside.")
-                        .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                bullet(GP.Palette.mint,
+                       "Nothing leaves your phone — the text is read on-device.")
+                bullet(GP.Palette.violet400,
+                       "Use the screen that shows earnings, online time and trips together. The fare breakdown has the money but none of the rest.")
+                bullet(GP.Palette.amber,
+                       "Reading a screenshot is guesswork, so check every figure. Anything wrong here quietly skews your hourly rate and tax set-aside.")
             }
         }
     }
 
+    private func bullet(_ colour: Color, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            Circle().fill(colour).frame(width: 6, height: 6).padding(.top, 7)
+            Text(text)
+                .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var picker: some View {
-        PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
+        PhotosPicker(selection: $pickerItems,
+                     maxSelectionCount: 6,
+                     matching: .images,
+                     photoLibrary: .shared()) {
             HStack(spacing: 8) {
                 PlusGlyph()
                     .stroke(Color.white, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
                     .frame(width: 16, height: 16)
-                Text("Choose a screenshot")
+                Text("Choose screenshots")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
             }
@@ -149,12 +164,39 @@ struct ImportScreenshotView: View {
         }
     }
 
+    private var addMore: some View {
+        PhotosPicker(selection: $pickerItems,
+                     maxSelectionCount: 6,
+                     matching: .images,
+                     photoLibrary: .shared()) {
+            HStack(spacing: 8) {
+                PlusGlyph()
+                    .stroke(GP.Palette.violet400,
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .frame(width: 14, height: 14)
+                Text("Add another app's screenshot")
+                    .font(.system(size: 14.5, weight: .medium))
+                    .foregroundStyle(GP.Palette.violet400)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .background(GP.Surface.glassFaint,
+                        in: RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous)
+                    .strokeBorder(GP.Surface.strokeDashed,
+                                  style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
+            )
+        }
+    }
+
     private var readingOverlay: some View {
         ZStack {
             GP.Palette.screen.opacity(0.75).ignoresSafeArea()
             VStack(spacing: 14) {
                 ProgressView().tint(GP.Palette.violet400)
-                Text("Reading the screenshot…")
+                Text("Reading…")
                     .gpText(GP.Typo.captionMuted, color: GP.Ink.secondary)
             }
         }
@@ -162,60 +204,68 @@ struct ImportScreenshotView: View {
 
     // MARK: Review
 
-    private var reviewHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Check what was read")
-                .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
-            Text("Correct anything that's wrong. Tap a figure to see the other readings found.")
-                .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 6)
-    }
-
-    @ViewBuilder
-    private var imagePreview: some View {
-        if let image {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxHeight: 260)
-                .clipShape(RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous)
-                        .strokeBorder(GP.Surface.stroke, lineWidth: 1)
-                )
+    private var thumbnails: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(sources) { source in
+                    Image(uiImage: source.image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 74, height: 128)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(GP.Surface.stroke, lineWidth: 1)
+                        )
+                }
+            }
         }
     }
 
-    private var platformCard: some View {
+    private func sourceCard(_ source: Binding<ImportedSource>) -> some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("Platform")
+                    Text(source.wrappedValue.platform.isEmpty
+                         ? "Which app is this?"
+                         : source.wrappedValue.platform)
                         .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
                     Spacer()
-                    if parsed?.platformName == nil {
-                        Text("not detected")
-                            .gpText(GP.Typo.footnote, color: GP.Palette.amber)
+                    Button {
+                        remove(source.wrappedValue.id)
+                    } label: {
+                        Text("Remove")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color(hex: 0xFB7185))
                     }
+                    .buttonStyle(.plain)
                 }
 
                 let columns = [GridItem(.flexible(), spacing: 10),
                                GridItem(.flexible(), spacing: 10)]
                 LazyVGrid(columns: columns, spacing: 10) {
                     ForEach(accounts.filter(\.isActive)) { account in
-                        platformChip(account)
+                        platformChip(account, selected: source.platform)
                     }
                 }
+
+                RowDivider()
+
+                figureRow("Gross", text: source.amountText, prefix: "$",
+                          alternatives: source.wrappedValue.parsed.amounts.map {
+                              String(format: "%.2f", $0.value)
+                          })
+                RowDivider()
+                figureRow("Units", text: source.unitsText, prefix: "",
+                          alternatives: source.wrappedValue.parsed.units.map { "\($0.value)" })
             }
         }
     }
 
-    private func platformChip(_ account: PlatformAccount) -> some View {
-        let isSelected = account.name == selectedPlatform
+    private func platformChip(_ account: PlatformAccount, selected: Binding<String>) -> some View {
+        let isSelected = account.name == selected.wrappedValue
         return Button {
-            withAnimation(.easeOut(duration: 0.14)) { selectedPlatform = account.name }
+            withAnimation(.easeOut(duration: 0.14)) { selected.wrappedValue = account.name }
         } label: {
             HStack(spacing: 8) {
                 Text(account.initial)
@@ -230,16 +280,17 @@ struct ImportScreenshotView: View {
                     )
                     .opacity(isSelected ? 1 : 0.4)
                 Text(account.name)
-                    .font(.system(size: 13.5, weight: isSelected ? .semibold : .medium))
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
                     .foregroundStyle(isSelected ? GP.Ink.primary : GP.Ink.tertiary)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
             .background(isSelected ? GP.Surface.glassBright : GP.Surface.glassFaint,
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .strokeBorder(isSelected ? GP.Palette.violet400.opacity(0.5) : GP.Surface.stroke,
                                   lineWidth: 1)
             )
@@ -247,24 +298,24 @@ struct ImportScreenshotView: View {
         .buttonStyle(.plain)
     }
 
-    private var figuresCard: some View {
+    /// Hours, miles and the period belong to the block, not to any one app.
+    /// Asking per screenshot would invite counting the same hours twice.
+    private var sharedCard: some View {
         GlassCard {
-            VStack(spacing: 0) {
-                figureRow("Gross", text: $amountText, prefix: "$",
-                          alternatives: (parsed?.amounts ?? []).map {
-                              (String(format: "%.2f", $0.value), $0.source)
-                          })
-                RowDivider()
-                figureRow("Units", text: $unitsText, prefix: "",
-                          alternatives: (parsed?.units ?? []).map { ("\($0.value)", $0.source) })
-                RowDivider()
-                figureRow("Hours", text: $hoursText, prefix: "",
-                          required: true,
-                          alternatives: (parsed?.hours ?? []).map {
-                              (String(format: "%.2f", $0.value), $0.source)
-                          })
+            VStack(alignment: .leading, spacing: 0) {
+                Text("The block of time")
+                    .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
+                    .padding(.bottom, 6)
 
-                if missingHours {
+                Text("Shared by every screenshot above — this is what stops two apps double-counting the same hours.")
+                    .gpText(GP.Typo.footnote, color: GP.Ink.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 12)
+
+                figureRow("Hours", text: $hoursText, prefix: "", required: true,
+                          alternatives: allHourCandidates)
+
+                if (Double(hoursText) ?? 0) <= 0 {
                     HStack(alignment: .top, spacing: 10) {
                         Circle().fill(GP.Palette.amber)
                             .frame(width: 6, height: 6).padding(.top, 6)
@@ -277,9 +328,7 @@ struct ImportScreenshotView: View {
 
                 RowDivider()
                 figureRow("Miles", text: $milesText, prefix: "",
-                          alternatives: (parsed?.miles ?? []).map {
-                              (String(format: "%.0f", $0.value), $0.source)
-                          })
+                          alternatives: allMileCandidates)
                 RowDivider()
                 periodRow
                 RowDivider()
@@ -294,14 +343,11 @@ struct ImportScreenshotView: View {
                      : "A whole week's totals. The figures are exact, but GigPilot won't know which hours of the day they came from, so this one sits out of the peak-hours chart.")
                     .gpText(GP.Typo.footnote, color: GP.Ink.muted)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 12)
+                    .padding(.top, 8)
             }
         }
     }
 
-    /// What the screenshot covers. A weekly summary is real data at a
-    /// coarser grain — importing it as a single day would pile a week onto
-    /// one bar and invent a peak hour.
     private var periodRow: some View {
         HStack(spacing: 7) {
             ForEach(ImportPeriod.allCases) { option in
@@ -327,9 +373,43 @@ struct ImportScreenshotView: View {
         .padding(.vertical, 12)
     }
 
+    private var summaryCard: some View {
+        HeroCard(glow: true) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("This block".uppercased())
+                    .gpText(GP.Typo.heroEyebrow,
+                            tracking: GP.Typo.heroEyebrowTracking,
+                            color: Color.white.opacity(0.55))
+
+                Text(Money.cents(totalGross))
+                    .gpText(GP.Typo.heroAmountSmall, tracking: GP.Typo.heroAmountSmallTracking)
+
+                HStack(spacing: 18) {
+                    summaryStat("Per hour",
+                                hours > 0 ? Money.cents(totalGross / hours) : "—")
+                    summaryStat("Per mile",
+                                miles > 0 ? Money.cents(totalGross / miles) : "—")
+                    summaryStat("Apps", "\(sources.filter { !$0.platform.isEmpty }.count)")
+                }
+            }
+        }
+    }
+
+    private func summaryStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .gpText(.system(size: 10, weight: .semibold),
+                        tracking: 1.0, color: Color.white.opacity(0.45))
+            Text(value)
+                .gpText(.system(size: 16, weight: .semibold), tracking: -0.3)
+        }
+    }
+
+    // MARK: Fields
+
     private func figureRow(_ label: String, text: Binding<String>, prefix: String,
                            required: Bool = false,
-                           alternatives: [(String, String)]) -> some View {
+                           alternatives: [String]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(label)
@@ -351,18 +431,15 @@ struct ImportScreenshotView: View {
                     .frame(maxWidth: 110)
             }
 
-            // Other readings, so a wrong pick is one tap to fix rather than
-            // a retype.
+            // Other readings, so a wrong pick is one tap to fix.
             if alternatives.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 7) {
                         ForEach(Array(alternatives.prefix(5).enumerated()), id: \.offset) { _, alt in
-                            Button {
-                                text.wrappedValue = alt.0
-                            } label: {
-                                Text(alt.0)
+                            Button { text.wrappedValue = alt } label: {
+                                Text(alt)
                                     .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(text.wrappedValue == alt.0
+                                    .foregroundStyle(text.wrappedValue == alt
                                                      ? GP.Palette.violet300 : GP.Ink.muted)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
@@ -377,96 +454,101 @@ struct ImportScreenshotView: View {
         .padding(.vertical, 14)
     }
 
-    private func rawTextCard(_ parsed: ParsedEarnings) -> some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Button {
-                    withAnimation(.easeOut(duration: 0.16)) { showsAllLines.toggle() }
-                } label: {
-                    HStack {
-                        Text(showsAllLines ? "Hide what was read" : "Show what was read")
-                            .gpText(.system(size: 14, weight: .medium), color: GP.Palette.violet400)
-                        Spacer()
-                    }
-                }
-                .buttonStyle(.plain)
+    // MARK: Derived
 
-                if showsAllLines {
-                    Text(parsed.allLines.joined(separator: "\n"))
-                        .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+    private var hours: Double { Double(hoursText) ?? 0 }
+    private var miles: Double { Double(milesText) ?? 0 }
+
+    private var totalGross: Double {
+        sources.reduce(0) { $0 + (Double($1.amountText) ?? 0) }
     }
 
-    // MARK: Actions
+    /// Hours and miles can come from any of the screenshots, so every
+    /// reading across all of them is offered.
+    private var allHourCandidates: [String] {
+        sources.flatMap { $0.parsed.hours }.map { String(format: "%.2f", $0.value) }
+    }
 
-    /// Hours are required, not optional.
-    ///
-    /// They used to default to one when the screenshot didn't show them,
-    /// which turned $185.27 of Spark earnings into $185.27 per hour. An
-    /// invented denominator is worse than a missing figure: the app can't
-    /// tell it's wrong, and neither can the driver reading the dashboard.
+    private var allMileCandidates: [String] {
+        sources.flatMap { $0.parsed.miles }.map { String(format: "%.0f", $0.value) }
+    }
+
     private var canSave: Bool {
-        !selectedPlatform.isEmpty
-            && (Double(amountText) ?? 0) > 0
-            && (Double(hoursText) ?? 0) > 0
+        hours > 0
+            && sources.contains { !$0.platform.isEmpty && (Double($0.amountText) ?? 0) > 0 }
     }
 
-    private var missingHours: Bool {
-        (Double(hoursText) ?? 0) <= 0
-    }
+    // MARK: Loading
 
-    private func load(_ item: PhotosPickerItem) async {
+    private func load(_ items: [PhotosPickerItem]) async {
         isReading = true
         errorMessage = nil
-        defer { isReading = false }
-
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let uiImage = UIImage(data: data),
-              let cgImage = uiImage.cgImage else {
-            errorMessage = TextRecognizer.Failure.unreadableImage.localizedDescription
-            return
+        defer {
+            isReading = false
+            pickerItems = []
         }
 
-        image = uiImage
+        var failures = 0
 
-        do {
-            let lines = try TextRecognizer.recognise(in: cgImage)
-            let result = EarningsParser.parse(lines)
-            parsed = result
-            prefill(from: result)
-
-            if !result.foundAnything {
-                errorMessage = "Nothing recognisable was found. You can still fill the figures in by hand."
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let uiImage = UIImage(data: data),
+                  let cgImage = uiImage.cgImage else {
+                failures += 1
+                continue
             }
-        } catch {
-            errorMessage = error.localizedDescription
-            parsed = ParsedEarnings()
+
+            let parsed: ParsedEarnings
+            do {
+                parsed = EarningsParser.parse(try TextRecognizer.recognise(in: cgImage))
+            } catch {
+                failures += 1
+                continue
+            }
+
+            let best = parsed.best
+            sources.append(
+                ImportedSource(
+                    image: uiImage,
+                    parsed: parsed,
+                    // Don't reuse a platform already claimed by another
+                    // screenshot — two cards on the same app would double it.
+                    platform: alreadyUsed(parsed.platformName) ? "" : (parsed.platformName ?? ""),
+                    amountText: best.amount.map { String(format: "%.2f", $0) } ?? "",
+                    unitsText: best.units.map(String.init) ?? ""
+                )
+            )
+
+            // Shared fields take the first screenshot that offers them.
+            if hoursText.isEmpty, let value = best.hours {
+                hoursText = String(format: "%.2f", value)
+            }
+            if milesText.isEmpty, let value = best.miles {
+                milesText = String(format: "%.0f", value)
+            }
+            if let parsedDate = best.date { date = parsedDate }
+        }
+
+        if failures > 0 {
+            errorMessage = failures == items.count
+                ? "None of those could be read. You can still fill the figures in by hand."
+                : "\(failures) of \(items.count) couldn't be read; the rest are below."
         }
     }
 
-    private func prefill(from result: ParsedEarnings) {
-        let best = result.best
-        selectedPlatform = result.platformName
-            ?? accounts.first(where: \.isActive)?.name
-            ?? ""
-        if let amount = best.amount { amountText = String(format: "%.2f", amount) }
-        if let units = best.units { unitsText = "\(units)" }
-        if let hours = best.hours { hoursText = String(format: "%.2f", hours) }
-        if let miles = best.miles { milesText = String(format: "%.0f", miles) }
-        if let parsedDate = best.date { date = parsedDate }
+    private func alreadyUsed(_ name: String?) -> Bool {
+        guard let name else { return false }
+        return sources.contains { $0.platform == name }
     }
+
+    private func remove(_ id: UUID) {
+        sources.removeAll { $0.id == id }
+    }
+
+    // MARK: Save
 
     private func save() {
-        guard canSave,
-              let account = accounts.first(where: { $0.name == selectedPlatform })
-        else { return }
-
-        // `canSave` already guarantees this is above zero.
-        let hours = Double(hoursText) ?? 0
-        guard hours > 0 else { return }
+        guard canSave else { return }
 
         let cal = Calendar.gigPilot
         let shift: Shift
@@ -476,38 +558,45 @@ struct ImportScreenshotView: View {
             let start = cal.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
             shift = Shift(start: start,
                           end: start.addingTimeInterval(hours * 3600),
-                          miles: Double(milesText) ?? 0)
+                          miles: miles)
 
         case .week:
             // Spans the week it covers. `recordedHours` carries the real
             // figure so nothing reads 168 hours off the span.
             let start = cal.startOfWeek(for: date)
             let end = cal.date(byAdding: .day, value: 7, to: start) ?? start
-            shift = Shift(start: start, end: end, miles: Double(milesText) ?? 0)
+            shift = Shift(start: start, end: end, miles: miles)
             shift.recordedHours = hours
             shift.isAggregate = true
         }
 
         context.insert(shift)
 
-        let earning = PlatformEarning(
-            account: account,
-            gross: Double(amountText) ?? 0,
-            trips: Int(unitsText) ?? 0
-        )
-        context.insert(earning)
-        earning.shift = shift
-        shift.earnings.append(earning)
-        shift.note = period == .day
-            ? "Imported from screenshot"
-            : "Imported from a weekly summary"
+        // One earning per screenshot. The hours stay on the shift, counted
+        // once however many apps were running.
+        for source in sources {
+            guard !source.platform.isEmpty,
+                  let account = accounts.first(where: { $0.name == source.platform }),
+                  let gross = Double(source.amountText), gross > 0 else { continue }
+
+            let earning = PlatformEarning(account: account,
+                                          gross: gross,
+                                          trips: Int(source.unitsText) ?? 0)
+            context.insert(earning)
+            earning.shift = shift
+            shift.earnings.append(earning)
+        }
+
+        shift.note = sources.count > 1
+            ? "Imported from \(sources.count) screenshots"
+            : (period == .day ? "Imported from screenshot" : "Imported from a weekly summary")
 
         try? context.save()
         dismiss()
     }
 }
 
-#Preview("Import screenshot") {
+#Preview("Import screenshots") {
     ImportScreenshotView()
         .modelContainer(.preview)
 }
