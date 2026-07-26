@@ -2,11 +2,15 @@
 //  OnboardingView.swift
 //  GigPilot
 //
-//  Three steps: who you are, what you drive, which apps you drive for.
+//  Four steps: who you are, where you drive, what you drive, which apps.
 //
-//  Everything here is either skippable or has a sensible default. The only
-//  thing that genuinely can't be guessed is which platforms the driver uses,
-//  because the whole app is organised around that list.
+//  One question per screen. Name and state shared a screen at first, and a
+//  text field next to a wheel doesn't work: the keyboard takes half the
+//  display and squeezes the wheel until it looks like an empty gap.
+//
+//  Only the vehicle step is skippable. The state sets the tax hold-back and
+//  the platform list is what the whole app is organised around, so neither
+//  can be guessed.
 //
 
 import SwiftUI
@@ -35,18 +39,26 @@ struct OnboardingView: View {
 
     // Step 1
     @State private var name = ""
+
+    // Step 2
     @State private var stateCode = ""
     @State private var taxRate: Double = 25
 
-    // Step 2
+    // Step 3
     @State private var vehicleName = ""
     @State private var vehicleDetail = ""
     @State private var odometerText = ""
 
-    // Step 3
+    // Step 4
     @State private var selectedPlatforms: Set<String> = []
 
-    private let stepCount = 3
+    /// Four steps, each asking one thing.
+    ///
+    /// Name and state used to share a screen. A text field and a wheel don't
+    /// belong together: the keyboard takes half the screen and squeezes the
+    /// wheel down to nothing, so on first launch the wheel looked like an
+    /// empty gap. CDLGenius gives the state its own step, which is right.
+    private let stepCount = 4
 
     var body: some View {
         ZStack {
@@ -60,7 +72,8 @@ struct OnboardingView: View {
                     VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
                         switch step {
                         case 0: nameStep
-                        case 1: vehicleStep
+                        case 1: stateStep
+                        case 2: vehicleStep
                         default: platformStep
                         }
                     }
@@ -80,11 +93,11 @@ struct OnboardingView: View {
             if step == 0 { focused = .name }
         }
         .onChange(of: step) { _, newStep in
-            // Move the keyboard to whatever the new step asks for first, and
-            // dismiss it on the platform step, which is all taps.
+            // Only the typing steps take the keyboard. It must be down on the
+            // state step or it covers the wheel.
             switch newStep {
             case 0: focused = .name
-            case 1: focused = .vehicle
+            case 2: focused = .vehicle
             default: focused = nil
             }
         }
@@ -120,22 +133,8 @@ struct OnboardingView: View {
             GlassCard {
                 field("Your name", text: $name, placeholder: "Marco")
                     .focused($focused, equals: .name)
-                    .submitLabel(.done)
-                    .onSubmit { focused = nil }
-            }
-
-            // The wheel sits in the step rather than behind a row and a sheet.
-            // One fewer layer on the first screen anyone ever sees.
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Where do you drive?")
-                    .gpText(GP.Typo.rowTitle, tracking: GP.Typo.rowTitleTracking)
-                    .padding(.leading, 6)
-
-                StateWheel(selection: $stateCode, height: 180) { state in
-                    // Adopt the suggestion as the wheel lands, so the number
-                    // and the explanation under it always agree.
-                    taxRate = state.suggestedTaxRate
-                }
+                    .submitLabel(.next)
+                    .onSubmit { advance() }
             }
 
             Text("Only stored on this device.")
@@ -144,7 +143,26 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Step 2 — vehicle
+    // MARK: Step 2 — state
+
+    /// Its own screen, so the wheel gets the room it needs and no keyboard
+    /// ever covers it.
+    private var stateStep: some View {
+        VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
+            stepHeader(
+                title: "Where do you drive?",
+                subtitle: "This sets your starting tax hold-back. State income tax runs from nothing to over 13%, so it makes a real difference."
+            )
+
+            StateWheel(selection: $stateCode, height: 240) { state in
+                // Adopt the suggestion as the wheel lands, so the number and
+                // the sentence explaining it never disagree.
+                taxRate = state.suggestedTaxRate
+            }
+        }
+    }
+
+    // MARK: Step 3 — vehicle
 
     private var vehicleStep: some View {
         VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
@@ -170,7 +188,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Step 3 — platforms
+    // MARK: Step 4 — platforms
 
     private var platformStep: some View {
         VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
@@ -329,7 +347,8 @@ struct OnboardingView: View {
     private var canAdvance: Bool {
         switch step {
         case 0:  return !name.trimmingCharacters(in: .whitespaces).isEmpty
-        case 1:  return true                       // the whole step is optional
+        case 1:  return !stateCode.isEmpty         // drives the tax hold-back
+        case 2:  return true                       // the vehicle step is optional
         default: return !selectedPlatforms.isEmpty // the one thing we can't guess
         }
     }
