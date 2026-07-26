@@ -51,7 +51,8 @@ enum Seed {
         odometer: Int,
         activePlatformNames: Set<String>,
         taxRate: Double = 25,
-        maintenanceRate: Double = 8
+        maintenanceRate: Double = 8,
+        stateCode: String = ""
     ) -> DriverProfile {
 
         let year = Calendar.gigPilot.component(.year, from: .now)
@@ -67,6 +68,7 @@ enum Seed {
             maintenanceGoal: 3_000,
             maintenanceOpeningBalance: 0
         )
+        profile.stateCode = stateCode
         context.insert(profile)
 
         if !vehicleName.isEmpty {

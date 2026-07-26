@@ -24,7 +24,16 @@ struct SettingsView: View {
     @Query(sort: \Expense.date) private var expenses: [Expense]
 
     @State private var isUpgrading = false
+    @State private var isPickingState = false
     @State private var route: Route?
+
+    /// Bound to the profile so the picker writes straight through.
+    private var stateBinding: Binding<String> {
+        Binding(
+            get: { profile?.stateCode ?? "" },
+            set: { profile?.stateCode = $0; save() }
+        )
+    }
 
     private var entitlement: Entitlement { snapshot.entitlement }
     private var profile: DriverProfile? { profiles.first }
@@ -61,6 +70,16 @@ struct SettingsView: View {
         }
         .sheet(item: $route) { destination in
             editor(for: destination)
+        }
+        .sheet(isPresented: $isPickingState) {
+            StatePickerView(selection: stateBinding) { state in
+                // Offer the suggestion, don't impose it — the driver may have
+                // deliberately set their own rate already.
+                if let profile, profile.taxRate == 25 {
+                    profile.taxRate = state.suggestedTaxRate
+                    save()
+                }
+            }
         }
     }
 
@@ -140,6 +159,12 @@ struct SettingsView: View {
 
     private var moneyGroup: some View {
         SettingsGroup(title: "Money") {
+            SettingsRow(label: "State",
+                        value: StateDirectory.state(code: profile?.stateCode ?? "")?.name
+                               ?? "Not set") {
+                isPickingState = true
+            }
+            RowDivider(color: GP.Surface.dividerSoft)
             SettingsRow(label: "Tax set-aside",
                         value: percent(profile?.taxRate ?? snapshot.taxRate)) { route = .taxRate }
             RowDivider(color: GP.Surface.dividerSoft)

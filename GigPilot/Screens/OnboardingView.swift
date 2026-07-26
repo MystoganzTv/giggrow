@@ -36,6 +36,9 @@ struct OnboardingView: View {
     // Step 1
     @State private var name = ""
     @State private var location = ""
+    @State private var stateCode = ""
+    @State private var taxRate: Double = 25
+    @State private var isPickingState = false
 
     // Step 2
     @State private var vehicleName = ""
@@ -72,6 +75,13 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $isPickingState) {
+            StatePickerView(selection: $stateCode) { state in
+                // Adopt the suggestion at the moment of choosing, which is
+                // when the driver has just been told what it means.
+                taxRate = state.suggestedTaxRate
+            }
+        }
         .task {
             // A beat for the view to settle, or the focus is set before the
             // field exists and the keyboard never appears.
@@ -120,15 +130,18 @@ struct OnboardingView: View {
                         .submitLabel(.next)
                         .onSubmit { focused = .location }
                     RowDivider()
-                    field("City", text: $location, placeholder: "Phoenix, AZ", optional: true)
+                    field("City", text: $location, placeholder: "Phoenix", optional: true)
                         .focused($focused, equals: .location)
                         .submitLabel(.done)
                         .onSubmit { focused = nil }
+                    RowDivider()
+                    stateRow
                 }
             }
 
-            Text("Only stored on this device.")
+            Text("Only stored on this device. The state sets your starting tax hold-back — it varies a lot, and you can change it later.")
                 .gpText(GP.Typo.footnote, color: GP.Ink.muted)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 6)
         }
     }
@@ -247,6 +260,39 @@ struct OnboardingView: View {
         }
     }
 
+    /// Opens the visual picker rather than being a field. Fifty options with
+    /// a real consequence attached deserve more than a text box.
+    private var stateRow: some View {
+        Button {
+            focused = nil
+            isPickingState = true
+        } label: {
+            HStack {
+                Text("State")
+                    .gpText(GP.Typo.rowLabel)
+                Spacer(minLength: 12)
+
+                if let state = StateDirectory.state(code: stateCode) {
+                    HStack(spacing: 8) {
+                        if !state.hasIncomeTax {
+                            Circle().fill(GP.Palette.mint).frame(width: 5, height: 5)
+                        }
+                        Text(state.name)
+                            .gpText(.system(size: 15.5, weight: .medium))
+                    }
+                } else {
+                    Text("Choose")
+                        .gpText(.system(size: 15.5, weight: .medium), color: GP.Ink.muted)
+                }
+
+                Chevron()
+            }
+            .padding(.vertical, 15)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func field(_ label: String, text: Binding<String>,
                        placeholder: String, optional: Bool = false) -> some View {
         HStack {
@@ -333,14 +379,20 @@ struct OnboardingView: View {
     }
 
     private func finish() {
+        // "Phoenix, AZ" if both are given, otherwise whichever exists.
+        let city = location.trimmingCharacters(in: .whitespaces)
+        let place = [city, stateCode].filter { !$0.isEmpty }.joined(separator: ", ")
+
         Seed.completeOnboarding(
             context,
             name: name.trimmingCharacters(in: .whitespaces),
-            location: location.trimmingCharacters(in: .whitespaces),
+            location: place,
             vehicleName: vehicleName.trimmingCharacters(in: .whitespaces),
             vehicleDetail: vehicleDetail.trimmingCharacters(in: .whitespaces),
             odometer: Int(odometerText) ?? 0,
-            activePlatformNames: selectedPlatforms
+            activePlatformNames: selectedPlatforms,
+            taxRate: taxRate,
+            stateCode: stateCode
         )
         // Nothing else to do — the profile now exists, and RootView's @Query
         // swaps onboarding for the app on the next render.

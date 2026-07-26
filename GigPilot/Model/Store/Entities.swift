@@ -445,6 +445,10 @@ final class DriverProfile {
     /// the shift entry sheet.
     var idleThresholdMinutes: Int
 
+    /// USPS code for where the driver works. Drives the suggested tax
+    /// hold-back, since state income tax runs from nothing to over 13%.
+    var stateCode: String = ""
+
     /// Persisted so the UI has an answer before StoreKit finishes loading.
     /// StoreKit remains the source of truth; this is a cache, and
     /// `Entitlement` is the only type that should read it.
