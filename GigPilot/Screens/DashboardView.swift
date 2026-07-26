@@ -12,6 +12,7 @@ struct DashboardView: View {
     var onLogShift: () -> Void = {}
     var onShowHistory: () -> Void = {}
     var onShowProfile: () -> Void = {}
+    var onImport: () -> Void = {}
 
     var body: some View {
         ScreenScaffold {
@@ -43,6 +44,27 @@ struct DashboardView: View {
                 action: onLogShift,
                 showsLogo: true
             )
+
+            // The faster route in: screenshot the app's earnings screen and
+            // let GigPilot read it, rather than typing everything out.
+            Button(action: onImport) {
+                HStack(spacing: 9) {
+                    Text("Or import from a screenshot")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(GP.Palette.violet300)
+                    Spacer(minLength: 0)
+                    Chevron(size: 15, color: GP.Palette.violet300.opacity(0.6))
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(GP.Palette.violet500.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: GP.Radius.tile, style: .continuous)
+                        .strokeBorder(GP.Palette.violet400.opacity(0.28), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
 
             // The set-asides are the reason to bother, so name them up front
             // rather than showing two tiles reading $0.

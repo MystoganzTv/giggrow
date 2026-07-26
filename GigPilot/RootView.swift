@@ -18,6 +18,7 @@ struct RootView: View {
     @State private var isShowingExpenses = false
     @State private var isShowingHistory = false
     @State private var isShowingProfile = false
+    @State private var isImporting = false
     @State private var analyticsRange: AnalyticsRange = .week
 
     /// Re-running the projection on every change is what keeps all five
@@ -94,6 +95,7 @@ struct RootView: View {
         .sheet(isPresented: $isLoggingExpense) { LogExpenseView() }
         .sheet(isPresented: $isShowingExpenses) { ExpensesView() }
         .sheet(isPresented: $isShowingHistory) { ShiftHistoryView() }
+        .sheet(isPresented: $isImporting) { ImportScreenshotView() }
         .sheet(isPresented: $isShowingProfile) {
             if let profile = profiles.first {
                 ProfileEditor(profile: profile)
@@ -107,7 +109,8 @@ struct RootView: View {
         case .dashboard: DashboardView(snapshot: snapshot,
                                        onLogShift: { isLoggingShift = true },
                                        onShowHistory: { isShowingHistory = true },
-                                       onShowProfile: { isShowingProfile = true })
+                                       onShowProfile: { isShowingProfile = true },
+                                       onImport: { isImporting = true })
         case .apps:      AppsView(snapshot: snapshot)
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
                                        range: $analyticsRange,
@@ -129,6 +132,7 @@ struct RootView: View {
             // home without adding a second floating control.
             Menu {
                 Button("Log shift") { isLoggingShift = true }
+                Button("Import from screenshot") { isImporting = true }
                 Button("Add expense") { isLoggingExpense = true }
                 Divider()
                 Button("Shift history") { isShowingHistory = true }

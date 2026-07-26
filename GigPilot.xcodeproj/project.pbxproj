@@ -6,6 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		1A000000000000000000001B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1A0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1A0000000000000000000002;
+			remoteInfo = GigPilot;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		1A0000000000000000000005 /* GigPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GigPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A0000000000000000000018 /* GigPilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GigPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -197,16 +207,6 @@
 			targetProxy = 1A000000000000000000001B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin PBXContainerItemProxy section */
-		1A000000000000000000001B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1A0000000000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 1A0000000000000000000002;
-			remoteInfo = GigPilot;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin XCBuildConfiguration section */
 		1A000000000000000000000B /* Debug */ = {
@@ -402,20 +402,20 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		1A0000000000000000000015 /* Build configuration list for PBXNativeTarget "GigPilotTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				1A0000000000000000000016 /* Debug */,
-				1A0000000000000000000017 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		1A000000000000000000000A /* Build configuration list for PBXNativeTarget "GigPilot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				1A000000000000000000000D /* Debug */,
 				1A000000000000000000000E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1A0000000000000000000015 /* Build configuration list for PBXNativeTarget "GigPilotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A0000000000000000000016 /* Debug */,
+				1A0000000000000000000017 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
