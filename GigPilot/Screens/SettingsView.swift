@@ -78,7 +78,7 @@ struct SettingsView: View {
             editor(for: destination)
         }
         .sheet(isPresented: $isShowingDrives) {
-            DrivesView(tracker: tracker)
+            MileageView(tracker: tracker)
         }
         .sheet(isPresented: $isPickingState) {
             StatePickerView(selection: stateBinding) { state in

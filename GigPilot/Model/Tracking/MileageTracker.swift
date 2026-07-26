@@ -41,7 +41,16 @@ final class MileageTracker: NSObject {
         var isArmed: Bool { self == .waiting || self == .recording }
     }
 
+    /// How the current drive was started. A trip the driver began by hand is
+    /// theirs to end: sitting in a queue for ten minutes must not silently
+    /// close it, and Core Motion deciding the car stopped must not either.
+    enum Mode: Equatable {
+        case automatic
+        case manual
+    }
+
     private(set) var status: Status = .off
+    private(set) var mode: Mode = .automatic
     /// Metres so far in the drive being recorded.
     private(set) var currentDistance: Double = 0
     private(set) var currentStart: Date?
@@ -57,6 +66,12 @@ final class MileageTracker: NSObject {
     private var lastLocation: CLLocation?
     private var lastMovementAt: Date?
     private var idleTimer: Timer?
+
+    /// Set when the driver tapped Start before iOS had asked about location,
+    /// so the trip begins as soon as they say yes rather than needing a
+    /// second tap on a button that appeared to do nothing.
+    private var pendingManualStart = false
+    private var wasArmedBeforeManualTrip = false
 
     /// How long stationary before a drive is considered over. Shorter and a
     /// traffic light ends the trip; longer and a shift's worth of drives
@@ -128,6 +143,7 @@ final class MileageTracker: NSObject {
         if CMMotionActivityManager.isActivityAvailable() {
             motion.startActivityUpdates(to: .main) { [weak self] activity in
                 guard let self, let activity else { return }
+                guard self.mode != .manual || self.status != .recording else { return }
                 if activity.automotive && activity.confidence != .low {
                     self.beginDrive()
                 } else if activity.stationary && activity.confidence == .high {
@@ -143,8 +159,14 @@ final class MileageTracker: NSObject {
 
     // MARK: Drive lifecycle
 
-    private func beginDrive() {
-        guard status == .waiting else { return }
+    private func beginDrive(mode: Mode = .automatic) {
+        // Automatic detection may fire while a manual trip is already running.
+        // The driver's own trip wins.
+        guard status != .recording else { return }
+        guard mode == .manual || status == .waiting else { return }
+
+        if mode == .manual { wasArmedBeforeManualTrip = status.isArmed }
+        self.mode = mode
         status = .recording
         currentStart = .now
         currentDistance = 0
@@ -154,11 +176,11 @@ final class MileageTracker: NSObject {
         manager.allowsBackgroundLocationUpdates =
             manager.authorizationStatus == .authorizedAlways
         manager.startUpdatingLocation()
-        startIdleTimer()
+        if mode == .automatic { startIdleTimer() }
     }
 
     private func noteStillness() {
-        guard status == .recording else { return }
+        guard status == .recording, mode == .automatic else { return }
         lastMovementAt = lastMovementAt ?? .now
     }
 
@@ -170,7 +192,7 @@ final class MileageTracker: NSObject {
     }
 
     private func checkIdle() {
-        guard status == .recording, let last = lastMovementAt else { return }
+        guard status == .recording, mode == .automatic, let last = lastMovementAt else { return }
         guard Date.now.timeIntervalSince(last) >= idleTimeout else { return }
         finishDrive()
     }
@@ -210,11 +232,76 @@ final class MileageTracker: NSObject {
         manager.allowsBackgroundLocationUpdates = false
     }
 
+    // MARK: Manual trips
+
+    /// Starts a trip because the driver said so, not because motion did.
+    ///
+    /// Works whether or not automatic tracking is armed — a driver who leaves
+    /// the switch off still gets to record a single trip, and that is the
+    /// least surprising reading of a button marked "Start".
+    func startManualTrip() {
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            pendingManualStart = true
+            manager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
+            beginDrive(mode: .manual)
+        case .denied:
+            status = .denied
+        case .restricted:
+            status = .restricted
+        @unknown default:
+            status = .denied
+        }
+    }
+
     /// Ends the current drive immediately, for the "Stop" button.
-    func finishNow() {
+    ///
+    /// Returns the distance recorded so the screen can say what was saved —
+    /// `finishDrive` clears it, and a trip that vanishes into a confirmation
+    /// with no number is the kind of thing that makes people stop trusting it.
+    @discardableResult
+    func finishNow() -> Double {
+        let recorded = currentDistance
         lastMovementAt = .now
         finishDrive()
+
+        // A manual trip hands control back to whatever the driver set. If
+        // automatic tracking is off, the tracker stands down entirely rather
+        // than quietly staying armed.
+        if mode == .manual {
+            mode = .automatic
+            if !wasArmedBeforeManualTrip { disable() }
+        }
+        return recorded
     }
+
+    /// Throws away the drive in progress without saving it.
+    ///
+    /// Backing out of a trip you started by mistake shouldn't leave a stub in
+    /// the tax record for you to find and delete later.
+    func discardCurrentTrip() {
+        idleTimer?.invalidate()
+        idleTimer = nil
+        currentStart = nil
+        currentDistance = 0
+        lastLocation = nil
+        manager.stopUpdatingLocation()
+        manager.allowsBackgroundLocationUpdates = false
+
+        let wasManual = mode == .manual
+        mode = .automatic
+        status = (wasManual && !wasArmedBeforeManualTrip) ? .off : .waiting
+        if status == .off { disable() }
+    }
+
+    /// Elapsed seconds in the drive being recorded, for the live readout.
+    var currentDuration: TimeInterval {
+        guard let currentStart else { return 0 }
+        return max(Date.now.timeIntervalSince(currentStart), 0)
+    }
+
+    var currentMiles: Double { currentDistance / 1_609.344 }
 }
 
 // MARK: - CLLocationManagerDelegate
@@ -230,13 +317,24 @@ extension MileageTracker: CLLocationManagerDelegate {
             switch authorization {
             case .authorizedAlways:
                 notice = nil
-                arm()
+                if pendingManualStart {
+                    pendingManualStart = false
+                    beginDrive(mode: .manual)
+                } else {
+                    arm()
+                }
             case .authorizedWhenInUse:
                 // Usable, but drives ending while the app is closed will be
                 // missed. Say so rather than quietly under-recording.
                 notice = "GigPilot can only track while it's open. Allow location “Always” to catch drives in the background."
-                arm()
+                if pendingManualStart {
+                    pendingManualStart = false
+                    beginDrive(mode: .manual)
+                } else {
+                    arm()
+                }
             case .denied:
+                pendingManualStart = false
                 self.status = .denied
                 notice = "Location is off, so miles can't be recorded automatically."
             case .restricted:

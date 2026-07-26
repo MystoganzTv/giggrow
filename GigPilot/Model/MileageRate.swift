@@ -59,12 +59,24 @@ enum MileageRates {
         miles * rate(on: date)
     }
 
-    /// Whether a rate change falls inside a period, which is worth saying out
-    /// loud rather than letting a total quietly blend two rates.
+    /// Whether more than one rate applies across a period, which is worth
+    /// saying out loud rather than letting a total quietly blend two.
+    ///
+    /// Note this asks whether the *rate* differs, not whether a band starts
+    /// inside the range. Every calendar year begins on a band boundary, so
+    /// the naive reading of "a band starts in here" is true of every year and
+    /// answers nothing.
     static func changesDuring(_ range: Range<Date>, calendar: Calendar = .gigPilot) -> Bool {
-        schedule.contains { band in
+        guard range.lowerBound < range.upperBound else { return false }
+
+        let atStart = rate(on: range.lowerBound, calendar: calendar)
+        return schedule.contains { band in
             guard let start = calendar.date(from: band.effectiveFrom) else { return false }
-            return range.contains(start)
+            // A band that begins after the range opens and before it closes,
+            // carrying a different number.
+            return start > range.lowerBound
+                && start < range.upperBound
+                && band.dollarsPerMile != atStart
         }
     }
 

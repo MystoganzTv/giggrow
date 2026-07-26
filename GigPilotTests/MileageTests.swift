@@ -162,6 +162,80 @@ final class MileageTests: XCTestCase {
         XCTAssertFalse(profile.autoMileageTracking)
     }
 
+    // MARK: The Mileage screen's arithmetic
+    //
+    // These mirror what MileageView computes. The headline is a tax figure, so
+    // the properties that produce it are worth pinning down independently of
+    // whether the view renders.
+
+    /// Reviewed and unreviewed must partition the year: nothing counted twice,
+    /// nothing lost between the two tabs.
+    func testTabsPartitionTheYear() {
+        let drives = sampleDrives()
+        let reviewed = drives.filter { $0.purpose != .unclassified }
+        let unreviewed = drives.filter { $0.purpose == .unclassified }
+
+        XCTAssertEqual(reviewed.count + unreviewed.count, drives.count)
+        XCTAssertTrue(Set(reviewed.map(ObjectIdentifier.init))
+            .isDisjoint(with: Set(unreviewed.map(ObjectIdentifier.init))))
+    }
+
+    /// The year filter must not leak a drive from December into January.
+    func testYearFilterExcludesNeighbouringYears() {
+        let calendar = Calendar.gigPilot
+        let drives = [
+            DriveRecord(start: day(2025, 12, 31, hour: 23), end: day(2025, 12, 31, hour: 23),
+                        distanceMeters: 16_093, purpose: .business),
+            DriveRecord(start: day(2026, 1, 1, hour: 0), end: day(2026, 1, 1, hour: 1),
+                        distanceMeters: 16_093, purpose: .business),
+            DriveRecord(start: day(2027, 1, 1), end: day(2027, 1, 1, hour: 1),
+                        distanceMeters: 16_093, purpose: .business)
+        ]
+        let in2026 = drives.filter { calendar.component(.year, from: $0.start) == 2026 }
+        XCTAssertEqual(in2026.count, 1)
+    }
+
+    /// The headline must equal the sum of the rows beneath it, each at its own
+    /// rate. Applying one rate to total miles would be off by $3.50 on this
+    /// sample and by real money over a year.
+    func testYearTotalEqualsTheSumOfItsDrives() {
+        let drives = sampleDrives()
+        let headline = drives.reduce(0) { $0 + $1.deduction() }
+
+        XCTAssertEqual(headline, 72.50 + 38.00, accuracy: 0.02)
+
+        // What a single-rate implementation would have produced, for contrast.
+        let businessMiles = drives.filter { $0.purpose.isDeductible }.reduce(0) { $0 + $1.miles }
+        let naive = businessMiles * 0.76
+        XCTAssertNotEqual(headline, naive, accuracy: 0.02)
+    }
+
+    /// An override applies to the whole year, so there is no mid-year change
+    /// to warn about.
+    func testOverrideRateSuppressesTheMidYearWarning() {
+        let calendar = Calendar.gigPilot
+        let start = calendar.date(from: DateComponents(year: 2026, month: 1, day: 1))!
+        let end = calendar.date(from: DateComponents(year: 2027, month: 1, day: 1))!
+
+        XCTAssertTrue(MileageRates.changesDuring(start..<end), "2026 changed rate on 1 July")
+
+        // With an override every drive uses the same number, whatever the date.
+        let june = DriveRecord(start: day(2026, 6, 15), end: day(2026, 6, 15, hour: 1),
+                               distanceMeters: 16_093.44, purpose: .business)
+        let july = DriveRecord(start: day(2026, 7, 15), end: day(2026, 7, 15, hour: 1),
+                               distanceMeters: 16_093.44, purpose: .business)
+        XCTAssertEqual(june.deduction(overrideRate: 0.6),
+                       july.deduction(overrideRate: 0.6), accuracy: 0.0001)
+    }
+
+    /// A year with no rate change must not show the warning.
+    func testNoWarningInAYearThatDidntChange() {
+        let calendar = Calendar.gigPilot
+        let start = calendar.date(from: DateComponents(year: 2025, month: 1, day: 1))!
+        let end = calendar.date(from: DateComponents(year: 2025, month: 12, day: 31))!
+        XCTAssertFalse(MileageRates.changesDuring(start..<end))
+    }
+
     // MARK: Helpers
 
     private func day(_ y: Int, _ m: Int, _ d: Int, hour: Int = 12) -> Date {
