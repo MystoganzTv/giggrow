@@ -229,9 +229,9 @@ struct ProfileEditor: View {
     let profile: DriverProfile
 
     @State private var name = ""
-    @State private var location = ""
     @State private var payoutLast4 = ""
     @State private var loaded = false
+    @State private var isPickingState = false
 
     var body: some View {
         EditorScaffold(
@@ -240,11 +240,27 @@ struct ProfileEditor: View {
             onCancel: { dismiss() },
             onSave: save
         ) {
+            // No city field: nothing in the app ever read it.
             GlassCard {
                 VStack(spacing: 0) {
                     field("Name", text: $name, placeholder: "Your name")
                     RowDivider()
-                    field("City", text: $location, placeholder: "Phoenix, AZ")
+                    Button {
+                        isPickingState = true
+                    } label: {
+                        HStack {
+                            Text("State")
+                                .gpText(GP.Typo.rowLabel)
+                            Spacer(minLength: 12)
+                            Text(StateDirectory.state(code: profile.stateCode)?.name ?? "Choose")
+                                .gpText(.system(size: 15.5, weight: .medium),
+                                        color: profile.stateCode.isEmpty ? GP.Ink.muted : GP.Ink.primary)
+                            Chevron()
+                        }
+                        .padding(.vertical, 15)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -263,11 +279,15 @@ struct ProfileEditor: View {
             guard !loaded else { return }
             loaded = true
             name = profile.name
-            // detail is "City · Since 2024"; recover just the city.
-            location = profile.detail
-                .components(separatedBy: " · ")
-                .first { !$0.hasPrefix("Since") } ?? ""
             payoutLast4 = profile.payoutLast4
+        }
+        .sheet(isPresented: $isPickingState) {
+            StatePickerView(selection: Binding(
+                get: { profile.stateCode },
+                set: { profile.stateCode = $0 }
+            )) { state in
+                if profile.taxRate == 25 { profile.taxRate = state.suggestedTaxRate }
+            }
         }
     }
 
@@ -285,17 +305,16 @@ struct ProfileEditor: View {
     }
 
     private func save() {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        let trimmedCity = location.trimmingCharacters(in: .whitespaces)
-
         // Keep the "Since <year>" suffix the profile already carried.
         let since = profile.detail
             .components(separatedBy: " · ")
             .first { $0.hasPrefix("Since") }
             ?? "Since \(Calendar.gigPilot.component(.year, from: .now))"
 
-        profile.name = trimmedName
-        profile.detail = trimmedCity.isEmpty ? since : "\(trimmedCity) · \(since)"
+        let place = StateDirectory.state(code: profile.stateCode)?.name ?? ""
+
+        profile.name = name.trimmingCharacters(in: .whitespaces)
+        profile.detail = place.isEmpty ? since : "\(place) · \(since)"
         profile.payoutLast4 = String(payoutLast4.filter(\.isNumber).suffix(4))
 
         try? context.save()

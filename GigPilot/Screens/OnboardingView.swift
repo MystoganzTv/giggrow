@@ -30,12 +30,11 @@ struct OnboardingView: View {
     @FocusState private var focused: Field?
 
     private enum Field: Hashable {
-        case name, location, vehicle, odometer
+        case name, vehicle, odometer
     }
 
     // Step 1
     @State private var name = ""
-    @State private var location = ""
     @State private var stateCode = ""
     @State private var taxRate: Double = 25
     @State private var isPickingState = false
@@ -123,15 +122,13 @@ struct OnboardingView: View {
                 subtitle: "Every app you drive for, in one ledger. Let's set it up — takes a minute."
             )
 
+            // Two fields, both of which do something. There was a City box
+            // here; nothing in the app read it, so it was asking for typing
+            // on the first screen and giving nothing back.
             GlassCard {
                 VStack(spacing: 0) {
                     field("Your name", text: $name, placeholder: "Marco")
                         .focused($focused, equals: .name)
-                        .submitLabel(.next)
-                        .onSubmit { focused = .location }
-                    RowDivider()
-                    field("City", text: $location, placeholder: "Phoenix", optional: true)
-                        .focused($focused, equals: .location)
                         .submitLabel(.done)
                         .onSubmit { focused = nil }
                     RowDivider()
@@ -139,7 +136,7 @@ struct OnboardingView: View {
                 }
             }
 
-            Text("Only stored on this device. The state sets your starting tax hold-back — it varies a lot, and you can change it later.")
+            Text("Only stored on this device. Your state sets the starting tax hold-back — it varies a lot, and you can change it later.")
                 .gpText(GP.Typo.footnote, color: GP.Ink.muted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 6)
@@ -379,9 +376,8 @@ struct OnboardingView: View {
     }
 
     private func finish() {
-        // "Phoenix, AZ" if both are given, otherwise whichever exists.
-        let city = location.trimmingCharacters(in: .whitespaces)
-        let place = [city, stateCode].filter { !$0.isEmpty }.joined(separator: ", ")
+        // The state's full name reads better in the profile than its code.
+        let place = StateDirectory.state(code: stateCode)?.name ?? ""
 
         Seed.completeOnboarding(
             context,
