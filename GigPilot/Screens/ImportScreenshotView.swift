@@ -14,6 +14,14 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 
+/// What a screenshot covers. Gig apps show both, and they aren't
+/// interchangeable — a week imported as a day piles seven days onto one bar.
+enum ImportPeriod: String, CaseIterable, Identifiable {
+    case day, week
+    var id: String { rawValue }
+    var label: String { self == .day ? "One day" : "A week" }
+}
+
 struct ImportScreenshotView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -35,6 +43,7 @@ struct ImportScreenshotView: View {
     @State private var hoursText = ""
     @State private var milesText = ""
     @State private var date = Date.now
+    @State private var period: ImportPeriod = .week
 
     var body: some View {
         NavigationStack {
@@ -272,12 +281,50 @@ struct ImportScreenshotView: View {
                               (String(format: "%.0f", $0.value), $0.source)
                           })
                 RowDivider()
-                DatePicker("Date", selection: $date, displayedComponents: .date)
+                periodRow
+                RowDivider()
+                DatePicker(period == .day ? "Date" : "Week starting",
+                           selection: $date, displayedComponents: .date)
                     .datePickerStyle(.compact)
                     .tint(GP.Palette.violet400)
                     .padding(.vertical, 6)
+
+                Text(period == .day
+                     ? "One day's driving. It'll show on that day's bar and feed your peak-hours chart."
+                     : "A whole week's totals. The figures are exact, but GigPilot won't know which hours of the day they came from, so this one sits out of the peak-hours chart.")
+                    .gpText(GP.Typo.footnote, color: GP.Ink.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 12)
             }
         }
+    }
+
+    /// What the screenshot covers. A weekly summary is real data at a
+    /// coarser grain — importing it as a single day would pile a week onto
+    /// one bar and invent a peak hour.
+    private var periodRow: some View {
+        HStack(spacing: 7) {
+            ForEach(ImportPeriod.allCases) { option in
+                let isSelected = option == period
+                Button {
+                    withAnimation(.easeOut(duration: 0.14)) { period = option }
+                } label: {
+                    Text(option.label)
+                        .font(.system(size: 13.5, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? .white : GP.Ink.tertiary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(isSelected ? AnyShapeStyle(GP.Gradients.segment)
+                                               : AnyShapeStyle(Color.clear),
+                                    in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Color.white.opacity(0.06), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+        .padding(.vertical, 12)
     }
 
     private func figureRow(_ label: String, text: Binding<String>, prefix: String,
@@ -417,15 +464,30 @@ struct ImportScreenshotView: View {
               let account = accounts.first(where: { $0.name == selectedPlatform })
         else { return }
 
-        // `canSave` already guarantees this is above zero — the block is only
-        // ever as long as the hours the driver confirmed.
+        // `canSave` already guarantees this is above zero.
         let hours = Double(hoursText) ?? 0
         guard hours > 0 else { return }
 
-        let start = Calendar.gigPilot.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
-        let end = start.addingTimeInterval(hours * 3600)
+        let cal = Calendar.gigPilot
+        let shift: Shift
 
-        let shift = Shift(start: start, end: end, miles: Double(milesText) ?? 0)
+        switch period {
+        case .day:
+            let start = cal.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
+            shift = Shift(start: start,
+                          end: start.addingTimeInterval(hours * 3600),
+                          miles: Double(milesText) ?? 0)
+
+        case .week:
+            // Spans the week it covers. `recordedHours` carries the real
+            // figure so nothing reads 168 hours off the span.
+            let start = cal.startOfWeek(for: date)
+            let end = cal.date(byAdding: .day, value: 7, to: start) ?? start
+            shift = Shift(start: start, end: end, miles: Double(milesText) ?? 0)
+            shift.recordedHours = hours
+            shift.isAggregate = true
+        }
+
         context.insert(shift)
 
         let earning = PlatformEarning(
@@ -436,7 +498,9 @@ struct ImportScreenshotView: View {
         context.insert(earning)
         earning.shift = shift
         shift.earnings.append(earning)
-        shift.note = "Imported from screenshot"
+        shift.note = period == .day
+            ? "Imported from screenshot"
+            : "Imported from a weekly summary"
 
         try? context.save()
         dismiss()

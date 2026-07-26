@@ -73,28 +73,36 @@ enum EarningsParser {
         result.allLines = lines.map(\.text)
         result.platformName = detectPlatform(lines)
 
+        // Text height stands in for font size. On a weekly summary the
+        // headline total is physically the largest thing on screen, which is
+        // a stronger signal than any keyword — Uber's doesn't say "total"
+        // anywhere near it.
+        let tallest = lines.map(\.box.height).max() ?? 0
+
         for (index, line) in lines.enumerated() {
             let lower = line.text.lowercased()
-            // The line above often labels the figure below it.
             let context = (index > 0 ? lines[index - 1].text.lowercased() : "") + " " + lower
 
-            for amount in currencyAmounts(in: line.text) {
-                result.amounts.append(
-                    ParsedCandidate(
-                        value: amount,
-                        source: line.text,
-                        confidence: score(base: Double(line.confidence),
-                                          cues: totalCues, in: context,
-                                          position: line.topDownY)
-                    )
-                )
-            }
+            // A deduction is not income. Uber's fare breakdown lists four of
+            // them, and dropping the sign turned "Amount Uber kept −$206.19"
+            // into a plausible week's earnings.
+            let isDeduction = lower.contains("-$") || lower.contains("−$")
+                || lower.hasPrefix("-") || lower.hasPrefix("−")
 
-            if let count = number(in: line.text, near: unitCues, context: context) {
-                result.units.append(
-                    ParsedCandidate(value: Int(count), source: line.text,
-                                    confidence: Double(line.confidence))
-                )
+            if !isDeduction {
+                for amount in currencyAmounts(in: line.text) {
+                    result.amounts.append(
+                        ParsedCandidate(
+                            value: amount,
+                            source: line.text,
+                            confidence: score(base: Double(line.confidence),
+                                              cues: totalCues, in: context,
+                                              position: line.topDownY,
+                                              relativeSize: tallest > 0
+                                                  ? line.box.height / tallest : 0)
+                        )
+                    )
+                }
             }
 
             if let value = duration(in: line.text, context: context) {
@@ -104,20 +112,26 @@ enum EarningsParser {
                 )
             }
 
-            if let value = number(in: line.text, near: mileCues, context: context) {
-                result.miles.append(
-                    ParsedCandidate(value: value, source: line.text,
-                                    confidence: Double(line.confidence))
-                )
-            }
-
-            if let date = date(in: line.text) {
+            for date in dates(in: line.text) {
                 result.dates.append(
                     ParsedCandidate(value: date, source: line.text,
                                     confidence: Double(line.confidence))
                 )
             }
         }
+
+        // Counts and distances are matched by column, not by reading order.
+        // "Online" and "Trips" sit side by side with their values beneath,
+        // so the line before "47" is "20 h 21 m" — following reading order
+        // read the trip count as 20.
+        result.units = valuesUnderLabel(cues: unitCues, in: lines)
+            .compactMap { candidate in
+                guard let whole = Int(exactly: candidate.value.rounded()) else { return nil }
+                return ParsedCandidate(value: whole,
+                                       source: candidate.source,
+                                       confidence: candidate.confidence)
+            }
+        result.miles = valuesUnderLabel(cues: mileCues, in: lines)
 
         // Strongest cue first; ties broken by the larger figure, since the
         // headline total is usually the biggest number on the screen.
@@ -154,14 +168,77 @@ enum EarningsParser {
         return nil
     }
 
-    /// Confidence blends OCR certainty, whether a labelling word is nearby,
-    /// and how high on the screen the line sat — headline totals are at the top.
+    /// Confidence blends OCR certainty, a nearby labelling word, height on
+    /// the screen, and how large the text is relative to everything else.
+    ///
+    /// Size carries real weight: on Uber's weekly summary the total is the
+    /// biggest text on screen and carries no label at all, while a chart
+    /// axis label sits equally high in tiny type. Position alone scored
+    /// those two the same.
     private static func score(base: Double, cues: [String],
-                              in context: String, position: CGFloat) -> Double {
-        var value = base * 0.5
-        if cues.contains(where: { context.contains($0) }) { value += 0.35 }
-        if position < 0.4 { value += 0.15 }
+                              in context: String, position: CGFloat,
+                              relativeSize: CGFloat) -> Double {
+        var value = base * 0.35
+        if cues.contains(where: { context.contains($0) }) { value += 0.30 }
+        if position < 0.4 { value += 0.10 }
+        value += Double(min(relativeSize, 1)) * 0.25
         return min(value, 1)
+    }
+
+    // MARK: Column matching
+
+    /// Finds the value belonging to each label, by column rather than by
+    /// reading order.
+    ///
+    /// Vision returns lines top-to-bottom, so a two-column stat block
+    /// interleaves labels and values. The value for a label is the nearest
+    /// line *below* it whose horizontal span overlaps the label's — which is
+    /// what "underneath it" means on screen.
+    private static func valuesUnderLabel(cues: [String],
+                                         in lines: [RecognisedLine]) -> [ParsedCandidate<Double>] {
+        var found: [ParsedCandidate<Double>] = []
+
+        for label in lines {
+            let lower = label.text.lowercased()
+            guard cues.contains(where: { lower.contains($0) }) else { continue }
+
+            // The label may carry its own value — "47 trips" on one line.
+            if let inline = firstNumber(in: label.text), !label.text.contains("$") {
+                found.append(ParsedCandidate(value: inline, source: label.text,
+                                             confidence: Double(label.confidence)))
+                continue
+            }
+
+            let candidates = lines
+                .filter { $0.topDownY > label.topDownY }
+                .filter { horizontallyOverlaps($0.box, label.box) }
+                .sorted { $0.topDownY < $1.topDownY }
+
+            for line in candidates.prefix(2) {
+                guard !line.text.contains("$"),
+                      // A duration is not a count; "20 h 21 m" must not be
+                      // read as 20 trips.
+                      duration(in: line.text, context: "") == nil,
+                      let value = firstNumber(in: line.text) else { continue }
+                found.append(ParsedCandidate(value: value, source: line.text,
+                                             confidence: Double(line.confidence)))
+                break
+            }
+        }
+        return found
+    }
+
+    /// True when two boxes share horizontal space — the same column.
+    private static func horizontallyOverlaps(_ a: CGRect, _ b: CGRect) -> Bool {
+        let overlap = min(a.maxX, b.maxX) - max(a.minX, b.minX)
+        return overlap > min(a.width, b.width) * 0.4
+    }
+
+    private static func firstNumber(in text: String) -> Double? {
+        matches(#"(\d{1,3}(?:,\d{3})*(?:\.\d+)?)"#, in: text)
+            .compactMap { $0.first ?? nil }
+            .compactMap { Double($0.replacingOccurrences(of: ",", with: "")) }
+            .first
     }
 
     // MARK: Extractors
@@ -182,21 +259,6 @@ enum EarningsParser {
         }
     }
 
-    /// A number adjacent to one of `cues`, in either order: "12 trips" or
-    /// "Trips 12".
-    static func number(in text: String, near cues: [String], context: String) -> Double? {
-        let lower = text.lowercased()
-        guard cues.contains(where: { lower.contains($0) }) || cues.contains(where: { context.contains($0) })
-        else { return nil }
-
-        // Skip anything that's part of a currency figure.
-        guard !lower.contains("$") else { return nil }
-
-        let numbers = matches(#"(\d{1,3}(?:,\d{3})*(?:\.\d+)?)"#, in: text)
-            .compactMap { $0.first ?? nil }
-            .compactMap { Double($0.replacingOccurrences(of: ",", with: "")) }
-        return numbers.first
-    }
 
     /// "6h 30m", "6.5 hrs", "6:30". Returns hours as a decimal.
     static func duration(in text: String, context: String) -> Double? {
@@ -226,7 +288,25 @@ enum EarningsParser {
         return nil
     }
 
+    /// Every date in a line. Uber's header is a range — "Jul 13 - Jul 20" —
+    /// so a parser that only handles one date per line found nothing at all.
+    static func dates(in text: String) -> [Date] {
+        // Split on the dash forms a range might use, then parse each half.
+        let parts = text.components(separatedBy: CharacterSet(charactersIn: "-–—"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        var found = parts.compactMap { singleDate(in: $0) }
+        if found.isEmpty, let whole = singleDate(in: text) { found = [whole] }
+        return found
+    }
+
+    /// Kept for callers wanting one answer; returns the earliest match.
     static func date(in text: String) -> Date? {
+        dates(in: text).min()
+    }
+
+    private static func singleDate(in text: String) -> Date? {
         let formats = ["MMM d, yyyy", "MMM d yyyy", "d MMM yyyy",
                        "MM/dd/yyyy", "yyyy-MM-dd", "MMM d"]
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -235,7 +315,6 @@ enum EarningsParser {
             f.locale = Locale(identifier: "en_US_POSIX")
             f.dateFormat = format
             if let date = f.date(from: cleaned) {
-                // "MMM d" has no year and defaults to 2000; assume this year.
                 if format == "MMM d" {
                     var comps = Calendar.gigPilot.dateComponents([.month, .day], from: date)
                     comps.year = Calendar.gigPilot.component(.year, from: .now)

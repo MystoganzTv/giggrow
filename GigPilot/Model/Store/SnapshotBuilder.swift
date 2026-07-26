@@ -323,7 +323,11 @@ extension EarningsSnapshot {
             ) {
                 primary[bucket] += shift.gross
             }
-            spread(shift: shift, into: &hourly, calendar: calendar)
+            // An imported week has a real total but no idea which hours of
+            // the day produced it. Spreading it would invent a peak.
+            if !shift.isAggregate {
+                spread(shift: shift, into: &hourly, calendar: calendar)
+            }
         }
 
         // Take-home per day, after both set-asides. Only out-of-pocket

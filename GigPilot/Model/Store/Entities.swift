@@ -24,6 +24,19 @@ final class Shift {
     var end: Date
     /// Miles driven across the whole shift, all platforms together.
     var miles: Double
+
+    /// Hours worked, when they can't be derived from the span.
+    ///
+    /// A weekly summary is real data — $829.41 over 20h21m and 47 trips —
+    /// but it isn't a block of time. Stored as a week-long entry, `hours`
+    /// would read 168 from start to end. When this is set it wins, so the
+    /// figure stays the one the driver confirmed.
+    var recordedHours: Double?
+
+    /// True when this covers a period rather than a single sitting. Such
+    /// entries are excluded from the hourly distribution: the total is
+    /// known, but not which hours of the day it came from.
+    var isAggregate: Bool = false
     /// Minutes spent waiting for a ping. Subtracted from the duration to get
     /// active time; the design's dashboard shows this split.
     var idleMinutes: Double
@@ -51,9 +64,13 @@ final class Shift {
 
     // MARK: Derived
 
-    /// Length of the block in hours — counted once, however many apps were on.
+    /// Hours worked — counted once, however many apps were on.
+    ///
+    /// A confirmed figure beats the span, so an imported week reports the
+    /// 20h21m the driver actually worked rather than the 168 hours it covers.
     var hours: Double {
-        max(end.timeIntervalSince(start), 0) / 3600
+        if let recordedHours, recordedHours > 0 { return recordedHours }
+        return max(end.timeIntervalSince(start), 0) / 3600
     }
 
     var idleHours: Double { min(idleMinutes / 60, hours) }
