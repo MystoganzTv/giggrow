@@ -320,6 +320,69 @@ enum EarningsParser {
         dates(in: text).min()
     }
 
+    /// The period header — "Jun 1 - Jun 8", "Jun 29 – Jul 5" — wherever it is.
+    ///
+    /// Worth its own pass rather than relying on the general date scan. The
+    /// header is the one date on the screen that is definitely the period
+    /// being shown, and without it the day detector has no week to place a
+    /// bar into. When this returned nothing the importer fell back to today,
+    /// which turned a screenshot of June into "Sunday 26 July" — confidently,
+    /// with a chart reading to back it up. A wrong date presented that firmly
+    /// is worse than no date at all.
+    static func weekStart(in lines: [RecognisedLine], now: Date = .now) -> Date? {
+        let months = ["jan", "feb", "mar", "apr", "may", "jun",
+                      "jul", "aug", "sep", "oct", "nov", "dec"]
+        let monthGroup = months.joined(separator: "|")
+        // "Jun 1 - Jun 8" and "1 Jun - 8 Jun" both appear in the wild.
+        let patterns = [
+            #"\b(\#(monthGroup))[a-z]*\.?\s+(\d{1,2})\b\s*[-–—]"#,
+            #"\b(\d{1,2})\s+(\#(monthGroup))[a-z]*\.?\b\s*[-–—]"#
+        ]
+
+        for line in lines {
+            let lower = line.text.lowercased()
+            for (index, pattern) in patterns.enumerated() {
+                guard let groups = matches(pattern, in: lower).first,
+                      groups.count >= 2,
+                      let a = groups[0], let b = groups[1] else { continue }
+
+                let monthText = index == 0 ? a : b
+                let dayText   = index == 0 ? b : a
+                guard let month = months.firstIndex(of: String(monthText.prefix(3))).map({ $0 + 1 }),
+                      let day = Int(dayText), (1...31).contains(day) else { continue }
+
+                if let date = resolveYear(month: month, day: day, now: now) {
+                    return Calendar.gigPilot.startOfWeek(for: date)
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Picks the year a bare "Jun 1" means.
+    ///
+    /// A screenshot is always of something that already happened, so a date
+    /// that would land in the future belongs to last year. Without this, a
+    /// December screenshot imported in January reads as eleven months away.
+    private static func resolveYear(month: Int, day: Int, now: Date) -> Date? {
+        let calendar = Calendar.gigPilot
+        let thisYear = calendar.component(.year, from: now)
+
+        var components = DateComponents()
+        components.month = month
+        components.day = day
+        components.year = thisYear
+        guard let candidate = calendar.date(from: components) else { return nil }
+
+        // A couple of days of slack: a screenshot taken this morning of a
+        // period ending today shouldn't be thrown back a year.
+        if candidate.timeIntervalSince(now) > 2 * 86_400 {
+            components.year = thisYear - 1
+            return calendar.date(from: components)
+        }
+        return candidate
+    }
+
     private static func singleDate(in text: String) -> Date? {
         let formats = ["MMM d, yyyy", "MMM d yyyy", "d MMM yyyy",
                        "MM/dd/yyyy", "yyyy-MM-dd", "MMM d"]

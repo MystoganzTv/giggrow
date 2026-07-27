@@ -162,6 +162,77 @@ final class MileageTests: XCTestCase {
         XCTAssertFalse(profile.autoMileageTracking)
     }
 
+    // MARK: The period header
+    //
+    // "Jun 1 - Jun 8" is the one date on an Uber screen that definitely
+    // describes the period shown. When it wasn't read the importer fell back
+    // to today, and a June screenshot was filed as "Sunday 26 July" — stated
+    // firmly, with a chart reading behind it. These pin the header down.
+
+    private func lines(_ texts: [String]) -> [RecognisedLine] {
+        texts.enumerated().map { index, text in
+            RecognisedLine(text: text, confidence: 0.9,
+                           box: CGRect(x: 0.1, y: 0.9 - Double(index) * 0.05,
+                                       width: 0.5, height: 0.03))
+        }
+    }
+
+    private var july26_2026: Date { day(2026, 7, 26) }
+
+    func testHeaderRangeGivesTheWeekStart() {
+        let found = EarningsParser.weekStart(in: lines(["Jun 1 - Jun 8"]), now: july26_2026)
+        XCTAssertEqual(found, day(2026, 6, 1))
+    }
+
+    /// En dash and em dash both appear; so does the day-first spelling.
+    func testHeaderAcceptsTheDashAndOrderVariants() {
+        XCTAssertEqual(EarningsParser.weekStart(in: lines(["Jun 1 – Jun 8"]), now: july26_2026),
+                       day(2026, 6, 1))
+        XCTAssertEqual(EarningsParser.weekStart(in: lines(["jul 13 — jul 20"]), now: july26_2026),
+                       day(2026, 7, 13))
+        XCTAssertEqual(EarningsParser.weekStart(in: lines(["1 Jun - 8 Jun"]), now: july26_2026),
+                       day(2026, 6, 1))
+    }
+
+    /// A week that runs into the next month still starts where it starts.
+    func testHeaderHandlesAWeekCrossingAMonth() {
+        let found = EarningsParser.weekStart(in: lines(["Jun 29 - Jul 5"]), now: july26_2026)
+        XCTAssertEqual(found, day(2026, 6, 29))
+    }
+
+    /// A screenshot is always of something that already happened, so a bare
+    /// "Dec 22" read in July belongs to last year, not five months from now.
+    func testHeaderPutsAFutureLookingDateInLastYear() {
+        let found = EarningsParser.weekStart(in: lines(["Dec 22 - Dec 28"]), now: july26_2026)
+        let year = Calendar.gigPilot.component(.year, from: found ?? .distantFuture)
+        XCTAssertEqual(year, 2025)
+    }
+
+    /// Everything else on the screen must not look like a header. The status
+    /// bar clock already cost us once.
+    func testHeaderIgnoresTheRestOfTheScreen() {
+        let noise = lines(["20:33", "Stats", "Total Earnings $291.64",
+                           "Online", "8 h 49 m", "Trips", "21", "See customer fare breakdown"])
+        XCTAssertNil(EarningsParser.weekStart(in: noise, now: july26_2026))
+    }
+
+    /// The exact failure the user reported, end to end: the June 1 week plus
+    /// a bar labelled 7 is Sunday 7 June, not Sunday 26 July.
+    func testJuneScreenshotDoesNotBecomeToday() {
+        let week = EarningsParser.weekStart(in: lines(["Jun 1 - Jun 8"]), now: july26_2026)
+        XCTAssertNotNil(week)
+
+        let resolved = ChartDayDetector.date(
+            for: .day(index: 6, weekday: "sun", dayOfMonth: 7),
+            weekStart: week!
+        )
+        XCTAssertEqual(resolved, day(2026, 6, 7))
+
+        let calendar = Calendar.gigPilot
+        XCTAssertEqual(calendar.component(.month, from: resolved ?? .distantPast), 6,
+                       "A June screenshot must not land in July")
+    }
+
     // MARK: Which day a screenshot shows
 
     /// The number under the bar is the date, written on the screen. Nothing

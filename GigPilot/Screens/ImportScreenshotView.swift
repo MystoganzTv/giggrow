@@ -50,6 +50,9 @@ private struct ImportedSource: Identifiable {
     /// What the chart said, when it said anything. Shown so the driver can
     /// see the app's reasoning instead of a date appearing from nowhere.
     var detectedNote: String?
+    /// True when the date is a guess rather than something read off the
+    /// screen. Blocks saving until it's confirmed.
+    var needsDate: Bool = false
 
     var gross: Double { Double(amountText) ?? 0 }
     var hours: Double { Double(hoursText) ?? 0 }
@@ -82,6 +85,11 @@ struct ImportScreenshotView: View {
     /// The decimal pad has no return key, so without this there is no way
     /// off the keyboard at all — you can open Gross and never get back.
     @FocusState private var isEditingField: Bool
+
+    /// The screenshot being looked at full size. Checking a figure against
+    /// the source shouldn't mean leaving the app for Photos and losing every
+    /// edit made so far.
+    @State private var viewing: UIImage?
 
     var body: some View {
         NavigationStack {
@@ -150,6 +158,18 @@ struct ImportScreenshotView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .fullScreenCover(item: Binding(
+            get: { viewing.map(ViewedImage.init) },
+            set: { viewing = $0?.image }
+        )) { viewed in
+            ScreenshotViewer(image: viewed.image)
+        }
+    }
+
+    /// `fullScreenCover(item:)` needs identity, and UIImage has none.
+    private struct ViewedImage: Identifiable {
+        let id = UUID()
+        let image: UIImage
     }
 
     // MARK: Intro
@@ -248,15 +268,18 @@ struct ImportScreenshotView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 ForEach(sources) { source in
-                    Image(uiImage: source.image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 74, height: 128)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(GP.Surface.stroke, lineWidth: 1)
-                        )
+                    Button { viewing = source.image } label: {
+                        Image(uiImage: source.image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 74, height: 128)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(GP.Surface.stroke, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -272,13 +295,26 @@ struct ImportScreenshotView: View {
                 // screen, a card that doesn't say which one it is can't be
                 // edited or removed with any confidence.
                 HStack(spacing: 12) {
-                    Image(uiImage: value.image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 40, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(GP.Surface.stroke, lineWidth: 1))
+                    Button { viewing = value.image } label: {
+                        Image(uiImage: value.image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 44, height: 62)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(GP.Surface.stroke, lineWidth: 1))
+                            .overlay(alignment: .bottomTrailing) {
+                                // Says it's tappable. A thumbnail that happens
+                                // to be a button is a thumbnail nobody taps.
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(3)
+                                    .background(Color.black.opacity(0.55), in: Circle())
+                                    .padding(3)
+                            }
+                    }
+                    .buttonStyle(.plain)
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(value.platform.isEmpty ? "Which app is this?" : value.platform)
@@ -306,7 +342,9 @@ struct ImportScreenshotView: View {
                 }
                 if let note = value.detectedNote {
                     Text(note)
-                        .gpText(.system(size: 11.5, weight: .regular), color: GP.Ink.muted)
+                        .gpText(.system(size: 11.5, weight: .regular),
+                                color: value.needsDate ? GP.Palette.amber.opacity(0.9)
+                                                       : GP.Ink.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -319,10 +357,29 @@ struct ImportScreenshotView: View {
                         }
                     }
 
+                    // A week of dailies is seven screenshots of one app.
+                    // Asking seven times is asking six times too many.
+                    if !value.platform.isEmpty && sources.contains(where: { $0.platform.isEmpty }) {
+                        Button {
+                            let name = value.platform
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                for index in sources.indices where sources[index].platform.isEmpty {
+                                    sources[index].platform = name
+                                }
+                            }
+                        } label: {
+                            Text("Use \(value.platform) for the rest")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(GP.Palette.violet400)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     RowDivider()
                     figureRow("Gross", text: source.amountText, prefix: "$",
                               alternatives: value.parsed.amounts.map {
-                                  String(format: "%.2f", $0.value)
+                                  (String(format: "%.2f", $0.value), context(of: $0.source))
                               })
                     RowDivider()
                     // "Units" meant nothing to anyone. Every app has its own
@@ -330,25 +387,42 @@ struct ImportScreenshotView: View {
                     // being imported.
                     figureRow(unitNoun(for: value.platform), text: source.unitsText,
                               prefix: "",
-                              alternatives: value.parsed.units.map { "\($0.value)" })
+                              alternatives: value.parsed.units.map {
+                                  ("\($0.value)", context(of: $0.source))
+                              })
                     RowDivider()
                     figureRow("Hours online", text: source.hoursText, prefix: "",
                               required: true,
                               alternatives: value.parsed.hours.map {
-                                  String(format: "%.2f", $0.value)
+                                  (String(format: "%.2f", $0.value), context(of: $0.source))
                               })
                     RowDivider()
                     figureRow("Miles", text: source.milesText, prefix: "",
                               alternatives: value.parsed.miles.map {
-                                  String(format: "%.0f", $0.value)
+                                  (String(format: "%.0f", $0.value), context(of: $0.source))
                               })
                     RowDivider()
                     periodRow(source.period)
                     DatePicker(value.period == .day ? "Date" : "Week starting",
-                               selection: source.date, displayedComponents: .date)
+                               selection: Binding(
+                                   get: { source.wrappedValue.date },
+                                   set: { newDate in
+                                       source.wrappedValue.date = newDate
+                                       // Setting it by hand is the confirmation.
+                                       source.wrappedValue.needsDate = false
+                                       source.wrappedValue.detectedNote = nil
+                                   }
+                               ),
+                               displayedComponents: .date)
                         .datePickerStyle(.compact)
                         .tint(GP.Palette.violet400)
                         .padding(.vertical, 6)
+
+                    if value.needsDate {
+                        Text("GigPilot couldn't read this one's date, so it won't save until you set it. Tap the screenshot above to check.")
+                            .gpText(GP.Typo.footnote, color: GP.Palette.amber.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Button {
                         isEditingField = false
                         withAnimation(.easeOut(duration: 0.2)) { expanded = nil }
@@ -363,7 +437,16 @@ struct ImportScreenshotView: View {
                     .buttonStyle(.plain)
                 } else {
                     HStack(spacing: 14) {
-                        miniStat(value.period == .day ? "Day" : "Week")
+                        if value.needsDate {
+                            Text("Date needed")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(GP.Palette.amber)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
+                                .background(GP.Palette.amber.opacity(0.14), in: Capsule())
+                        } else {
+                            miniStat(value.period == .day ? "Day" : "Week")
+                        }
                         if value.hours > 0 {
                             miniStat(String(format: "%.2f h", value.hours))
                         } else {
@@ -393,6 +476,18 @@ struct ImportScreenshotView: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(GP.Surface.glassFaint, in: Capsule())
+    }
+
+    /// The words around a parsed figure, trimmed to a chip's worth.
+    ///
+    /// The raw source is the whole OCR line — "Total Earnings $291.64" — so
+    /// stripping the number leaves exactly the label that identifies it.
+    private func context(of source: String) -> String {
+        let words = source
+            .replacingOccurrences(of: #"[$€£]?\s?-?[\d,]+\.?\d*"#,
+                                  with: "", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: " .:·-–—"))
+        return words.count > 22 ? String(words.prefix(21)) + "…" : words
     }
 
     /// What this platform calls the thing it counts.
@@ -523,9 +618,15 @@ struct ImportScreenshotView: View {
 
     // MARK: Fields
 
+    /// One field, plus the other readings the parser found.
+    ///
+    /// Each alternative carries the line it was read from. A row of bare
+    /// numbers — 258.20, 291.64, 26.12 — is unusable: there is no way to tell
+    /// which is the total and which is a tip without going back to the image.
+    /// "291.64 · Total Earnings" answers it on the spot.
     private func figureRow(_ label: String, text: Binding<String>, prefix: String,
                            required: Bool = false,
-                           alternatives: [String]) -> some View {
+                           alternatives: [(value: String, source: String)]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(label)
@@ -552,15 +653,32 @@ struct ImportScreenshotView: View {
             if alternatives.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 7) {
-                        ForEach(Array(alternatives.prefix(5).enumerated()), id: \.offset) { _, alt in
-                            Button { text.wrappedValue = alt } label: {
-                                Text(alt)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(text.wrappedValue == alt
-                                                     ? GP.Palette.violet300 : GP.Ink.muted)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(GP.Surface.glassFaint, in: Capsule())
+                        ForEach(Array(alternatives.prefix(6).enumerated()), id: \.offset) { _, alt in
+                            let isPicked = text.wrappedValue == alt.value
+                            Button { text.wrappedValue = alt.value } label: {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(alt.value)
+                                        .font(.system(size: 12.5, weight: .semibold))
+                                        .foregroundStyle(isPicked ? GP.Palette.violet300
+                                                                  : GP.Ink.secondary)
+                                    if !alt.source.isEmpty {
+                                        Text(alt.source)
+                                            .font(.system(size: 10, weight: .regular))
+                                            .foregroundStyle(GP.Ink.muted)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 7)
+                                .background(GP.Surface.glassFaint,
+                                            in: RoundedRectangle(cornerRadius: 10,
+                                                                 style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .strokeBorder(isPicked
+                                                      ? GP.Palette.violet400.opacity(0.55)
+                                                      : Color.clear, lineWidth: 1)
+                                )
                             }
                             .buttonStyle(.plain)
                         }
@@ -614,7 +732,7 @@ struct ImportScreenshotView: View {
 
     private var canSave: Bool {
         sources.contains { !$0.platform.isEmpty && $0.gross > 0 }
-            && sources.allSatisfy { $0.platform.isEmpty || $0.hours > 0 }
+            && sources.allSatisfy { $0.platform.isEmpty || ($0.hours > 0 && !$0.needsDate) }
     }
 
     // MARK: Loading
@@ -653,31 +771,50 @@ struct ImportScreenshotView: View {
             // — same header, same day labels — so the only thing that says
             // Wednesday is that Wednesday's bar is the solid one.
             let reading = ChartDayDetector.read(image: cgImage, lines: lines)
-            let weekStart = Calendar.gigPilot.startOfWeek(for: best.date ?? .now)
+
+            // The period header — "Jun 1 - Jun 8" — is the only date on the
+            // screen that definitely describes what's being shown. Falling
+            // back to today, as this used to, turned a June screenshot into
+            // "Sunday 26 July" and stated it with a chart reading behind it.
+            let headerWeek = EarningsParser.weekStart(in: lines)
+                ?? best.date.map { Calendar.gigPilot.startOfWeek(for: $0) }
 
             var period: ImportPeriod = .week
-            var resolved = best.date ?? .now
+            var resolved = headerWeek ?? Calendar.gigPilot.startOfWeek(for: .now)
             var note: String?
+            var needsDate = headerWeek == nil
 
-            switch reading {
-            case .day(_, _, let dayOfMonth):
+            let f = DateFormatter()
+            f.dateFormat = "EEEE, MMMM d"
+
+            switch (reading, headerWeek) {
+            case (.day(_, _, let dayOfMonth), .some(let week)):
                 period = .day
-                if let day = ChartDayDetector.date(for: reading, weekStart: weekStart) {
+                if let day = ChartDayDetector.date(for: reading, weekStart: week) {
                     resolved = day
-                    let f = DateFormatter()
-                    f.dateFormat = "EEEE, MMMM d"
-                    // Says where the date came from. "Read as Wednesday" left
-                    // the driver to work out which Wednesday.
                     note = dayOfMonth != nil
                         ? "\(f.string(from: day)) — the highlighted bar is labelled \(dayOfMonth!)."
-                        : "\(f.string(from: day)) — read from the highlighted bar. Change it if that's wrong."
+                        : "\(f.string(from: day)) — read from the highlighted bar."
                 }
-            case .aggregate:
+
+            case (.day(_, _, let dayOfMonth), .none):
+                // The bar was readable but there's no week to place it in.
+                period = .day
+                needsDate = true
+                note = dayOfMonth != nil
+                    ? "The highlighted bar is labelled \(dayOfMonth!), but the date header couldn't be read — set the date below."
+                    : "Couldn't read the date header. Set the date below."
+
+            case (.aggregate, _):
                 period = .week
-                resolved = weekStart
-                note = "Every bar is filled, so this looks like a whole week rather than one day."
-            case .inconclusive:
-                note = "Couldn't tell which day this is from the chart — check the date below."
+                note = headerWeek != nil
+                    ? "Every bar is filled, so this is the whole week."
+                    : "Every bar is filled, so this is a whole week — but the date header couldn't be read."
+
+            case (.inconclusive, _):
+                note = headerWeek != nil
+                    ? "Couldn't tell a single day from the chart, so this is treated as the week. Switch it below if it's one day."
+                    : "Couldn't read the date header or tell which day this is. Set both below."
             }
 
             sources.append(
@@ -693,7 +830,8 @@ struct ImportScreenshotView: View {
                     milesText: best.miles.map { String(format: "%.0f", $0) } ?? "",
                     period: period,
                     date: resolved,
-                    detectedNote: note
+                    detectedNote: note,
+                    needsDate: needsDate
                 )
             )
         }
