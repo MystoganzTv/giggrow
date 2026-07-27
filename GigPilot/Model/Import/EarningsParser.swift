@@ -43,11 +43,17 @@ struct ParsedEarnings {
     /// Every line read, kept so the review screen can show its working.
     var allLines: [String] = []
 
-    /// The amount whose line mentions one of these words.
+    /// The breakdown, already matched to its labels during parsing.
     ///
-    /// The breakdown is already parsed — every one of those figures is in
-    /// `amounts` with the line it came from. Nothing new has to be read; the
-    /// importer simply stopped throwing the labels away.
+    /// This has to happen where the bounding boxes are. A gig app writes
+    /// "Tip" hard left and "$7.00" hard right, and Vision returns those as
+    /// two separate observations — so searching a line's own text for the
+    /// word "tip" finds nothing, and the driver was left retyping figures
+    /// that were sitting on the screen the whole time.
+    var breakdown: [BreakdownKind: Double] = [:]
+
+    /// Falls back to the label sharing a line with its figure, for layouts
+    /// that write "Tip $7.00" as one string.
     func amount(labelled cues: [String]) -> Double? {
         amounts.first { candidate in
             let line = candidate.source.lowercased()
@@ -56,18 +62,15 @@ struct ParsedEarnings {
     }
 
     /// Uber writes "Tip", Lyft "Tips", DoorDash "Customer tips".
-    var tips: Double? { amount(labelled: ["tip"]) }
+    var tips: Double? { breakdown[.tips] ?? amount(labelled: BreakdownKind.tips.cues) }
 
     /// Quests, surges, bonuses and challenges all land here.
     var promotions: Double? {
-        amount(labelled: ["promotion", "promo", "quest", "bonus", "surge",
-                          "incentive", "challenge", "boost"])
+        breakdown[.promotions] ?? amount(labelled: BreakdownKind.promotions.cues)
     }
 
     /// The fare before anything was added to it.
-    var netFare: Double? {
-        amount(labelled: ["net fare", "fare", "base pay", "base fare"])
-    }
+    var netFare: Double? { breakdown[.netFare] ?? amount(labelled: BreakdownKind.netFare.cues) }
 
     /// Whether the breakdown adds up to the headline.
     ///
@@ -89,6 +92,26 @@ struct ParsedEarnings {
 
     var foundAnything: Bool {
         !amounts.isEmpty || !units.isEmpty || !hours.isEmpty || !miles.isEmpty
+    }
+}
+
+/// The named rows of an earnings breakdown.
+enum BreakdownKind: String, CaseIterable {
+    case netFare, promotions, tips
+
+    /// Longest and most specific first: "net fare" must win over "fare", and
+    /// "tip" must not swallow "Total" — which it wouldn't, but "other
+    /// earnings" sitting next to a tip row is the kind of thing that does.
+    var cues: [String] {
+        switch self {
+        case .netFare:
+            return ["net fare", "base fare", "base pay", "fare"]
+        case .promotions:
+            return ["promotion", "promo", "quest", "bonus", "surge",
+                    "incentive", "challenge", "boost"]
+        case .tips:
+            return ["tip"]
+        }
     }
 }
 
@@ -171,6 +194,14 @@ enum EarningsParser {
                                        confidence: candidate.confidence)
             }
         result.miles = valuesUnderLabel(cues: mileCues, in: lines)
+
+        // The breakdown reads across the row, not down the column: the label
+        // is on the left and the money is on the right, at the same height.
+        for kind in BreakdownKind.allCases {
+            if let value = amountBesideLabel(cues: kind.cues, in: lines) {
+                result.breakdown[kind] = value
+            }
+        }
 
         // Strongest cue first; ties broken by the larger figure, since the
         // headline total is usually the biggest number on the screen.
@@ -268,6 +299,47 @@ enum EarningsParser {
     }
 
     /// True when two boxes share horizontal space — the same column.
+    /// The money sitting on the same row as a label.
+    ///
+    /// "Tip" and "$7.00" are one visual row and two OCR observations, so the
+    /// match is vertical overlap plus being further right. Reading order
+    /// alone isn't enough — Vision interleaves the two columns differently
+    /// depending on spacing, and the line after "Tip" is sometimes the next
+    /// label rather than its own figure.
+    private static func amountBesideLabel(cues: [String],
+                                          in lines: [RecognisedLine]) -> Double? {
+        for label in lines {
+            let lower = label.text.lowercased()
+            guard cues.contains(where: { lower.contains($0) }) else { continue }
+            // A row that is its own total isn't a breakdown line.
+            guard !lower.contains("total") else { continue }
+
+            // Written together — "Tip $7.00".
+            if let inline = currencyAmounts(in: label.text).first { return inline }
+
+            let sameRow = lines
+                .filter { $0.text != label.text }
+                .filter { verticallyOverlaps($0.box, label.box) }
+                .filter { $0.box.minX >= label.box.minX }
+                .sorted { $0.box.minX < $1.box.minX }
+
+            for line in sameRow {
+                // A negative is a fee Uber kept, not something earned.
+                let text = line.text
+                guard !text.contains("-$"), !text.contains("−$"),
+                      !text.hasPrefix("-"), !text.hasPrefix("−") else { continue }
+                if let amount = currencyAmounts(in: text).first { return amount }
+            }
+        }
+        return nil
+    }
+
+    /// Two boxes share a row when their vertical spans mostly coincide.
+    private static func verticallyOverlaps(_ a: CGRect, _ b: CGRect) -> Bool {
+        let overlap = min(a.maxY, b.maxY) - max(a.minY, b.minY)
+        return overlap > min(a.height, b.height) * 0.5
+    }
+
     private static func horizontallyOverlaps(_ a: CGRect, _ b: CGRect) -> Bool {
         let overlap = min(a.maxX, b.maxX) - max(a.minX, b.minX)
         return overlap > min(a.width, b.width) * 0.4

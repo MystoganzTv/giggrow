@@ -234,6 +234,56 @@ final class MileageTests: XCTestCase {
         return parsed
     }
 
+    /// Uber's real layout: label hard left, money hard right, two separate
+    /// OCR observations on the same visual row. This is what actually broke —
+    /// searching a line's own text for "tip" finds nothing when the line is
+    /// just "Tip", so every figure came back empty and had to be retyped.
+    private func mondayScreenAsLaidOut() -> [RecognisedLine] {
+        func row(_ label: String, _ money: String, y: Double) -> [RecognisedLine] {
+            [
+                RecognisedLine(text: label, confidence: 0.95,
+                               box: CGRect(x: 0.06, y: y, width: 0.26, height: 0.022)),
+                RecognisedLine(text: money, confidence: 0.95,
+                               box: CGRect(x: 0.74, y: y, width: 0.20, height: 0.022))
+            ]
+        }
+        return row("Net Fare", "$102.18", y: 0.40)
+            + row("Promotions", "$5.11", y: 0.36)
+            + row("Tip", "$7.00", y: 0.32)
+            + row("Total Earnings", "$114.29", y: 0.28)
+    }
+
+    func testBreakdownIsReadAcrossTheRowNotDownTheLine() {
+        let parsed = EarningsParser.parse(mondayScreenAsLaidOut())
+
+        XCTAssertEqual(parsed.netFare ?? 0, 102.18, accuracy: 0.001,
+                       "Net Fare and $102.18 are separate observations on one row")
+        XCTAssertEqual(parsed.promotions ?? 0, 5.11, accuracy: 0.001)
+        XCTAssertEqual(parsed.tips ?? 0, 7.00, accuracy: 0.001)
+    }
+
+    /// The total is not a breakdown row and must not be mistaken for the fare.
+    func testTotalRowIsNotTreatedAsPartOfTheBreakdown() {
+        let parsed = EarningsParser.parse(mondayScreenAsLaidOut())
+        XCTAssertNotEqual(parsed.netFare ?? 0, 114.29, accuracy: 0.001)
+        XCTAssertEqual(parsed.reconciliation(against: 114.29)?.matches, true)
+    }
+
+    /// A fee Uber kept sits in the same column with a minus sign. It is not
+    /// income and must not be picked up as one.
+    func testNegativeRowsAreNotReadAsEarnings() {
+        var lines = mondayScreenAsLaidOut()
+        lines += [
+            RecognisedLine(text: "Other fees", confidence: 0.95,
+                           box: CGRect(x: 0.06, y: 0.30, width: 0.24, height: 0.022)),
+            RecognisedLine(text: "-$0.50", confidence: 0.95,
+                           box: CGRect(x: 0.74, y: 0.30, width: 0.16, height: 0.022))
+        ]
+        let parsed = EarningsParser.parse(lines)
+        XCTAssertEqual(parsed.tips ?? 0, 7.00, accuracy: 0.001)
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 0.50 })
+    }
+
     func testBreakdownIsPickedOutByItsLabel() {
         let parsed = mondayScreen()
         XCTAssertEqual(parsed.netFare ?? 0, 102.18, accuracy: 0.001)
