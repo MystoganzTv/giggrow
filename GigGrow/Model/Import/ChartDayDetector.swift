@@ -297,6 +297,12 @@ enum ChartDayDetector {
     /// labels. The remaining row still gives us both chart edges; interpolate
     /// seven stable columns between them.
     private static func compactDayLabels(in lines: [RecognisedLine]) -> [Label]? {
+        // On-device Vision sometimes returns the entire strip as one OCR
+        // observation ("M T W T F S S") instead of seven observations. It
+        // may even omit one repeated T while keeping a box around the whole
+        // row. Treat that wide observation as the same seven-column ruler.
+        if let merged = fragmentedCompactDayLabels(in: lines) { return merged }
+
         let letters = Set(["m", "t", "w", "f", "s"])
         let candidates = lines.filter { line in
             letters.contains(line.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
@@ -332,6 +338,77 @@ enum ChartDayDetector {
                 dayOfMonth: nil
             )
         }
+    }
+
+    private static func fragmentedCompactDayLabels(in lines: [RecognisedLine]) -> [Label]? {
+        let expected = Array("mtwtfss")
+        let candidates = lines.compactMap { line -> (line: RecognisedLine, text: [Character])? in
+            let compact = Array(line.text.lowercased().filter(\.isLetter))
+            guard (1...7).contains(compact.count),
+                  line.box.height < 0.05,
+                  compact.allSatisfy({ expected.contains($0) }),
+                  isSubsequence(compact, of: expected)
+            else { return nil }
+            return (line, compact)
+        }
+
+        let grouped = Dictionary(grouping: candidates) { candidate in
+            (candidate.line.topDownY * 50).rounded()
+        }
+        let rows = grouped.values.filter { row in
+            row.reduce(0) { $0 + $1.text.count } >= 5
+        }
+        guard let row = rows.max(by: {
+            let lhs = $0.map(\.line.box.width).reduce(0, +)
+            let rhs = $1.map(\.line.box.width).reduce(0, +)
+            return lhs < rhs
+        }) else {
+            return nil
+        }
+
+        let sorted = row.sorted { $0.line.box.minX < $1.line.box.minX }
+        guard let first = sorted.first, let last = sorted.last,
+              last.line.box.maxX - first.line.box.minX > 0.65 else {
+            return nil
+        }
+
+        // OCR's box runs from the first glyph edge to the last glyph edge.
+        // A small height-based inset approximates their centres without
+        // pulling the outside columns inward by a full seventh of the row.
+        let left = first.text.count == 1
+            ? first.line.box.midX
+            : first.line.box.minX + min(max(first.line.box.height * 0.6, 0.008),
+                                        first.line.box.width * 0.06)
+        let right = last.text.count == 1
+            ? last.line.box.midX
+            : last.line.box.maxX - min(max(last.line.box.height * 0.6, 0.008),
+                                        last.line.box.width * 0.06)
+        let spacing = (right - left) / 6
+        guard spacing > 0 else { return nil }
+        let top = sorted.map(\.line.topDownY).reduce(0, +) / CGFloat(sorted.count)
+
+        return weekdayNames.enumerated().map { index, weekday in
+            let centre = left + CGFloat(index) * spacing
+            let halfWidth = min(spacing * 0.16, 0.022)
+            return Label(
+                xRange: max(centre - halfWidth, 0)...min(centre + halfWidth, 1),
+                top: top,
+                weekday: weekday,
+                dayOfMonth: nil
+            )
+        }
+    }
+
+    private static func isSubsequence(_ candidate: [Character],
+                                      of expected: [Character]) -> Bool {
+        var expectedIndex = expected.startIndex
+        for character in candidate {
+            guard let match = expected[expectedIndex...].firstIndex(of: character) else {
+                return false
+            }
+            expectedIndex = expected.index(after: match)
+        }
+        return true
     }
 
     /// The day of the month sitting with this label.

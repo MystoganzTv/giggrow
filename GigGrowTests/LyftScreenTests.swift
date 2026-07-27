@@ -90,6 +90,53 @@ final class LyftScreenTests: XCTestCase {
         XCTAssertEqual(ChartDayDetector.read(image: image, lines: labels), .aggregate)
     }
 
+    func testMergedLyftWeekdayRowStillProducesSevenDailyShares() throws {
+        // Photos/ Vision on a physical iPhone can merge the compact weekday
+        // strip into one observation instead of the individual observations
+        // produced by the simulator.
+        let labels = [
+            line("M T W T F S S", x: 0.075, width: 0.838, y: 0.502)
+        ]
+        let values = [5.0, 142, 300, 123, 273, 154, 0]
+        let image = try XCTUnwrap(chartImage(values: values))
+        let shares = try XCTUnwrap(
+            ChartDayDetector.dailyShares(image: image, lines: labels)
+        )
+
+        XCTAssertEqual(shares.count, 7)
+        XCTAssertEqual(shares[0], values[0] / values.reduce(0, +), accuracy: 0.025)
+        XCTAssertEqual(shares[2], values[2] / values.reduce(0, +), accuracy: 0.025)
+        XCTAssertEqual(shares[6], 0, accuracy: 0.01)
+        XCTAssertEqual(ChartDayDetector.read(image: image, lines: labels), .aggregate)
+    }
+
+    func testMergedLyftWeekdayRowCanRecoverOneDroppedLetter() throws {
+        let labels = [
+            line("M W T F S S", x: 0.075, width: 0.838, y: 0.502)
+        ]
+        let image = try XCTUnwrap(chartImage(values: [5, 142, 300, 123, 273, 154, 0]))
+
+        let shares = try XCTUnwrap(
+            ChartDayDetector.dailyShares(image: image, lines: labels)
+        )
+        XCTAssertEqual(shares.count, 7)
+        XCTAssertEqual(shares[6], 0, accuracy: 0.01)
+    }
+
+    func testSplitLyftWeekdayFragmentsStillProduceDailyShares() throws {
+        let labels = [
+            line("M T W", x: 0.075, width: 0.310, y: 0.502),
+            line("T F S S", x: 0.482, width: 0.431, y: 0.502)
+        ]
+        let image = try XCTUnwrap(chartImage(values: [5, 142, 300, 123, 273, 154, 0]))
+
+        let shares = try XCTUnwrap(
+            ChartDayDetector.dailyShares(image: image, lines: labels)
+        )
+        XCTAssertEqual(shares.count, 7)
+        XCTAssertEqual(shares[6], 0, accuracy: 0.01)
+    }
+
     func testPrintedLyftAmountsBeatTheMinimumHeightDot() throws {
         var lines = [
             line("M", x: 0.076, width: 0.044, y: 0.500),
