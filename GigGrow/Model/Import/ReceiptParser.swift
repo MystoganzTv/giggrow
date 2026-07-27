@@ -165,27 +165,36 @@ enum ReceiptParser {
     // MARK: Dates
 
     private static func firstDate(in lines: [RecognisedLine]) -> Date? {
-        let formats = ["MM/dd/yyyy", "M/d/yyyy", "MM/dd/yy", "M/d/yy",
-                       "yyyy-MM-dd", "MMM d, yyyy", "MMM d yyyy", "dd/MM/yyyy"]
+        let patterns = [
+            #"\b\d{4}-\d{1,2}-\d{1,2}\b"#,
+            #"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"#,
+            #"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2},?\s+\d{4}\b"#
+        ]
+        let formats = ["yyyy-M-d", "M/d/yyyy", "M/d/yy", "M-d-yyyy", "M-d-yy",
+                       "MMM d, yyyy", "MMM d yyyy", "MMMM d, yyyy", "MMMM d yyyy",
+                       "d/M/yyyy"]
 
         for line in lines {
-            // Strip anything that isn't part of a date before trying, so a
-            // trailing time or till number doesn't defeat an exact format.
-            for token in line.text.split(whereSeparator: { $0 == " " }) {
-                let cleaned = String(token).trimmingCharacters(
-                    in: CharacterSet(charactersIn: ",;()[]")
-                )
+            let fullRange = NSRange(line.text.startIndex..<line.text.endIndex, in: line.text)
+            for pattern in patterns {
+                guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+                for match in regex.matches(in: line.text, range: fullRange) {
+                    guard let range = Range(match.range, in: line.text) else { continue }
+                    let candidate = String(line.text[range])
+
                 for format in formats {
                     let f = DateFormatter()
                     f.locale = Locale(identifier: "en_US_POSIX")
+                    f.isLenient = false
                     f.dateFormat = format
-                    if let date = f.date(from: cleaned) {
+                        if let date = f.date(from: candidate) {
                         // A receipt is for something that already happened;
                         // a future date is a misread, usually a till number.
                         guard date <= Date.now.addingTimeInterval(86_400) else { continue }
                         return date
                     }
                 }
+            }
             }
         }
         return nil

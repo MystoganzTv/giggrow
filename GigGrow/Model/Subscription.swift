@@ -137,8 +137,12 @@ enum ProFeature: String, CaseIterable, Identifiable {
 
 // MARK: - Entitlement
 
-/// What the current user may do. Built from the stored tier today; when
-/// StoreKit lands, this is the only type that needs to change.
+/// What the current user may do.
+///
+/// GigGrow 1.0 has no in-app purchase configured, so every shipped feature is
+/// available to every driver. Keeping the decision here gives StoreKit a clean
+/// integration point later without pretending that a local tier change is a
+/// real purchase today.
 struct Entitlement: Equatable {
     let tier: PlanTier
 
@@ -147,17 +151,12 @@ struct Entitlement: Equatable {
 
     var isPro: Bool { tier == .pro }
 
-    func allows(_ feature: ProFeature) -> Bool {
-        switch tier {
-        case .pro:  return true
-        case .free: return false
-        }
-    }
+    func allows(_ feature: ProFeature) -> Bool { true }
 
     /// Free users still see what the reserve *would* hold. A wedge nobody can
     /// see isn't a wedge — hiding the number entirely would remove the only
     /// reason to upgrade.
     func showsPreview(of feature: ProFeature) -> Bool {
-        !allows(feature) && feature == .maintenanceReserve
+        false
     }
 }

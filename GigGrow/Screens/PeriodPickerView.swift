@@ -124,7 +124,6 @@ struct PeriodPickerView: View {
     /// Every period that has shifts in it, newest first, plus the present one
     /// so there's always somewhere to come back to.
     private var periods: [Period] {
-        let calendar = Calendar.gigGrow
         let range = selection.range
 
         func anchorFor(_ date: Date) -> Date { range.window(containing: date).lowerBound }

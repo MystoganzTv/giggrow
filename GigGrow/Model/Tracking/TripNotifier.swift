@@ -25,10 +25,10 @@ import UserNotifications
 enum TripNotifier {
 
     /// Posted when a notification is tapped, so the root can open the log.
-    static let openMileageLog = Notification.Name("GigGrow.openMileageLog")
+    nonisolated static let openMileageLog = Notification.Name("GigGrow.openMileageLog")
 
     /// Identifies our own notifications among anyone else's.
-    static let categoryIdentifier = "GigGrow.tripEnded"
+    nonisolated static let categoryIdentifier = "GigGrow.tripEnded"
 
     /// Asks once, and only when tracking is switched on.
     ///

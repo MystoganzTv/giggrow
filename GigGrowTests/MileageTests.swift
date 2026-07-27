@@ -720,6 +720,29 @@ final class MileageTests: XCTestCase {
         XCTAssertEqual(parsed.total ?? 0, 95.39, accuracy: 0.001)
     }
 
+    func testReceiptReadsWrittenDateWhenTheLineAlsoHasATime() throws {
+        let parsed = ReceiptParser.parse([
+            receiptLine("SHELL", y: 0.05, height: 0.05),
+            receiptLine("Jul 19, 2026 4:52 PM", y: 0.20),
+            receiptLine("TOTAL $43.54", y: 0.72, height: 0.03)
+        ])
+        let date = try XCTUnwrap(parsed.date)
+        XCTAssertEqual(Calendar.gigGrow.component(.year, from: date), 2026)
+        XCTAssertEqual(Calendar.gigGrow.component(.month, from: date), 7)
+        XCTAssertEqual(Calendar.gigGrow.component(.day, from: date), 19)
+    }
+
+    func testReceiptReadsNumericDateInsideOtherTillText() throws {
+        let parsed = ReceiptParser.parse([
+            receiptLine("DATE 07/19/2026  TERM 04", y: 0.20),
+            receiptLine("AMOUNT DUE $43.54", y: 0.72, height: 0.03)
+        ])
+        let date = try XCTUnwrap(parsed.date)
+        XCTAssertEqual(Calendar.gigGrow.component(.year, from: date), 2026)
+        XCTAssertEqual(Calendar.gigGrow.component(.month, from: date), 7)
+        XCTAssertEqual(Calendar.gigGrow.component(.day, from: date), 19)
+    }
+
     /// Both suggestions land on categories the mileage rate already covers,
     /// so the sheet will say so rather than implying a deduction.
     func testSuggestedFuelAndMaintenanceAreFlaggedAsCovered() {

@@ -30,7 +30,6 @@ struct SettingsView: View {
         }
     }
 
-    @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var context
 
     @Query private var profiles: [DriverProfile]
@@ -42,7 +41,6 @@ struct SettingsView: View {
     /// than a stored flag that could disagree with reality.
     var tracker: MileageTracker? = nil
 
-    @State private var isUpgrading = false
     @State private var isShowingDrives = false
     @State private var isPickingState = false
     @State private var isConfirmingErase = false
@@ -57,7 +55,6 @@ struct SettingsView: View {
         )
     }
 
-    private var entitlement: Entitlement { snapshot.entitlement }
     private var profile: DriverProfile? { profiles.first }
 
     /// One case per destination, so a row can't be added without deciding
@@ -75,7 +72,6 @@ struct SettingsView: View {
                 .ggText(GG.Typo.screenTitle, tracking: GG.Typo.screenTitleTracking)
 
             profileCard
-            subscriptionCard
 
             moneyGroup
             trackingGroup
@@ -86,9 +82,6 @@ struct SettingsView: View {
             #endif
 
             footer
-        }
-        .sheet(isPresented: $isUpgrading) {
-            UpgradeView(previewReserve: snapshot.maintenanceFund)
         }
         .sheet(item: $route) { destination in
             editor(for: destination)
@@ -147,49 +140,6 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-    }
-
-    // MARK: Subscription
-
-    private var subscriptionCard: some View {
-        Button {
-            if entitlement.isPro { openSubscriptionManagement() } else { isUpgrading = true }
-        } label: {
-            HeroCard(radius: GG.Radius.card,
-                     padding: EdgeInsets(top: 20, leading: 20, bottom: 20, trailing: 20),
-                     gradient: GG.Gradients.heroPro) {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(entitlement.isPro ? "GigGrow Pro" : "Upgrade to Pro")
-                            .ggText(.system(size: 17, weight: .semibold), tracking: -0.26)
-                        Text(subscriptionCaption)
-                            .ggText(.system(size: 13.5, weight: .regular),
-                                    color: Color.white.opacity(0.55))
-                    }
-
-                    Spacer(minLength: 8)
-
-                    Text(entitlement.isPro ? "Manage" : "See plans")
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                        .background(Color.white.opacity(0.15), in: Capsule())
-                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var subscriptionCaption: String {
-        guard entitlement.isPro else {
-            return "From \(Plan.proAnnual.monthlyEquivalent) / month"
-        }
-        guard let renews = snapshot.planRenewsOn else { return Plan.proMonthly.perPeriodLabel }
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        return "\(Plan.proMonthly.perPeriodLabel) · renews \(f.string(from: renews))"
     }
 
     // MARK: Money
@@ -461,12 +411,6 @@ struct SettingsView: View {
         return "\(MileageRates.formatted(MileageRates.current)) / mi · IRS"
     }
 
-    private func openSubscriptionManagement() {
-        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-            openURL(url)
-        }
-    }
-
     // MARK: Debug
 
     #if DEBUG
@@ -474,15 +418,6 @@ struct SettingsView: View {
         SettingsGroup(title: "Debug", tint: GG.Palette.amber.opacity(0.8)) {
             SettingsRow(label: "Load demo week", value: "", showsChevron: false) {
                 Seed.loadDemoData(context)
-            }
-            RowDivider(color: GG.Surface.dividerSoft)
-            SettingsRow(label: "Toggle Pro",
-                        value: entitlement.isPro ? "on" : "off",
-                        showsChevron: false) {
-                profile?.planTierRaw = entitlement.isPro
-                    ? PlanTier.free.rawValue
-                    : PlanTier.pro.rawValue
-                save()
             }
         }
     }

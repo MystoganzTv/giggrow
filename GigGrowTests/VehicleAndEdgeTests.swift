@@ -116,11 +116,19 @@ final class VehicleAndEdgeTests: XCTestCase {
         let account = Fixture.account(context, name: "Uber")
 
         let vehicle = Fixture.vehicle(context, odometer: 84_210, asOf: Fixture.weekStart())
-        Fixture.shift(context, day: 1, miles: 612, splits: [(account, 100, 5)])
+        let earlierShift = Fixture.shift(
+            context,
+            day: 1,
+            miles: 612,
+            splits: [(account, 100, 5)]
+        )
 
         // The driver reads 85,000 off the dash and corrects it.
         vehicle.odometerBaseline = 85_000
-        vehicle.odometerAsOf = .now
+        // Anchor explicitly after the fixture instead of using `.now`.
+        // On Monday morning, day 1 of this synthetic week is still in the
+        // future, which made the test fail depending on the day it ran.
+        vehicle.odometerAsOf = earlierShift.end.addingTimeInterval(1)
 
         let snapshot = EarningsSnapshot.build(
             shifts: try context.fetch(FetchDescriptor<Shift>()),

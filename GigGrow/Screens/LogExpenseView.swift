@@ -35,6 +35,7 @@ struct LogExpenseView: View {
     // the photo never leaves the phone, and nothing is filled in without the
     // driver seeing it first.
     @State private var pickerItem: PhotosPickerItem?
+    @State private var isShowingCamera = false
     @State private var receiptImage: UIImage?
     @State private var receipt: ParsedReceipt?
     @State private var isReading = false
@@ -69,6 +70,14 @@ struct LogExpenseView: View {
             .onChange(of: pickerItem) { _, item in
                 guard let item else { return }
                 Task { await read(item) }
+            }
+            .fullScreenCover(isPresented: $isShowingCamera) {
+                CameraPicker { image in
+                    isShowingCamera = false
+                    guard let image else { return }
+                    Task { await read(image) }
+                }
+                .ignoresSafeArea()
             }
             .overlay {
                 if isReading {
@@ -227,9 +236,9 @@ struct LogExpenseView: View {
     private var receiptCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                if let receiptImage {
+                if let image = receiptImage {
                     HStack(spacing: 12) {
-                        Image(uiImage: receiptImage)
+                        Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
                             .frame(width: 46, height: 62)
@@ -281,20 +290,24 @@ struct LogExpenseView: View {
                         }
                     }
                 } else {
-                    PhotosPicker(selection: $pickerItem, matching: .images,
-                                 photoLibrary: .shared()) {
-                        HStack(spacing: 9) {
-                            Image(systemName: "doc.viewfinder")
-                                .font(.system(size: 15, weight: .semibold))
-                            Text("Scan a receipt")
-                                .font(.system(size: 15, weight: .semibold))
-                            Spacer(minLength: 0)
-                            Chevron(size: 14, color: Color.white.opacity(0.3))
+                    HStack(spacing: 8) {
+                        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                            Button {
+                                isShowingCamera = true
+                            } label: {
+                                receiptSourceButton(title: "Take photo", systemImage: "camera.fill")
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .foregroundStyle(GG.Palette.violet300)
+
+                        PhotosPicker(selection: $pickerItem, matching: .images,
+                                     photoLibrary: .shared()) {
+                            receiptSourceButton(title: "Choose photo",
+                                                systemImage: "photo.on.rectangle")
+                        }
                     }
 
-                    Text("Reads the amount, date and shop off the photo, on this phone. Faster than typing, and the paper can go in the bin.")
+                    Text("Reads the amount, date and merchant on this phone. GigGrow does not store the image, so keep the original receipt or another digital copy for your records.")
                         .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -308,14 +321,38 @@ struct LogExpenseView: View {
         }
     }
 
+    private func receiptSourceButton(title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 13.5, weight: .semibold))
+            .foregroundStyle(GG.Palette.violet300)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(GG.Surface.glassFaint,
+                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(GG.Surface.stroke, lineWidth: 1)
+            )
+    }
+
     private func read(_ item: PhotosPickerItem) async {
-        isReading = true
-        readError = nil
-        defer { isReading = false; pickerItem = nil }
+        defer { pickerItem = nil }
 
         guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data),
-              let cgImage = image.cgImage else {
+              let image = UIImage(data: data) else {
+            readError = "That image couldn't be opened."
+            return
+        }
+
+        await read(image)
+    }
+
+    private func read(_ image: UIImage) async {
+        isReading = true
+        readError = nil
+        defer { isReading = false }
+
+        guard let cgImage = image.cgImage else {
             readError = "That image couldn't be opened."
             return
         }

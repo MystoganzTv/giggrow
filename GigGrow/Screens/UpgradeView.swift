@@ -2,23 +2,20 @@
 //  UpgradeView.swift
 //  GigGrow
 //
-//  The paywall. It leads with the maintenance reserve, not with sync:
-//  automatic earnings sync is bought from the same aggregator by every app
-//  in this category, so it's the price of entry rather than a reason to pay.
-//  The reserve is the part nobody else offers.
+//  Launch-access explainer.
+//
+//  GigGrow 1.0 does not have App Store products configured. This view remains
+//  as a safe destination for older navigation state and previews, but it
+//  never pretends that changing a local value is a purchase.
 //
 
 import SwiftUI
-import SwiftData
 
 struct UpgradeView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var context
 
     /// What the reserve would already hold, shown to make the abstract concrete.
     var previewReserve: Double?
-
-    @State private var selected: PlanPrice = Plan.proAnnual
 
     var body: some View {
         NavigationStack {
@@ -31,9 +28,8 @@ struct UpgradeView: View {
                         header
                         if let previewReserve, previewReserve > 0 { reserveHook(previewReserve) }
                         features
-                        planPicker
-                        purchaseButton
-                        smallPrint
+                        launchNotice
+                        doneButton
                     }
                     .padding(.horizontal, GG.Layout.screenInset)
                     .padding(.top, 8)
@@ -43,7 +39,7 @@ struct UpgradeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Not now") { dismiss() }
+                    Button("Done") { dismiss() }
                         .foregroundStyle(GG.Ink.secondary)
                 }
             }
@@ -58,9 +54,9 @@ struct UpgradeView: View {
             GigGrowLogo(size: 56)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("GigGrow Pro")
+                Text("Everything is included")
                     .ggText(GG.Typo.screenTitle, tracking: GG.Typo.screenTitleTracking)
-                Text("Your car is the business. Run it like one.")
+                Text("All GigGrow 1.0 features are available without a subscription.")
                     .ggText(GG.Typo.subtitle, color: Color.white.opacity(0.5))
             }
         }
@@ -117,66 +113,17 @@ struct UpgradeView: View {
         }
     }
 
-    // MARK: Plans
-
-    private var planPicker: some View {
-        VStack(spacing: GG.Layout.gridGap) {
-            planRow(Plan.proAnnual,
-                    caption: "\(Plan.proAnnual.monthlyEquivalent) / month, billed yearly",
-                    badge: "Save \(Plan.annualSavingPercent)%")
-            planRow(Plan.proMonthly, caption: "Cancel any time", badge: nil)
+    private var launchNotice: some View {
+        GlassCard {
+            Text("There is no subscription or in-app purchase in this version.")
+                .ggText(GG.Typo.rowLabel)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private func planRow(_ price: PlanPrice, caption: String, badge: String?) -> some View {
-        let isSelected = price == selected
-
-        return Button {
-            withAnimation(.easeOut(duration: 0.16)) { selected = price }
-        } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .strokeBorder(isSelected ? GG.Palette.violet400 : Color.white.opacity(0.22),
-                                      lineWidth: isSelected ? 6 : 1.5)
-                }
-                .frame(width: 20, height: 20)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(price.perPeriodLabel)
-                        .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
-                    Text(caption)
-                        .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
-                }
-
-                Spacer(minLength: 8)
-
-                if let badge {
-                    Pill(text: badge,
-                         foreground: GG.Palette.mint,
-                         background: Color(hex: 0x34D399, opacity: 0.16))
-                }
-            }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                isSelected ? GG.Surface.glassBright : GG.Surface.glassFaint,
-                in: RoundedRectangle(cornerRadius: GG.Radius.tile, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: GG.Radius.tile, style: .continuous)
-                    .strokeBorder(isSelected ? GG.Palette.violet400.opacity(0.55) : GG.Surface.stroke,
-                                  lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: Purchase
-
-    private var purchaseButton: some View {
-        Button(action: startPurchase) {
-            Text("Start 7-day free trial")
+    private var doneButton: some View {
+        Button(action: dismiss.callAsFunction) {
+            Text("Continue")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -186,37 +133,6 @@ struct UpgradeView: View {
         }
         .buttonStyle(.plain)
         .padding(.top, 4)
-    }
-
-    private var smallPrint: some View {
-        VStack(spacing: 6) {
-            Text("Manual tracking, taxes and analytics stay free, forever.")
-                .ggText(GG.Typo.footnote, color: GG.Ink.muted)
-            Text("Cancel any time from Settings.")
-                .ggText(GG.Typo.footnote, color: GG.Ink.faint)
-        }
-        .frame(maxWidth: .infinity)
-        .multilineTextAlignment(.center)
-        .padding(.top, 6)
-    }
-
-    // MARK: Actions
-
-    /// Placeholder for the StoreKit purchase. Flipping the stored tier is
-    /// deliberately the only thing that happens here — when StoreKit lands,
-    /// this method is the seam, and nothing else in the app changes.
-    private func startPurchase() {
-        guard let profile = try? context.fetch(FetchDescriptor<DriverProfile>()).first else {
-            dismiss(); return
-        }
-        profile.planTierRaw = PlanTier.pro.rawValue
-        profile.planRenewsOn = Calendar.gigGrow.date(
-            byAdding: selected.period == .year ? .year : .month,
-            value: 1,
-            to: .now
-        )
-        try? context.save()
-        dismiss()
     }
 }
 
@@ -236,5 +152,4 @@ struct CheckGlyph: Shape {
 
 #Preview("Upgrade") {
     UpgradeView(previewReserve: 2_684)
-        .modelContainer(.preview)
 }

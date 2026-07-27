@@ -20,12 +20,10 @@ struct VehicleView: View {
     @Query private var vehicles: [VehicleRecord]
     @Query(sort: \Shift.start) private var shifts: [Shift]
 
-    @State private var isUpgrading = false
     @State private var isEditingVehicle = false
     @State private var addingService = false
     @State private var editingService: ServiceRecord?
 
-    private var entitlement: Entitlement { snapshot.entitlement }
     private var vehicle: VehicleRecord? { vehicles.first }
 
     /// Baseline plus everything driven since it was recorded. Same rule the
@@ -54,19 +52,11 @@ struct VehicleView: View {
             if let vehicle {
                 vehicleCard(vehicle)
 
-                ProLock(isLocked: !entitlement.allows(.maintenanceReserve)) {
-                    isUpgrading = true
-                } content: {
-                    maintenanceFundCard
-                }
+                maintenanceFundCard
 
                 serviceCard
 
-                ProLock(isLocked: !entitlement.allows(.costPerMile)) {
-                    isUpgrading = true
-                } content: {
-                    efficiencyTiles(vehicle)
-                }
+                efficiencyTiles(vehicle)
             } else {
                 EmptyStateCard(
                     title: "No vehicle yet",
@@ -75,9 +65,6 @@ struct VehicleView: View {
                     action: { isEditingVehicle = true }
                 )
             }
-        }
-        .sheet(isPresented: $isUpgrading) {
-            UpgradeView(previewReserve: snapshot.maintenanceFund)
         }
         .sheet(isPresented: $isEditingVehicle) {
             VehicleEditorView(editing: vehicle)
@@ -154,7 +141,6 @@ struct VehicleView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Maintenance fund")
                         .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
-                    if !entitlement.allows(.maintenanceReserve) { ProBadge() }
                     Spacer()
                     Text("Goal \(Money.whole(snapshot.maintenanceGoal))")
                         .ggText(GG.Typo.captionMuted, color: GG.Ink.tertiary)
