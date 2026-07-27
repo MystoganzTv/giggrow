@@ -1,14 +1,14 @@
-# GigPilot — iOS
+# GigGrow — iOS
 
-SwiftUI implementation of `Design/GigPilot.dc.html`. Five screens, dark, mock data.
+SwiftUI implementation of `Design/GigGrow.dc.html`. Five screens, dark, mock data.
 
-Open `GigPilot.xcodeproj` in Xcode 16 or later and run. iOS 17+, portrait only.
+Open `GigGrow.xcodeproj` in Xcode 16 or later and run. iOS 17+, portrait only.
 
 ## Layout
 
 ```
-GigPilot/
-├── GigPilotApp.swift            @main
+GigGrow/
+├── GigGrowApp.swift            @main
 ├── RootView.swift               tab shell — hosts the five screens
 ├── Model/
 │   ├── Models.swift             Platform, ServiceItem, SettingGroup, Vehicle,
@@ -22,7 +22,7 @@ GigPilot/
 │   ├── Charts.swift             SeriesLine/Area/Curve, BarChart, Sparkline, AxisLabels
 │   ├── Icons.swift              the five tab glyphs, traced from the design's SVG
 │   ├── Logo.swift               vector rebuild of the brand mark
-│   ├── GPTabBar.swift           custom translucent tab bar
+│   ├── GGTabBar.swift           custom translucent tab bar
 │   └── ScreenScaffold.swift     shared screen chrome
 └── Screens/
     ├── DashboardView.swift      01
@@ -33,7 +33,7 @@ GigPilot/
 ```
 
 The Xcode target uses a file-system-synchronized group, so new files under
-`GigPilot/` join the build automatically — no `project.pbxproj` edits.
+`GigGrow/` join the build automatically — no `project.pbxproj` edits.
 
 ## How the design was carried across
 
@@ -58,7 +58,7 @@ alpha-keyed off its plate and recomposited onto a violet bloom at 1024×1024
 (`Assets.xcassets/AppIcon.appiconset`). For in-app use it's also rebuilt as
 vector geometry in `Logo.swift` — the gauge arc, six graduation ticks, three
 ascending bars and the needle breaking out as an arrow — so it stays sharp at
-20pt. It appears in the Settings footer; `GigPilotIconTile` is available if you
+20pt. It appears in the Settings footer; `GigGrowIconTile` is available if you
 want it elsewhere.
 
 ## Deliberate deviations
@@ -67,7 +67,7 @@ want it elsewhere.
 |---|---|---|---|
 | Status bar | Mock "9:41" drawn into each frame | Real system status bar | It's an app, not a mockup |
 | Screen size | Fixed 393 × 852 | Safe-area relative | Adapts to every iPhone |
-| Tab bar | Static, drawn per frame | One `GPTabBar`, real selection | Tabs actually switch |
+| Tab bar | Static, drawn per frame | One `GGTabBar`, real selection | Tabs actually switch |
 | Service rows | Divider under every row | No divider after the last | Divider met the card edge |
 | Analytics range | "Week" always selected | Working segmented control | Charts are static for now |
 | Logo | Absent from the screens | Settings footer | Additive; disturbs no designed row |
