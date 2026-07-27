@@ -212,31 +212,33 @@ struct SettingsView: View {
             if TrackingCapability.automaticMileage { mileageToggle }
 
             RowDivider(color: GP.Surface.dividerSoft)
-            SettingsRow(label: "Recorded drives",
-                        value: drives.isEmpty ? "None yet" : "\(drives.count)") {
+            SettingsRow(label: "Mileage log",
+                        value: mileageSummary) {
                 isShowingDrives = true
             }
 
             RowDivider(color: GP.Surface.dividerSoft)
-            SettingsRow(label: "Idle threshold",
-                        value: "\(profile?.idleThresholdMinutes ?? 8) min") {
+            SettingsRow(label: "End a trip after",
+                        value: "\(profile?.idleThresholdMinutes ?? 8) min stopped") {
                 route = .idleThreshold
             }
 
-            // Shift detection still isn't built; drives are captured but
-            // nothing decides where one shift ends and the next begins.
-            if !TrackingCapability.automaticShiftDetection {
-                RowDivider(color: GP.Surface.dividerSoft)
-                HStack {
-                    Text("Automatic shift detection")
-                        .gpText(GP.Typo.rowLabel, color: GP.Ink.tertiary)
-                    Spacer(minLength: 12)
-                    Text(TrackingCapability.notYetLabel)
-                        .gpText(.system(size: 14.5, weight: .regular), color: GP.Ink.muted)
-                }
-                .padding(.vertical, 15)
-            }
+
         }
+    }
+
+    /// What's in the log, in the terms it matters in: miles you can claim,
+    /// and how many still need a decision.
+    private var mileageSummary: String {
+        guard !drives.isEmpty else { return "Empty" }
+        let unsorted = drives.filter { $0.purpose == .unclassified }.count
+        let businessMiles = drives.filter { $0.purpose.isDeductible }
+            .reduce(0) { $0 + $1.miles }
+
+        if unsorted > 0 {
+            return "\(unsorted) to sort"
+        }
+        return String(format: "%.0f business mi", businessMiles)
     }
 
     private var mileageToggle: some View {
@@ -404,10 +406,13 @@ struct SettingsView: View {
                 ) { profile.mileageRate = $0; save() }
 
             case .idleThreshold:
+                // One number, two jobs, and the old copy only admitted to
+                // one of them — which is why it read as a setting with no
+                // visible effect.
                 StepperEditor(
-                    title: "Idle threshold",
-                    explanation: "How long you can sit without a ping before the time counts as idle rather than active. Used as the default when you log a shift.",
-                    unit: "minutes",
+                    title: "End a trip after",
+                    explanation: "How long you have to be stopped before GigPilot decides the drive is over. Too short and a red light ends your trip; too long and the drive home merges into the shift. Eight minutes suits most drivers.\n\nThe same figure is the default idle time when you log a shift by hand.",
+                    unit: "minutes stopped",
                     value: profile.idleThresholdMinutes,
                     bounds: 1...60
                 ) { profile.idleThresholdMinutes = $0; save() }

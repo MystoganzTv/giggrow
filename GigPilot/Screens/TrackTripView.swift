@@ -53,7 +53,6 @@ struct TrackTripView: View {
                     Spacer(minLength: 0)
                     RouteIllustration(isActive: isRecording)
                         .frame(width: 240, height: 190)
-                        .animation(.easeOut(duration: 0.3), value: isRecording)
                     Spacer(minLength: 0)
                     controlCard
                 }
@@ -71,7 +70,12 @@ struct TrackTripView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onReceive(timer) { tick = $0 }
+        .onReceive(timer) { now in
+            // Only while something is being timed. A 1Hz redraw of a static
+            // screen is wasted battery on a phone that's also running three
+            // other apps.
+            if isRecording { tick = now }
+        }
         .alert(item: $outcome) { outcome in
             switch outcome {
             case .saved(let miles):
@@ -273,16 +277,29 @@ private struct RouteIllustration: View {
     }
 
     private func start() {
-        progress = 0
-        // Slower once recording: the animation is then reporting something
-        // real and shouldn't race ahead of a car in traffic.
-        let duration = isActive ? 3.4 : 2.2
-        withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: false)) {
-            progress = 1
+        // Reset without animating, or SwiftUI animates the jump back to zero
+        // as well and the two runs stack into a stutter. This is what made it
+        // look broken: a repeatForever started on top of one already running
+        // never settles.
+        var reset = Transaction()
+        reset.disablesAnimations = true
+        withTransaction(reset) {
+            progress = 0
+            pulse = false
         }
-        guard isActive, !pulse else { return }
-        withAnimation(.easeOut(duration: 1.3).repeatForever(autoreverses: false)) {
-            pulse = true
+
+        // A beat, so the reset commits before the loop begins.
+        DispatchQueue.main.async {
+            // Slower once recording: the animation is then reporting
+            // something real and shouldn't race ahead of a car in traffic.
+            let duration = isActive ? 3.4 : 2.2
+            withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: false)) {
+                progress = 1
+            }
+            guard isActive else { return }
+            withAnimation(.easeOut(duration: 1.3).repeatForever(autoreverses: false)) {
+                pulse = true
+            }
         }
     }
 }
