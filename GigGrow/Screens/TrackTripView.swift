@@ -153,13 +153,26 @@ struct TrackTripView: View {
                             color: GG.Ink.tertiary)
             }
 
-            // The number the driver is here for, at the size that says so.
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(String(format: "%.1f", tracker?.currentMiles ?? 0))
-                    .ggText(GG.Typo.heroAmount, tracking: GG.Typo.heroAmountTracking)
-                    .monospacedDigit()
-                Text("mi")
-                    .ggText(.system(size: 20, weight: .medium), color: GG.Ink.tertiary)
+            // The number the driver is here for, at the size that says so —
+            // unless there's no fix yet, in which case saying so is more use
+            // than a confident zero.
+            if tracker?.hasFix == false {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Finding you…")
+                        .ggText(GG.Typo.heroAmountSmall,
+                                tracking: GG.Typo.heroAmountSmallTracking,
+                                color: GG.Ink.secondary)
+                    Text("GPS can take a moment, especially indoors or in a garage.")
+                        .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(String(format: "%.1f", tracker?.currentMiles ?? 0))
+                        .ggText(GG.Typo.heroAmount, tracking: GG.Typo.heroAmountTracking)
+                        .monospacedDigit()
+                    Text("mi")
+                        .ggText(.system(size: 20, weight: .medium), color: GG.Ink.tertiary)
+                }
             }
 
             Button { stop() } label: {

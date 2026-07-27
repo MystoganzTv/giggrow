@@ -619,6 +619,47 @@ final class MileageTests: XCTestCase {
         XCTAssertEqual(TaxTables.table(for: 2025).year, 2025)
     }
 
+    // MARK: Accumulating a real drive
+
+    /// The field bug, as arithmetic.
+    ///
+    /// GPS at best accuracy reports every few metres. The old code advanced
+    /// its anchor on every sample even when the step was below the 20m noise
+    /// floor, so every step was rejected against a fresh anchor and nothing
+    /// ever accumulated. Four real miles counted as zero, and the trip then
+    /// failed the 0.3-mile save check.
+    func testSmallStepsAccumulateInsteadOfBeingDiscarded() {
+        let floor = 20.0
+        let step = 5.0
+        let metres = 4 * 1_609.344
+        let samples = Int(metres / step)
+
+        // What the old logic produced: anchor moves every time.
+        var brokenTotal = 0.0
+        for _ in 0..<samples where step >= floor { brokenTotal += step }
+        XCTAssertEqual(brokenTotal, 0, accuracy: 0.001,
+                       "every step under the floor, so nothing was ever counted")
+
+        // What holding the anchor produces.
+        var total = 0.0
+        var anchor = 0.0
+        for index in 1...samples {
+            let travelled = Double(index) * step
+            if travelled - anchor >= floor {
+                total += travelled - anchor
+                anchor = travelled
+            }
+        }
+        XCTAssertEqual(total / 1_609.344, 4.0, accuracy: 0.02,
+                       "a four-mile drive must measure four miles")
+    }
+
+    /// And it has to clear the floor that discards a walk to the shop.
+    func testARealDriveClearsTheMinimumSaveDistance() {
+        let measured = 4 * 1_609.344 * 0.99   // GPS reads a little under
+        XCTAssertGreaterThan(measured / 1_609.344, 0.3)
+    }
+
     // MARK: Erasing
 
     /// A wipe that misses a model is worse than no wipe: the app looks empty

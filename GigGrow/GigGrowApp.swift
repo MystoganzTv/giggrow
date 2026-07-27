@@ -17,7 +17,13 @@ struct GigGrowApp: App {
         let schema = Schema(GigGrowSchema.all)
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            return try ModelContainer(for: schema, configurations: [config])
+            let container = try ModelContainer(for: schema, configurations: [config])
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-GGScreenshotDemo") {
+                Seed.loadDemoData(container.mainContext)
+            }
+            #endif
+            return container
         } catch {
             fatalError("Could not create the GigGrow model container: \(error)")
         }

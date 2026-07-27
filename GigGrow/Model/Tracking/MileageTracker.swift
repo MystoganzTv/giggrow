@@ -56,6 +56,10 @@ final class MileageTracker: NSObject {
     private(set) var currentStart: Date?
     /// Set when something needs saying — permission downgraded, and such.
     private(set) var notice: String?
+    /// True once a usable position has arrived. Until then the readout says
+    /// so rather than showing a confident 0.0 — which is what made a broken
+    /// tracker and a cold GPS look the same for four miles.
+    private(set) var hasFix = false
 
     // MARK: Dependencies
 
@@ -77,6 +81,8 @@ final class MileageTracker: NSObject {
     /// traffic light ends the trip; longer and a shift's worth of drives
     /// merge into one.
     private var idleTimeout: TimeInterval = 5 * 60
+    /// Manual trips close faster — see `timeoutForCurrentMode`.
+    private let manualIdleTimeout: TimeInterval = 3 * 60
 
     /// Ignore jitter. A parked phone drifts by a few metres and would
     /// otherwise accumulate miles overnight.
@@ -90,7 +96,14 @@ final class MileageTracker: NSObject {
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.activityType = .automotiveNavigation
-        manager.pausesLocationUpdatesAutomatically = true
+        // Matched to the noise floor, so a callback means "you moved" rather
+        // than "you exist". Cheaper than filtering thousands of samples in
+        // `accumulate`, and it keeps the two thresholds from disagreeing.
+        manager.distanceFilter = minimumStep
+        // Off. The system pauses updates when it decides nothing is
+        // happening and does not reliably resume, which on a slow crawl in
+        // traffic looks exactly like the tracker having died.
+        manager.pausesLocationUpdatesAutomatically = false
         // Nothing is requested until the driver turns tracking on.
     }
 
@@ -143,8 +156,10 @@ final class MileageTracker: NSObject {
         if CMMotionActivityManager.isActivityAvailable() {
             motion.startActivityUpdates(to: .main) { [weak self] activity in
                 guard let self, let activity else { return }
-                guard self.mode != .manual || self.status != .recording else { return }
                 if activity.automotive && activity.confidence != .low {
+                    // Automatic detection must not hijack a trip the driver
+                    // started; stillness still applies to both.
+                    guard self.mode != .manual || self.status != .recording else { return }
                     self.beginDrive()
                 } else if activity.stationary && activity.confidence == .high {
                     self.noteStillness()
@@ -170,12 +185,19 @@ final class MileageTracker: NSObject {
         status = .recording
         currentStart = .now
         currentDistance = 0
+        hasFix = false
         lastLocation = nil
         lastMovementAt = .now
 
         enableBackgroundUpdatesIfPermitted()
         manager.startUpdatingLocation()
-        if mode == .automatic { startIdleTimer() }
+        // Both modes now. A manual trip you forget to stop is the common
+        // case, not the exception — you park, you walk off, the phone keeps
+        // recording a stationary car. The timeout differs because the
+        // intent does: an automatic trip should tolerate a long queue, a
+        // manual one you started deliberately should close soon after you
+        // stop moving.
+        startIdleTimer()
     }
 
     /// Turns on background updates only when iOS will actually allow it.
@@ -219,7 +241,7 @@ final class MileageTracker: NSObject {
     }
 
     private func noteStillness() {
-        guard status == .recording, mode == .automatic else { return }
+        guard status == .recording else { return }
         lastMovementAt = lastMovementAt ?? .now
     }
 
@@ -231,9 +253,18 @@ final class MileageTracker: NSObject {
     }
 
     private func checkIdle() {
-        guard status == .recording, mode == .automatic, let last = lastMovementAt else { return }
-        guard Date.now.timeIntervalSince(last) >= idleTimeout else { return }
+        guard status == .recording, let last = lastMovementAt else { return }
+        guard Date.now.timeIntervalSince(last) >= timeoutForCurrentMode else { return }
         finishDrive()
+    }
+
+    /// How long stopped before this trip is considered over.
+    ///
+    /// Three minutes for a trip you started by hand: long enough for a light
+    /// or a short wait at a pickup, short enough that forgetting to press
+    /// Stop costs you a few minutes rather than the rest of the day.
+    private var timeoutForCurrentMode: TimeInterval {
+        mode == .manual ? manualIdleTimeout : idleTimeout
     }
 
     private func finishDrive() {
@@ -414,14 +445,28 @@ extension MileageTracker: CLLocationManagerDelegate {
         guard location.horizontalAccuracy >= 0,
               location.horizontalAccuracy <= worstAcceptableAccuracy else { return }
 
-        defer { lastLocation = location }
-        guard let previous = lastLocation else { return }
+        hasFix = true
+
+        guard let previous = lastLocation else {
+            lastLocation = location
+            return
+        }
 
         let step = location.distance(from: previous)
-        // Below the noise floor it's a parked phone drifting, not movement.
+
+        // Below the noise floor this is a parked phone drifting, so it isn't
+        // counted — but `lastLocation` is deliberately *not* advanced either.
+        //
+        // It used to be, in a `defer` that ran whatever happened. With best
+        // accuracy the phone reports every few metres, so every single step
+        // fell under the 20m floor, every one was discarded, and the anchor
+        // moved up to meet each one. Four real miles accumulated to zero, and
+        // the trip then failed the 0.3-mile check on save. Holding the anchor
+        // lets small steps add up until they cross the floor together.
         guard step >= minimumStep else { return }
 
         currentDistance += step
+        lastLocation = location
         lastMovementAt = location.timestamp
     }
 }
