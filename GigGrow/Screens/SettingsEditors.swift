@@ -120,6 +120,9 @@ struct PercentageEditor: View {
 
 /// Mileage rate and anything else that is a plain currency figure.
 struct DecimalEditor: View {
+
+    /// The pad has no return key; see KeyboardDoneBar.
+    @FocusState private var isEditingField: Bool
     @Environment(\.dismiss) private var dismiss
 
     let title: String
@@ -152,6 +155,7 @@ struct DecimalEditor: View {
                                 color: Color.white.opacity(0.5))
                     TextField("0.00", text: $text)
                         .keyboardType(.decimalPad)
+                        .focused($isEditingField)
                         .font(GG.Typo.heroAmountSmall)
                         .foregroundStyle(.white)
                     if !suffix.isEmpty {
@@ -167,6 +171,7 @@ struct DecimalEditor: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 6)
         }
+        .keyboardDoneBar($isEditingField)
     }
 }
 
@@ -223,6 +228,9 @@ struct StepperEditor: View {
 // MARK: - Profile
 
 struct ProfileEditor: View {
+
+    /// The pad has no return key; see KeyboardDoneBar.
+    @FocusState private var isEditingField: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
 
@@ -268,6 +276,7 @@ struct ProfileEditor: View {
                 VStack(alignment: .leading, spacing: 12) {
                     field("Payout account", text: $payoutLast4, placeholder: "last 4 digits")
                         .keyboardType(.numberPad)
+                        .focused($isEditingField)
 
                     Text("Last four digits only, as a label so you can tell accounts apart. GigGrow never connects to your bank and never asks for a full account number.")
                         .ggText(GG.Typo.footnote, color: GG.Ink.muted)
@@ -289,6 +298,7 @@ struct ProfileEditor: View {
                 if profile.taxRate == 25 { profile.taxRate = state.suggestedTaxRate }
             }
         }
+        .keyboardDoneBar($isEditingField)
     }
 
     private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {

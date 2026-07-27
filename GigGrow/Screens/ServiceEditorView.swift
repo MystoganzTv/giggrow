@@ -13,6 +13,9 @@ import SwiftUI
 import SwiftData
 
 struct ServiceEditorView: View {
+
+    /// The number pad has no return key; see KeyboardDoneBar.
+    @FocusState private var isEditingField: Bool
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
@@ -73,6 +76,7 @@ struct ServiceEditorView: View {
             if editing != nil { deleteButton }
         }
         .onAppear(perform: loadIfNeeded)
+        .keyboardDoneBar($isEditingField)
     }
 
     // MARK: Basis
@@ -164,6 +168,7 @@ struct ServiceEditorView: View {
             Spacer(minLength: 12)
             TextField("0", text: text)
                 .keyboardType(.numberPad)
+                .focused($isEditingField)
                 .multilineTextAlignment(.trailing)
                 .font(.system(size: 15.5, weight: .semibold))
                 .foregroundStyle(.white)

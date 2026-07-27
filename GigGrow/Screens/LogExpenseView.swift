@@ -14,6 +14,9 @@ import SwiftUI
 import SwiftData
 
 struct LogExpenseView: View {
+
+    /// The number pad has no return key; see KeyboardDoneBar.
+    @FocusState private var isEditingField: Bool
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
@@ -50,6 +53,7 @@ struct LogExpenseView: View {
             .navigationTitle(editing == nil ? "Add expense" : "Edit expense")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(GG.Palette.screen, for: .navigationBar)
+            .keyboardDoneBar($isEditingField)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -83,6 +87,7 @@ struct LogExpenseView: View {
                                 color: Color.white.opacity(0.5))
                     TextField("0.00", text: $amountText)
                         .keyboardType(.decimalPad)
+                        .focused($isEditingField)
                         .font(GG.Typo.heroAmountSmall)
                         .tracking(GG.Typo.heroAmountSmallTracking)
                         .foregroundStyle(.white)

@@ -85,6 +85,14 @@ struct OnboardingView: View {
                 footer
             }
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focused = nil }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(GG.Palette.violet300)
+            }
+        }
         .preferredColorScheme(.dark)
         .task {
             // A beat for the field to exist before focusing it — set too
@@ -326,6 +334,7 @@ struct OnboardingView: View {
             Spacer(minLength: 12)
             TextField("0", text: text)
                 .keyboardType(.numberPad)
+                .focused($focused, equals: .odometer)
                 .multilineTextAlignment(.trailing)
                 .font(.system(size: 15.5, weight: .semibold))
                 .foregroundStyle(.white)
