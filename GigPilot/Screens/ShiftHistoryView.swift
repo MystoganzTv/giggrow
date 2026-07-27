@@ -77,18 +77,51 @@ struct ShiftHistoryView: View {
     // MARK: List
 
     private var list: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
+        List {
+            Section {
                 summaryCard
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: GP.Layout.screenInset,
+                                              bottom: 8, trailing: GP.Layout.screenInset))
+            }
 
-                ForEach(weeks, id: \.key) { week in
-                    weekSection(week)
+            ForEach(weeks, id: \.key) { week in
+                Section {
+                    ForEach(week.items) { shift in
+                        row(shift)
+                            .listRowBackground(GP.Surface.glass)
+                            .listRowSeparatorTint(GP.Surface.dividerSoft)
+                            .listRowInsets(EdgeInsets(top: 0, leading: GP.Layout.screenInset,
+                                                      bottom: 0, trailing: GP.Layout.screenInset))
+                            // Trailing is where iOS puts destruction, so that
+                            // is where it goes. Full swipe is off: a shift is
+                            // a money record with no undo, and one careless
+                            // flick shouldn't be able to erase it.
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    pendingDelete = shift
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                Button {
+                                    editing = shift
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                .tint(GP.Palette.violet500)
+                            }
+                    }
+                } header: {
+                    weekHeader(week)
                 }
             }
-            .padding(.horizontal, GP.Layout.screenInset)
-            .padding(.top, 8)
-            .padding(.bottom, 40)
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, 0)
     }
 
     private var summaryCard: some View {
@@ -122,30 +155,15 @@ struct ShiftHistoryView: View {
         }
     }
 
-    private func weekSection(_ week: (key: String, items: [Shift])) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Text(week.key.uppercased())
-                    .gpText(GP.Typo.groupLabel,
-                            tracking: GP.Typo.groupLabelTracking,
-                            color: GP.Ink.muted)
-                Spacer()
-                Text(Money.whole(week.items.reduce(0) { $0 + $1.gross }))
-                    .gpText(GP.Typo.captionMuted, color: GP.Ink.tertiary)
-            }
-            .padding(.horizontal, 6)
-
-            GlassCard(radius: GP.Radius.tile,
-                      padding: EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18)) {
-                VStack(spacing: 0) {
-                    ForEach(Array(week.items.enumerated()), id: \.element.id) { index, shift in
-                        row(shift)
-                        if index < week.items.count - 1 {
-                            RowDivider(color: GP.Surface.dividerSoft)
-                        }
-                    }
-                }
-            }
+    private func weekHeader(_ week: (key: String, items: [Shift])) -> some View {
+        HStack {
+            Text(week.key.uppercased())
+                .gpText(GP.Typo.groupLabel,
+                        tracking: GP.Typo.groupLabelTracking,
+                        color: GP.Ink.muted)
+            Spacer()
+            Text(Money.whole(week.items.reduce(0) { $0 + $1.gross }))
+                .gpText(GP.Typo.captionMuted, color: GP.Ink.tertiary)
         }
     }
 

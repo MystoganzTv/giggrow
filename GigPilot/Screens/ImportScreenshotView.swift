@@ -56,6 +56,13 @@ private struct ImportedSource: Identifiable {
     /// True when the date is a guess rather than something read off the
     /// screen. Blocks saving until it's confirmed.
     var needsDate: Bool = false
+    /// Set when this looks like something already in the store. Not a block —
+    /// a driver may legitimately be replacing a bad import — but silence here
+    /// means quietly doubling a week's income, which is the worst kind of
+    /// wrong number because every rate downstream still looks plausible.
+    var isDuplicate: Bool = false
+    /// Excluded from the save. Duplicates start excluded.
+    var isSkipped: Bool = false
 
     var gross: Double { Double(amountText) ?? 0 }
     var tips: Double { Double(tipsText) ?? 0 }
@@ -83,6 +90,9 @@ struct ImportScreenshotView: View {
     @Environment(\.dismiss) private var dismiss
 
     @Query(sort: \PlatformAccount.sortIndex) private var accounts: [PlatformAccount]
+    /// Everything already stored, so an import can tell you when you're
+    /// about to add a day you've already added.
+    @Query private var existingShifts: [Shift]
 
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var sources: [ImportedSource] = []
@@ -182,7 +192,12 @@ struct ImportScreenshotView: View {
                         .foregroundStyle(GP.Palette.violet400)
                 }
             }
-            .onChange(of: pickerItems) { _, items in
+            .onChange(of: sources.map { "\($0.platform)-\($0.date.timeIntervalSince1970)" }) { _, _ in
+            // Picking the app or fixing the date is what makes a duplicate
+            // visible, so the check has to run again after either.
+            markDuplicates()
+        }
+        .onChange(of: pickerItems) { _, items in
                 guard !items.isEmpty else { return }
                 Task { await load(items) }
             }
@@ -378,6 +393,30 @@ struct ImportScreenshotView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                if value.isDuplicate {
+                    HStack(alignment: .top, spacing: 9) {
+                        Circle().fill(GP.Palette.amber)
+                            .frame(width: 6, height: 6).padding(.top, 6)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(value.isSkipped
+                                 ? "Already imported — this one will be skipped."
+                                 : "Already imported. Saving it again will double this day's earnings.")
+                                .gpText(.system(size: 11.5, weight: .medium),
+                                        color: GP.Palette.amber.opacity(0.95))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button {
+                                source.wrappedValue.isSkipped.toggle()
+                            } label: {
+                                Text(value.isSkipped ? "Import it anyway" : "Skip this one")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(GP.Palette.violet300)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+
                 if let note = value.detectedNote {
                     Text(note)
                         .gpText(.system(size: 11.5, weight: .regular),
@@ -518,6 +557,7 @@ struct ImportScreenshotView: View {
                     }
                 }
             }
+            .opacity(value.isSkipped ? 0.45 : 1)
             // The whole card is the target while collapsed. A tap strip the
             // width of the header is a hit area you have to aim for.
             .contentShape(Rectangle())
@@ -912,30 +952,30 @@ struct ImportScreenshotView: View {
 
     // MARK: Derived
 
-    private var totalGross: Double { sources.reduce(0) { $0 + $1.gross } }
+    private var totalGross: Double { included.reduce(0) { $0 + $1.gross } }
 
     /// Summed across blocks, not across screenshots: two apps in the same
     /// block share those hours, and adding them would halve every rate.
     private var totalHours: Double {
-        Dictionary(grouping: sources) { $0.groupKey(Calendar.gigPilot) }
+        Dictionary(grouping: included) { $0.groupKey(Calendar.gigPilot) }
             .values
             .reduce(0) { $0 + ($1.map(\.hours).max() ?? 0) }
     }
 
     private var totalMiles: Double {
-        Dictionary(grouping: sources) { $0.groupKey(Calendar.gigPilot) }
+        Dictionary(grouping: included) { $0.groupKey(Calendar.gigPilot) }
             .values
             .reduce(0) { $0 + ($1.map(\.miles).max() ?? 0) }
     }
 
     private var blockCount: Int {
-        Set(sources.map { $0.groupKey(Calendar.gigPilot) }).count
+        Set(included.map { $0.groupKey(Calendar.gigPilot) }).count
     }
 
     /// Names the actual clash rather than warning in general terms.
     private var overlapWarning: String? {
         let calendar = Calendar.gigPilot
-        let weeks = sources.filter { $0.period == .week }
+        let weeks = included.filter { $0.period == .week }
         guard !weeks.isEmpty else { return nil }
 
         let f = DateFormatter()
@@ -944,16 +984,39 @@ struct ImportScreenshotView: View {
         for week in weeks {
             let start = calendar.startOfWeek(for: week.date)
             guard let end = calendar.date(byAdding: .day, value: 7, to: start) else { continue }
-            let inside = sources.filter { $0.period == .day && $0.date >= start && $0.date < end }
+            let inside = included.filter { $0.period == .day && $0.date >= start && $0.date < end }
             guard !inside.isEmpty else { continue }
             return "The weekly total for \(f.string(from: start)) already includes \(inside.count) of the daily screenshots below. Saving both counts that money twice — remove the week, or remove the days."
         }
         return nil
     }
 
+    private var included: [ImportedSource] { sources.filter { !$0.isSkipped } }
+
     private var canSave: Bool {
-        sources.contains { !$0.platform.isEmpty && $0.gross > 0 }
-            && sources.allSatisfy { $0.platform.isEmpty || ($0.hours > 0 && !$0.needsDate) }
+        included.contains { !$0.platform.isEmpty && $0.gross > 0 }
+            && included.allSatisfy { $0.platform.isEmpty || ($0.hours > 0 && !$0.needsDate) }
+    }
+
+    /// Whether a shift already stored covers this screenshot's day with the
+    /// same app. Matched on the block, not the exact amount, because the
+    /// second import of a day is usually a *corrected* one — same day, same
+    /// app, different figure — and that is still a duplicate.
+    private func alreadyStored(_ source: ImportedSource) -> Bool {
+        guard !source.platform.isEmpty else { return false }
+        let calendar = Calendar.gigPilot
+        let anchor = source.period == .week
+            ? calendar.startOfWeek(for: source.date)
+            : calendar.startOfDay(for: source.date)
+
+        return existingShifts.contains { shift in
+            guard shift.isAggregate == (source.period == .week) else { return false }
+            let shiftAnchor = source.period == .week
+                ? calendar.startOfWeek(for: shift.start)
+                : calendar.startOfDay(for: shift.start)
+            guard shiftAnchor == anchor else { return false }
+            return shift.earnings.contains { $0.account?.name == source.platform }
+        }
     }
 
     // MARK: Loading
@@ -1060,10 +1123,22 @@ struct ImportScreenshotView: View {
             )
         }
 
+        markDuplicates()
+
         if failures > 0 {
             errorMessage = failures == items.count
                 ? "None of those could be read. You can still fill the figures in by hand."
                 : "\(failures) of \(items.count) couldn't be read; the rest are below."
+        }
+    }
+
+    /// Duplicates start excluded rather than deleted — you may be replacing
+    /// a bad import on purpose, and the app shouldn't decide that for you.
+    private func markDuplicates() {
+        for index in sources.indices {
+            let duplicate = alreadyStored(sources[index])
+            sources[index].isDuplicate = duplicate
+            if duplicate { sources[index].isSkipped = true }
         }
     }
 
@@ -1080,7 +1155,7 @@ struct ImportScreenshotView: View {
         guard canSave else { return }
 
         let calendar = Calendar.gigPilot
-        let usable = sources.filter { !$0.platform.isEmpty && $0.gross > 0 && $0.hours > 0 }
+        let usable = included.filter { !$0.platform.isEmpty && $0.gross > 0 && $0.hours > 0 }
         let groups = Dictionary(grouping: usable) { $0.groupKey(calendar) }
 
         for group in groups.values {
