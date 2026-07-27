@@ -106,6 +106,21 @@ struct ImportScreenshotView: View {
     /// different item each pass and the cover would not close.
     @State private var viewing: ViewedImage?
 
+    /// What the save actually produced. Tapping Save and watching the sheet
+    /// close is indistinguishable from tapping Save and nothing happening,
+    /// especially when the shifts land in a week the dashboard isn't showing.
+    @State private var outcome: SaveOutcome?
+
+    private struct SaveOutcome: Identifiable {
+        let id = UUID()
+        let shifts: Int
+        let gross: Double
+        let earliest: Date
+        let latest: Date
+        /// True when none of it falls in the week the dashboard displays.
+        let outsideThisWeek: Bool
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -173,6 +188,13 @@ struct ImportScreenshotView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .alert(item: $outcome) { result in
+            Alert(
+                title: Text("Saved"),
+                message: Text(summary(result)),
+                dismissButton: .default(Text("Done")) { dismiss() }
+            )
+        }
         .fullScreenCover(item: $viewing) { viewed in
             // Closing is handed over explicitly rather than left to
             // `@Environment(\.dismiss)`, so there is exactly one way out and
@@ -1124,8 +1146,59 @@ struct ImportScreenshotView: View {
                    : "Imported from screenshot")
         }
 
-        try? context.save()
-        dismiss()
+        do {
+            try context.save()
+        } catch {
+            errorMessage = "Those couldn't be saved: \(error.localizedDescription)"
+            return
+        }
+
+        report(groups: groups)
+    }
+
+    /// Says what landed and, crucially, when. Importing June's screenshots in
+    /// July saves correctly and changes nothing on a dashboard headed "This
+    /// week" — which reads exactly like a broken Save button.
+    private func report(groups: [String: [ImportedSource]]) {
+        let saved = groups.values.flatMap { $0 }
+        guard !saved.isEmpty else {
+            errorMessage = "Nothing was saved — each screenshot needs an app, an amount and a time."
+            return
+        }
+
+        let calendar = Calendar.gigPilot
+        let dates = saved.map(\.date)
+        let thisWeek = calendar.startOfWeek(for: .now)
+
+        outcome = SaveOutcome(
+            shifts: groups.count,
+            gross: saved.reduce(0) { $0 + $1.gross },
+            earliest: dates.min() ?? .now,
+            latest: dates.max() ?? .now,
+            outsideThisWeek: !dates.contains { calendar.startOfWeek(for: $0) == thisWeek }
+        )
+    }
+
+    private func summary(_ result: SaveOutcome) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+
+        let span = calendarSpan(result, formatter: f)
+        let shifts = "\(result.shifts) shift\(result.shifts == 1 ? "" : "s")"
+        var text = "\(Money.cents(result.gross)) across \(shifts), \(span)."
+
+        if result.outsideThisWeek {
+            text += "\n\nThe dashboard shows this week, so it won't change. Open Analytics and pick a wider range, or Shift history, to see these."
+        }
+        return text
+    }
+
+    private func calendarSpan(_ result: SaveOutcome, formatter f: DateFormatter) -> String {
+        let calendar = Calendar.gigPilot
+        if calendar.isDate(result.earliest, inSameDayAs: result.latest) {
+            return f.string(from: result.earliest)
+        }
+        return "\(f.string(from: result.earliest))–\(f.string(from: result.latest))"
     }
 }
 

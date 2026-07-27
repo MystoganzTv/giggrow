@@ -39,6 +39,32 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: GP.Layout.stackSpacing) {
             // The screenshot is the fast path, so it gets the primary button.
             // Typing eight figures in is the fallback, not the headline.
+            // "No shifts yet this week" is true and useless when you have
+            // just imported June and it's July: it reads as the import having
+            // failed. Say which it is.
+            if snapshot.hasEverLoggedShift {
+                Button(action: onShowHistory) {
+                    GlassCard(radius: GP.Radius.tile,
+                              padding: EdgeInsets(top: 16, leading: 18,
+                                                  bottom: 16, trailing: 18)) {
+                        HStack(alignment: .top, spacing: 11) {
+                            Circle().fill(GP.Palette.violet400)
+                                .frame(width: 6, height: 6).padding(.top, 7)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Nothing this week, but you have earlier shifts")
+                                    .gpText(.system(size: 13.5, weight: .semibold))
+                                Text("Imported a past week? It saved — this screen only ever shows the current one. Tap to see everything.")
+                                    .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 8)
+                            Chevron(size: 15, color: Color.white.opacity(0.28))
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+
             EmptyStateCard(
                 title: "No shifts yet this week",
                 message: "Screenshot your gig app's earnings screen and GigPilot reads the figures off it. Faster than typing, and you're not transcribing numbers by hand.",
