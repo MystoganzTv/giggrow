@@ -157,13 +157,7 @@ extension Seed {
     /// Wipes the store and lays down the design's exact week. Reachable from
     /// the debug menu, never from first launch.
     static func loadDemoData(_ context: ModelContext) {
-        try? context.delete(model: Shift.self)
-        try? context.delete(model: PlatformEarning.self)
-        try? context.delete(model: Expense.self)
-        try? context.delete(model: ServiceRecord.self)
-        try? context.delete(model: VehicleRecord.self)
-        try? context.delete(model: DriverProfile.self)
-        try? context.delete(model: PlatformAccount.self)
+        eraseEverything(context)
 
         let accounts = defaultAccounts()
         for account in accounts { context.insert(account) }
@@ -206,14 +200,52 @@ extension Seed {
 
     /// Erases everything, returning the app to a genuine first-run state.
     static func wipe(_ context: ModelContext) {
-        try? context.delete(model: Shift.self)
-        try? context.delete(model: PlatformEarning.self)
-        try? context.delete(model: Expense.self)
-        try? context.delete(model: ServiceRecord.self)
-        try? context.delete(model: VehicleRecord.self)
-        try? context.delete(model: DriverProfile.self)
-        try? context.delete(model: PlatformAccount.self)
-        try? context.save()
+        eraseEverything(context)
+    }
+
+    /// Deletes every object, children before parents.
+    ///
+    /// `context.delete(model:)` looks like the obvious way to do this and is
+    /// the wrong tool. It compiles to a Core Data batch delete, which runs
+    /// straight against the store and never loads the object graph — so it
+    /// can't apply a cascade rule or nullify an inverse, and SwiftData's
+    /// generated model marks those inverses mandatory. The result was a
+    /// console full of:
+    ///
+    ///     Batch delete failed due to mandatory OTO nullify inverse
+    ///     on PlatformEarning/account
+    ///
+    /// and a wipe that half-worked: some rows gone, some orphaned, the store
+    /// left in a state the next launch had to make sense of.
+    ///
+    /// Fetching and deleting one at a time is slower and correct. A wipe
+    /// touches a few thousand rows at most and happens by explicit choice, so
+    /// the speed was never worth the corruption.
+    private static func eraseEverything(_ context: ModelContext) {
+        // Order matters: anything owned is deleted before its owner, so no
+        // deletion ever has to nullify a relationship still being read.
+        deleteAll(PlatformEarning.self, in: context)
+        deleteAll(DriveRecord.self, in: context)
+        deleteAll(Shift.self, in: context)
+        deleteAll(Expense.self, in: context)
+        deleteAll(ServiceRecord.self, in: context)
+        deleteAll(VehicleRecord.self, in: context)
+        deleteAll(DriverProfile.self, in: context)
+        deleteAll(PlatformAccount.self, in: context)
+
+        do {
+            try context.save()
+        } catch {
+            // A failed wipe leaves the store inconsistent, which is worth
+            // knowing about rather than swallowing into a `try?`.
+            assertionFailure("Wipe failed: \(error)")
+            context.rollback()
+        }
+    }
+
+    private static func deleteAll<T: PersistentModel>(_ type: T.Type, in context: ModelContext) {
+        guard let objects = try? context.fetch(FetchDescriptor<T>()) else { return }
+        for object in objects { context.delete(object) }
     }
 
     /// The design's exact mix of statuses: one scheduled, one overdue, two healthy.
