@@ -245,6 +245,17 @@ enum EarningsParser {
     /// biggest text on screen and carries no label at all, while a chart
     /// axis label sits equally high in tiny type. Position alone scored
     /// those two the same.
+    /// Words that mean this money was never the driver's.
+    ///
+    /// Uber's breakdown opens with "Total customer fare $1,091.87" — which
+    /// carries the "total" cue, sits high on the screen, and is the biggest
+    /// number there. It beat "Your total earnings $829.41" on every signal
+    /// and would have imported a 32% overstatement as income. What separates
+    /// them isn't position or size, it's whose money it is.
+    private static let notYoursCues = ["customer", "rider", "passenger",
+                                       "uber kept", "lyft kept", "service fee",
+                                       "gross fare", "total fare"]
+
     private static func score(base: Double, cues: [String],
                               in context: String, position: CGFloat,
                               relativeSize: CGFloat) -> Double {
@@ -252,6 +263,11 @@ enum EarningsParser {
         if cues.contains(where: { context.contains($0) }) { value += 0.30 }
         if position < 0.4 { value += 0.10 }
         value += Double(min(relativeSize, 1)) * 0.25
+
+        // Applied last and heavily: a figure labelled as the customer's is
+        // disqualified rather than merely ranked lower, because it is
+        // plausible enough to survive a glance in the review sheet.
+        if notYoursCues.contains(where: { context.contains($0) }) { value *= 0.25 }
         return min(value, 1)
     }
 

@@ -231,9 +231,15 @@ final class VehicleAndEdgeTests: XCTestCase {
         XCTAssertEqual(lines.count, 4, "header plus one row per platform")
         XCTAssertTrue(lines[0].hasPrefix("shift_id,"))
 
+        let header = lines[0].split(separator: ",", omittingEmptySubsequences: false)
+        let attributedHoursColumn = try XCTUnwrap(header.firstIndex(of: "attributed_hours"))
+
         let attributedHours = lines.dropFirst().compactMap { line -> Double? in
             let fields = line.split(separator: ",", omittingEmptySubsequences: false)
-            return Double(fields[12])
+            // attributed_hours moved from 12 to 14 when base_fare and
+            // promotions were added to the export. Looked up by name so the
+            // next column change doesn't silently read the wrong one.
+            return Double(fields[attributedHoursColumn])
         }
         XCTAssertEqual(attributedHours.count, 3)
         // Each column is rounded to two decimals before being written, so three

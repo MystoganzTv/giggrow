@@ -417,23 +417,23 @@ final class MileageTests: XCTestCase {
 
     func testHeaderRangeGivesTheWeekStart() {
         let found = EarningsParser.weekStart(in: lines(["Jun 1 - Jun 8"]), now: july26_2026)
-        XCTAssertEqual(found, day(2026, 6, 1))
+        assertSameDay(found, day(2026, 6, 1))
     }
 
     /// En dash and em dash both appear; so does the day-first spelling.
     func testHeaderAcceptsTheDashAndOrderVariants() {
-        XCTAssertEqual(EarningsParser.weekStart(in: lines(["Jun 1 – Jun 8"]), now: july26_2026),
-                       day(2026, 6, 1))
-        XCTAssertEqual(EarningsParser.weekStart(in: lines(["jul 13 — jul 20"]), now: july26_2026),
-                       day(2026, 7, 13))
-        XCTAssertEqual(EarningsParser.weekStart(in: lines(["1 Jun - 8 Jun"]), now: july26_2026),
-                       day(2026, 6, 1))
+        assertSameDay(EarningsParser.weekStart(in: lines(["Jun 1 – Jun 8"]), now: july26_2026),
+                      day(2026, 6, 1))
+        assertSameDay(EarningsParser.weekStart(in: lines(["jul 13 — jul 20"]), now: july26_2026),
+                      day(2026, 7, 13))
+        assertSameDay(EarningsParser.weekStart(in: lines(["1 Jun - 8 Jun"]), now: july26_2026),
+                      day(2026, 6, 1))
     }
 
     /// A week that runs into the next month still starts where it starts.
     func testHeaderHandlesAWeekCrossingAMonth() {
         let found = EarningsParser.weekStart(in: lines(["Jun 29 - Jul 5"]), now: july26_2026)
-        XCTAssertEqual(found, day(2026, 6, 29))
+        assertSameDay(found, day(2026, 6, 29))
     }
 
     /// A screenshot is always of something that already happened, so a bare
@@ -462,7 +462,7 @@ final class MileageTests: XCTestCase {
             for: .day(index: 6, weekday: "sun", dayOfMonth: 7),
             weekStart: week!
         )
-        XCTAssertEqual(resolved, day(2026, 6, 7))
+        assertSameDay(resolved, day(2026, 6, 7))
 
         let calendar = Calendar.gigPilot
         XCTAssertEqual(calendar.component(.month, from: resolved ?? .distantPast), 6,
@@ -705,6 +705,24 @@ final class MileageTests: XCTestCase {
     }
 
     // MARK: Helpers
+
+    /// Same calendar day, whatever the time of day.
+    ///
+    /// `day()` returns noon so a date can't drift over a boundary, but a week
+    /// or day *start* is midnight — so comparing the two instants with
+    /// XCTAssertEqual could never pass. Six tests failed on this and not one
+    /// of them was about the code under test.
+    private func assertSameDay(_ actual: Date?, _ expected: Date,
+                               _ message: String = "",
+                               file: StaticString = #filePath, line: UInt = #line) {
+        guard let actual else {
+            XCTFail("expected \(expected), got nil. \(message)", file: file, line: line)
+            return
+        }
+        XCTAssertTrue(Calendar.gigPilot.isDate(actual, inSameDayAs: expected),
+                      "\(actual) is not the same day as \(expected). \(message)",
+                      file: file, line: line)
+    }
 
     private func day(_ y: Int, _ m: Int, _ d: Int, hour: Int = 12) -> Date {
         var components = DateComponents()
