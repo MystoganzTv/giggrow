@@ -20,6 +20,11 @@ import SwiftUI
 struct RangeBar: View {
     @Binding var selection: RangeSelection
 
+    /// Tapping the title opens the list. Stepping is fine for "last week" and
+    /// useless for a month in spring — eleven taps to somewhere that might be
+    /// empty. Uber and Lyft both make the header tappable; so does this.
+    @State private var isPicking = false
+
     /// Which sizes to offer. The dashboard shows all four; a screen that only
     /// makes sense weekly can narrow it.
     var options: [AnalyticsRange] = AnalyticsRange.allCases
@@ -64,8 +69,17 @@ struct RangeBar: View {
             arrow(-1, systemName: "chevron.left", enabled: true)
 
             VStack(spacing: 1) {
-                Text(selection.title)
-                    .gpText(.system(size: 15, weight: .semibold), tracking: -0.2)
+                Button {
+                    isPicking = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(selection.title)
+                            .gpText(.system(size: 15, weight: .semibold), tracking: -0.2)
+                        Chevron(size: 11, color: Color.white.opacity(0.4))
+                            .rotationEffect(.degrees(90))
+                    }
+                }
+                .buttonStyle(.plain)
                 if !selection.isCurrent {
                     // Says how to get back, since the title stops naming the
                     // present the moment you step away from it.
@@ -85,6 +99,9 @@ struct RangeBar: View {
             // Nothing has happened in a period that hasn't started, so
             // stepping into it would only ever show zeroes.
             arrow(1, systemName: "chevron.right", enabled: !selection.isCurrent)
+        }
+        .sheet(isPresented: $isPicking) {
+            PeriodPickerView(selection: $selection)
         }
     }
 

@@ -219,8 +219,7 @@ struct RootView: View {
                                        onShowHistory: { isShowingHistory = true },
                                        onShowProfile: { isShowingProfile = true },
                                        onImport: { isImporting = true })
-        case .apps:      AppsView(snapshot: snapshot,
-                                  onLogShift: { isImporting = true })
+        case .taxes:     TaxView(embedded: true)
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
                                        selection: $analyticsSelection,
                                        onShowExpenses: { isShowingExpenses = true })

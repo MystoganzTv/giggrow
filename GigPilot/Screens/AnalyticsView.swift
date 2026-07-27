@@ -13,7 +13,6 @@ struct AnalyticsView: View {
     let snapshot: EarningsSnapshot
     @Binding var selection: RangeSelection
 
-    @State private var isShowingTax = false
 
     private var range: AnalyticsRange { selection.range }
     var onShowExpenses: () -> Void = {}
@@ -30,7 +29,6 @@ struct AnalyticsView: View {
             // an empty week shouldn't trap you out of checking the month.
             segmentedControl
             ownAverageCard
-            taxRow
 
             if snapshot.hasData {
                 weeklyIncomeCard
@@ -46,7 +44,6 @@ struct AnalyticsView: View {
                 )
             }
         }
-        .sheet(isPresented: $isShowingTax) { TaxView() }
     }
 
     /// This period against your own history.
@@ -113,27 +110,6 @@ struct AnalyticsView: View {
                 }
             }
         }
-    }
-
-    /// The tax estimate, reachable from where the money questions are.
-    private var taxRow: some View {
-        Button { isShowingTax = true } label: {
-            GlassCard(radius: GP.Radius.tile,
-                      padding: EdgeInsets(top: 16, leading: 18, bottom: 16, trailing: 18)) {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Tax estimate")
-                            .gpText(.system(size: 14.5, weight: .semibold))
-                        Text("Federal, state and self-employment, after your miles come off.")
-                            .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 8)
-                    Chevron(size: 16, color: Color.white.opacity(0.28))
-                }
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: Range picker

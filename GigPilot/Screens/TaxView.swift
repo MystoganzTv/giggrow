@@ -18,6 +18,11 @@ import SwiftUI
 import SwiftData
 
 struct TaxView: View {
+    /// True when this is a tab rather than a sheet. A tab has no Done button
+    /// and no navigation bar of its own — it sits in the same scaffold as the
+    /// other four screens.
+    var embedded: Bool = false
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
 
@@ -32,6 +37,28 @@ struct TaxView: View {
     private var profile: DriverProfile? { profiles.first }
 
     var body: some View {
+        if embedded { tab } else { sheet }
+    }
+
+    /// Tab form: the app's own scaffold, matching the other four screens.
+    private var tab: some View {
+        ScreenScaffold {
+            GP.Gradients.settingsWash()
+        } content: {
+            Text("Taxes")
+                .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
+
+            yearPicker
+            headline
+            workingOut
+            breakdown
+            setAsideAdvice
+            assumptions
+        }
+        .sheet(isPresented: $isEditingStateRate) { stateRateEditor }
+    }
+
+    private var sheet: some View {
         NavigationStack {
             ZStack {
                 GP.Palette.screen.ignoresSafeArea()
@@ -62,16 +89,19 @@ struct TaxView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $isEditingStateRate) {
-            if let profile {
-                StepperEditor(
-                    title: "State income tax",
-                    explanation: "State tax varies by bracket, city and filing status, so GigPilot doesn't guess it. Look up your state's rate for your income — or ask whoever files for you — and put it here. States with no income tax use 0.",
-                    unit: "percent",
-                    value: Int(profile.stateIncomeTaxRate),
-                    bounds: 0...15
-                ) { profile.stateIncomeTaxRate = Double($0); try? context.save() }
-            }
+        .sheet(isPresented: $isEditingStateRate) { stateRateEditor }
+    }
+
+    @ViewBuilder
+    private var stateRateEditor: some View {
+        if let profile {
+            StepperEditor(
+                title: "State income tax",
+                explanation: "State tax varies by bracket, city and filing status, so GigPilot doesn't guess it. Look up your state's rate for your income — or ask whoever files for you — and put it here. States with no income tax use 0.",
+                unit: "percent",
+                value: Int(profile.stateIncomeTaxRate),
+                bounds: 0...15
+            ) { profile.stateIncomeTaxRate = Double($0); try? context.save() }
         }
     }
 

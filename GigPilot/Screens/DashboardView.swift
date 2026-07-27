@@ -135,9 +135,21 @@ struct DashboardView: View {
 
     // MARK: Header
 
+    /// Names the driver rather than the period. A dashboard is the one screen
+    /// that should feel like it belongs to someone.
+    private var greeting: String {
+        let hour = Calendar.gigPilot.component(.hour, from: .now)
+        let name = snapshot.driver.name.split(separator: " ").first.map(String.init) ?? ""
+        let part = hour < 12 ? "Morning" : (hour < 18 ? "Afternoon" : "Evening")
+        return name.isEmpty ? part : "\(part), \(name)"
+    }
+
     private var header: some View {
         HStack(spacing: 12) {
-            Text("This week")
+            // Was "This week", directly under a RangeBar already saying
+            // "This week". The period is the bar's job; the title's job is to
+            // say which screen you're on.
+            Text(greeting)
                 .gpText(GP.Typo.screenTitle, tracking: GP.Typo.screenTitleTracking)
 
             Spacer()

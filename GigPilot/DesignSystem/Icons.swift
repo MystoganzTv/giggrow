@@ -13,14 +13,17 @@ import SwiftUI
 private let iconStroke = StrokeStyle(lineWidth: 1.9, lineCap: .round, lineJoin: .round)
 
 enum GPIcon: String, CaseIterable, Identifiable {
-    case dashboard, apps, analytics, vehicle, settings
+    // Apps came out and Taxes went in. The per-platform split it showed
+    // already lives inside Analytics, whereas "what do I owe" is the question
+    // that brings drivers to an app like this and had no home at all.
+    case dashboard, taxes, analytics, vehicle, settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .dashboard: return "Dashboard"
-        case .apps:      return "Apps"
+        case .taxes:     return "Taxes"
         case .analytics: return "Analytics"
         case .vehicle:   return "Vehicle"
         case .settings:  return "Settings"
@@ -37,7 +40,7 @@ struct GPIconView: View {
         Group {
             switch icon {
             case .dashboard: DashboardGlyph().stroke(style: scaled)
-            case .apps:      AppsGlyph().stroke(style: scaled)
+            case .taxes:     TaxGlyph().stroke(style: scaled)
             case .analytics: AnalyticsGlyph().stroke(style: scaled)
             case .vehicle:   VehicleGlyph().stroke(style: scaled)
             case .settings:  SettingsGlyph().stroke(style: scaled)
@@ -73,6 +76,34 @@ struct DashboardGlyph: Shape {
 }
 
 /// Four circles in a 2 × 2 grid.
+/// A receipt with a torn edge — the one document every driver recognises.
+struct TaxGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        var path = Path()
+
+        // Body, with a zigzag along the bottom.
+        path.move(to: CGPoint(x: w * 0.22, y: h * 0.08))
+        path.addLine(to: CGPoint(x: w * 0.78, y: h * 0.08))
+        path.addLine(to: CGPoint(x: w * 0.78, y: h * 0.88))
+        let teeth = 4
+        for tooth in 0..<teeth {
+            let step = 0.56 / Double(teeth)
+            let x = 0.78 - step * (Double(tooth) + 0.5)
+            path.addLine(to: CGPoint(x: w * x, y: h * (tooth % 2 == 0 ? 0.74 : 0.88)))
+        }
+        path.addLine(to: CGPoint(x: w * 0.22, y: h * 0.88))
+        path.closeSubpath()
+
+        // Two lines of figures.
+        path.move(to: CGPoint(x: w * 0.34, y: h * 0.32))
+        path.addLine(to: CGPoint(x: w * 0.66, y: h * 0.32))
+        path.move(to: CGPoint(x: w * 0.34, y: h * 0.50))
+        path.addLine(to: CGPoint(x: w * 0.54, y: h * 0.50))
+        return path
+    }
+}
+
 struct AppsGlyph: Shape {
     func path(in rect: CGRect) -> Path {
         let s = unit(rect)

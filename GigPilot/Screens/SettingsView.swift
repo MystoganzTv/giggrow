@@ -32,6 +32,7 @@ struct SettingsView: View {
     @State private var isShowingDrives = false
     @State private var isPickingState = false
     @State private var isConfirmingErase = false
+    @State private var isManagingPlatforms = false
     @State private var route: Route?
 
     /// Bound to the profile so the picker writes straight through.
@@ -86,6 +87,9 @@ struct SettingsView: View {
             }
         } message: {
             Text("Every shift, imported screenshot, weekly total, recorded drive, expense and vehicle record is deleted from this phone. Export first if you want to keep any of it — this can't be undone.")
+        }
+        .sheet(isPresented: $isManagingPlatforms) {
+            ManagePlatformsView()
         }
         .sheet(isPresented: $isShowingDrives) {
             MileageView(tracker: tracker)
@@ -178,6 +182,14 @@ struct SettingsView: View {
 
     private var moneyGroup: some View {
         SettingsGroup(title: "Money") {
+            // Taking Apps out of the tab bar orphaned this — it was the only
+            // way in, and without it there is no way to turn a platform on or
+            // off. Losing a feature to a navigation change is the kind of
+            // thing nobody notices until a driver asks where it went.
+            SettingsRow(label: "Your apps", value: activePlatformSummary) {
+                isManagingPlatforms = true
+            }
+            RowDivider(color: GP.Surface.dividerSoft)
             SettingsRow(label: "State",
                         value: StateDirectory.state(code: profile?.stateCode ?? "")?.name
                                ?? "Not set") {
@@ -223,6 +235,11 @@ struct SettingsView: View {
 
     /// What's in the log, in the terms it matters in: miles you can claim,
     /// and how many still need a decision.
+    private var activePlatformSummary: String {
+        let active = snapshot.platforms.count
+        return active == 0 ? "None picked" : "\(active) active"
+    }
+
     private var mileageSummary: String {
         guard !drives.isEmpty else { return "Empty" }
         let unsorted = drives.filter { $0.purpose == .unclassified }.count
