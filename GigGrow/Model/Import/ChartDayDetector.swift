@@ -86,7 +86,8 @@ enum ChartDayDetector {
     /// This is an estimate and the caller must say so. The *total* comes from
     /// the text and is exact; the split is measured off a bar chart perhaps
     /// eighty pixels tall, so a day is good to a few dollars, not to the cent.
-    static func dailyShares(image: CGImage, lines: [RecognisedLine]) -> [Double]? {
+    static func dailyShares(image: CGImage, lines: [RecognisedLine],
+                            total exactTotal: Double? = nil) -> [Double]? {
         guard let labels = dayLabels(in: lines), labels.count >= 5 else { return nil }
         guard let sampler = Sampler(image: image) else { return nil }
 
@@ -98,10 +99,75 @@ enum ChartDayDetector {
             sampler.filledHeight(xRange: label.xRange, yRange: bandTop...bandBottom)
         }
 
+        // Lyft prints a dollar amount above each non-empty bar. Those values
+        // are much better than pixel height for tiny days: Lyft draws a
+        // minimum-size dot for $5, which otherwise looks like roughly $50.
+        // Vision may omit one amount, so use the chart only to distribute the
+        // exact weekly remainder among missing, visibly non-empty columns.
+        if let exactTotal,
+           let labelled = labelledDailyShares(
+               total: exactTotal, labels: labels, heights: heights, lines: lines
+           ) {
+            return labelled
+        }
+
         let total = heights.reduce(0, +)
         // A chart where nothing registered is a chart we didn't find.
         guard total > 0.02 else { return nil }
         return heights.map { $0 / total }
+    }
+
+    private static func labelledDailyShares(total: Double,
+                                            labels: [Label],
+                                            heights: [Double],
+                                            lines: [RecognisedLine]) -> [Double]? {
+        guard total > 0, labels.count == heights.count else { return nil }
+        let labelTop = labels.map(\.top).min() ?? 0
+        let chartAmounts = lines.compactMap { line -> (line: RecognisedLine, value: Double)? in
+            // The headline sits much higher and much larger; breakdown/tip
+            // figures sit below the weekday row.
+            guard line.topDownY > labelTop - 0.17,
+                  line.topDownY < labelTop - 0.015,
+                  line.box.height < 0.04,
+                  let amount = EarningsParser.currencyAmounts(in: line.text).first
+            else { return nil }
+            return (line, amount)
+        }
+        guard chartAmounts.count >= 3 else { return nil }
+
+        let centres = labels.map { ($0.xRange.lowerBound + $0.xRange.upperBound) / 2 }
+        let typicalSpacing: CGFloat = centres.count > 1
+            ? zip(centres.dropFirst(), centres).map { $0 - $1 }.reduce(0, +)
+                / CGFloat(centres.count - 1)
+            : 0
+        guard typicalSpacing > 0 else { return nil }
+
+        var values = [Double](repeating: 0, count: labels.count)
+        var wasRead = [Bool](repeating: false, count: labels.count)
+        for candidate in chartAmounts {
+            let x = candidate.line.box.midX
+            guard let index = centres.indices.min(by: {
+                abs(centres[$0] - x) < abs(centres[$1] - x)
+            }), abs(centres[index] - x) < typicalSpacing * 0.48 else { continue }
+            values[index] = candidate.value
+            wasRead[index] = true
+        }
+        guard wasRead.filter({ $0 }).count >= 3 else { return nil }
+
+        let known = values.reduce(0, +)
+        let missingActive = heights.indices.filter { !wasRead[$0] && heights[$0] > 0.004 }
+        let remainder = max(total - known, 0)
+        let missingWeight = missingActive.reduce(0) { $0 + heights[$1] }
+
+        if !missingActive.isEmpty, missingWeight > 0, remainder > 0 {
+            for index in missingActive {
+                values[index] = remainder * heights[index] / missingWeight
+            }
+        }
+
+        let represented = values.reduce(0, +)
+        guard represented > 0 else { return nil }
+        return values.map { $0 / represented }
     }
 
     /// Resolves a reading against the week the screenshot covers.
@@ -151,6 +217,12 @@ enum ChartDayDetector {
     /// keys on anything containing a weekday name and groups by vertical
     /// position rather than assuming a layout.
     private static func dayLabels(in lines: [RecognisedLine]) -> [Label]? {
+        // Uber prints the day number and weekday on separate rows. Vision
+        // sometimes merges adjacent weekday names into one observation
+        // ("Wed Thu"), but the seven numbers remain seven clean columns.
+        // Prefer those anchors so a weekly split always has seven days.
+        if let numbered = numberedDayLabels(in: lines) { return numbered }
+
         let candidates = lines.compactMap { line -> (line: RecognisedLine, name: String)? in
             let lower = line.text.lowercased()
             guard let name = weekdayNames.first(where: { lower.contains($0) }) else { return nil }
@@ -158,32 +230,108 @@ enum ChartDayDetector {
             guard line.text.count <= 8 else { return nil }
             return (line, name)
         }
-        guard candidates.count >= 3 else { return nil }
 
-        // Keep the widest horizontal band — if a screen shows two rows of
-        // weekday text, the chart's is the one with the most entries.
-        let grouped = Dictionary(grouping: candidates) { candidate in
-            (candidate.line.topDownY * 40).rounded()
+        if candidates.count >= 3 {
+            // Keep the widest horizontal band — if a screen shows two rows
+            // of weekday text, the chart's is the one with the most entries.
+            let grouped = Dictionary(grouping: candidates) { candidate in
+                (candidate.line.topDownY * 40).rounded()
+            }
+            if let row = grouped.values.max(by: { $0.count < $1.count }), row.count >= 3 {
+                return row
+                    .sorted { $0.line.box.minX < $1.line.box.minX }
+                    .map { candidate in
+                        // Widen slightly: the bar is usually a touch wider
+                        // than its label, and clipping it loses the colour.
+                        let box = candidate.line.box
+                        let pad = box.width * 0.3
+                        let xRange = max(box.minX - pad, 0)...min(box.maxX + pad, 1)
+                        return Label(
+                            xRange: xRange,
+                            top: candidate.line.topDownY,
+                            weekday: candidate.name,
+                            dayOfMonth: dayNumber(for: candidate.line, xRange: xRange, in: lines)
+                        )
+                    }
+            }
         }
-        guard let row = grouped.values.max(by: { $0.count < $1.count }), row.count >= 3 else {
+
+        return compactDayLabels(in: lines)
+    }
+
+    private static func numberedDayLabels(in lines: [RecognisedLine]) -> [Label]? {
+        let candidates = lines.compactMap { line -> (line: RecognisedLine, day: Int)? in
+            let trimmed = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.allSatisfy(\.isNumber),
+                  let day = Int(trimmed), (1...31).contains(day) else { return nil }
+            return (line, day)
+        }
+        guard candidates.count >= 5 else { return nil }
+
+        let grouped = Dictionary(grouping: candidates) { candidate in
+            (candidate.line.topDownY * 50).rounded()
+        }
+        guard let row = grouped.values.max(by: { $0.count < $1.count }), row.count >= 5 else {
             return nil
         }
 
-        return row
-            .sorted { $0.line.box.minX < $1.line.box.minX }
-            .map { candidate in
-                // Widen slightly: the bar is usually a touch wider than its
-                // label, and clipping it loses the colour that matters.
-                let box = candidate.line.box
-                let pad = box.width * 0.3
-                let xRange = max(box.minX - pad, 0)...min(box.maxX + pad, 1)
-                return Label(
-                    xRange: xRange,
-                    top: candidate.line.topDownY,
-                    weekday: candidate.name,
-                    dayOfMonth: dayNumber(for: candidate.line, xRange: xRange, in: lines)
-                )
-            }
+        let sorted = row.sorted { $0.line.box.midX < $1.line.box.midX }
+        guard let first = sorted.first, let last = sorted.last,
+              last.line.box.midX - first.line.box.midX > 0.65 else { return nil }
+
+        return sorted.map { candidate in
+            let box = candidate.line.box
+            let pad = max(box.width * 0.5, 0.012)
+            return Label(
+                xRange: max(box.minX - pad, 0)...min(box.maxX + pad, 1),
+                top: candidate.line.topDownY,
+                weekday: nil,
+                dayOfMonth: candidate.day
+            )
+        }
+    }
+
+    /// Lyft abbreviates the chart to `M T W T F S S`. Vision commonly drops
+    /// one of the repeated letters (in the real screenshot it dropped the
+    /// first `T`), so the observations cannot be used as seven literal
+    /// labels. The remaining row still gives us both chart edges; interpolate
+    /// seven stable columns between them.
+    private static func compactDayLabels(in lines: [RecognisedLine]) -> [Label]? {
+        let letters = Set(["m", "t", "w", "f", "s"])
+        let candidates = lines.filter { line in
+            letters.contains(line.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        }
+        guard candidates.count >= 5 else { return nil }
+
+        let grouped = Dictionary(grouping: candidates) { line in
+            (line.topDownY * 50).rounded()
+        }
+        guard let row = grouped.values.max(by: { $0.count < $1.count }), row.count >= 5 else {
+            return nil
+        }
+
+        let sorted = row.sorted { $0.box.midX < $1.box.midX }
+        guard let first = sorted.first, let last = sorted.last else { return nil }
+        let left = first.box.midX
+        let right = last.box.midX
+        // A real seven-day strip spans most of the screen. This prevents a
+        // stray "M" and "S" elsewhere in the UI from becoming a chart.
+        guard right - left > 0.65 else { return nil }
+
+        let spacing = (right - left) / 6
+        let top = sorted.map(\.topDownY).reduce(0, +) / CGFloat(sorted.count)
+        return weekdayNames.enumerated().map { index, weekday in
+            let centre = left + CGFloat(index) * spacing
+            // Stay inside the narrow rounded bars. A wide sample would be
+            // mostly background and make short days disappear.
+            let halfWidth = min(spacing * 0.16, 0.022)
+            return Label(
+                xRange: max(centre - halfWidth, 0)...min(centre + halfWidth, 1),
+                top: top,
+                weekday: weekday,
+                dayOfMonth: nil
+            )
+        }
     }
 
     /// The day of the month sitting with this label.
@@ -342,10 +490,10 @@ enum ChartDayDetector {
                     let b = Double(data[offset + 2]) / 255
                     let high = max(r, g, b), low = min(r, g, b)
                     let saturation = high <= 0.001 ? 0 : (high - low) / high
-                    // Any bar counts, pale or solid — an unselected day is
-                    // washed out but still has a height, and its earnings
-                    // are what we're after.
-                    if saturation > 0.12 { colouredInRow += 1 }
+                    // Weekly bars are solid. A lower threshold also counts
+                    // Lyft's dark grey "no earnings" dot as a real bar and
+                    // gives Sunday invented income.
+                    if saturation > 0.25 { colouredInRow += 1 }
                     samplesInRow += 1
                     x += xStep
                 }

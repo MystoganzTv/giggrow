@@ -20,14 +20,6 @@ struct ShiftHistoryView: View {
 
     @State private var isAdding = false
     @State private var editing: Shift?
-    @State private var pendingDelete: Shift?
-    /// A real flag, not one derived from `pendingDelete != nil`.
-    ///
-    /// The derived binding recomputed on every pass and its setter fought the
-    /// button's own cleanup, so the sheet flickered, the row you'd just
-    /// deleted came back, and the delete only landed once you dismissed the
-    /// thing. Same class of bug as the screenshot viewer that wouldn't close.
-    @State private var isConfirmingDelete = false
 
     var body: some View {
         NavigationStack {
@@ -58,19 +50,6 @@ struct ShiftHistoryView: View {
             }
             .sheet(isPresented: $isAdding) { LogShiftView() }
             .sheet(item: $editing) { LogShiftView(editing: $0) }
-            // Deleting a shift throws away real money data, so it asks first.
-            .alert("Delete this shift?",
-                   isPresented: $isConfirmingDelete,
-                   presenting: pendingDelete) { shift in
-                // Cancel first, so the safe action is the default.
-                Button("Cancel", role: .cancel) { pendingDelete = nil }
-                Button("Delete", role: .destructive) {
-                    delete(shift)
-                    pendingDelete = nil
-                }
-            } message: { shift in
-                Text("\(Money.cents(shift.gross)) across \(shift.platformCount) app\(shift.platformCount == 1 ? "" : "s") will be removed from your totals.")
-            }
         }
         .preferredColorScheme(.dark)
     }
@@ -95,14 +74,9 @@ struct ShiftHistoryView: View {
                             .listRowSeparatorTint(GG.Surface.dividerSoft)
                             .listRowInsets(EdgeInsets(top: 0, leading: GG.Layout.screenInset,
                                                       bottom: 0, trailing: GG.Layout.screenInset))
-                            // Trailing is where iOS puts destruction, so that
-                            // is where it goes. Full swipe is off: a shift is
-                            // a money record with no undo, and one careless
-                            // flick shouldn't be able to erase it.
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
-                                    pendingDelete = shift
-                                    isConfirmingDelete = true
+                                    delete(shift)
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
@@ -170,56 +144,52 @@ struct ShiftHistoryView: View {
     }
 
     private func row(_ shift: Shift) -> some View {
-        Button {
-            editing = shift
-        } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(dayLabel(shift.start))
-                        .ggText(GG.Typo.rowLabel)
-                    Spacer(minLength: 8)
-                    Text(Money.cents(shift.gross))
-                        .ggText(.system(size: 16, weight: .semibold), tracking: -0.3)
-                }
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(dayLabel(shift.start))
+                    .ggText(GG.Typo.rowLabel)
+                Spacer(minLength: 8)
+                Text(Money.cents(shift.gross))
+                    .ggText(.system(size: 16, weight: .semibold), tracking: -0.3)
+            }
 
-                HStack(spacing: 10) {
-                    Text(detailLine(shift))
-                        .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+            HStack(spacing: 10) {
+                Text(detailLine(shift))
+                    .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                Spacer(minLength: 0)
+            }
+
+            // Which apps ran, as the same brand dots used everywhere else.
+            if !shift.earnings.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Array(shift.earnings.enumerated()), id: \.element.id) { _, earning in
+                        if let account = earning.account {
+                            Text(account.initial)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 18, height: 18)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color(hex: account.gradientStart),
+                                                 Color(hex: account.gradientEnd)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    ),
+                                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                )
+                        }
+                    }
                     Spacer(minLength: 0)
                 }
-
-                // Which apps ran, as the same brand dots used everywhere else.
-                if !shift.earnings.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(Array(shift.earnings.enumerated()), id: \.element.id) { _, earning in
-                            if let account = earning.account {
-                                Text(account.initial)
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 18, height: 18)
-                                    .background(
-                                        LinearGradient(
-                                            colors: [Color(hex: account.gradientStart),
-                                                     Color(hex: account.gradientEnd)],
-                                            startPoint: .topLeading, endPoint: .bottomTrailing
-                                        ),
-                                        in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    )
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
             }
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button("Edit") { editing = shift }
-            Button("Delete", role: .destructive) { pendingDelete = shift }
-        }
+        .padding(.vertical, 14)
+        // A Button plus a context menu made three recognizers compete with
+        // List's native horizontal swipe. A plain row lets swipeActions win
+        // immediately while a completed tap still opens the editor.
+        .contentShape(Rectangle())
+        .onTapGesture { editing = shift }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel("\(dayLabel(shift.start)), \(Money.cents(shift.gross)), \(detailLine(shift))")
         .accessibilityHint("Double tap to edit this shift")
     }
@@ -231,13 +201,57 @@ struct ShiftHistoryView: View {
     }
 
     private func detailLine(_ shift: Shift) -> String {
-        let time = DateFormatter()
-        time.dateFormat = "HH:mm"
-        var parts = ["\(time.string(from: shift.start))–\(time.string(from: shift.end))"]
-        parts.append(Hours.clock(shift.hours))
+        var parts: [String]
+        if shift.note?.hasPrefix("From a weekly screenshot") == true {
+            parts = ["Approx. \(Hours.clock(shift.hours)) from weekly total"]
+        } else if shift.isAggregate {
+            parts = ["Weekly total", Hours.clock(shift.hours)]
+        } else {
+            let time = DateFormatter()
+            time.dateFormat = "HH:mm"
+            parts = [
+                "\(time.string(from: shift.start))–\(time.string(from: shift.end))",
+                Hours.clock(shift.hours)
+            ]
+        }
         if shift.miles > 0 { parts.append("\(Int(shift.miles.rounded())) mi") }
-        if shift.tripCount > 0 { parts.append("\(shift.tripCount) units") }
+        if let work = workLabel(for: shift) { parts.append(work) }
         return parts.joined(separator: " · ")
+    }
+
+    /// Use each platform's own vocabulary. Lyft reports rides; Uber reports
+    /// trips; delivery apps may report orders, batches or blocks. A generic
+    /// "unit" hides information we already have on the earning record.
+    private func workLabel(for shift: Shift) -> String? {
+        let earnings = shift.earnings.filter { $0.trips > 0 }
+        guard !earnings.isEmpty else { return nil }
+
+        let nouns = Set(earnings.compactMap { $0.account?.unitNoun.lowercased() })
+        if nouns.count == 1, let noun = nouns.first {
+            let count = earnings.reduce(0) { $0 + $1.trips }
+            return "\(count) \(inflected(noun, count: count))"
+        }
+
+        return earnings.map { earning in
+            let noun = earning.account?.unitNoun.lowercased() ?? "units"
+            let prefix = earning.account?.short ?? "App"
+            return "\(prefix): \(earning.trips) \(inflected(noun, count: earning.trips))"
+        }
+        .joined(separator: ", ")
+    }
+
+    private func inflected(_ plural: String, count: Int) -> String {
+        guard count == 1 else { return plural }
+        let known: [String: String] = [
+            "trips": "trip",
+            "rides": "ride",
+            "orders": "order",
+            "batches": "batch",
+            "blocks": "block",
+            "deliveries": "delivery",
+            "units": "unit"
+        ]
+        return known[plural] ?? (plural.hasSuffix("s") ? String(plural.dropLast()) : plural)
     }
 
     // MARK: Empty

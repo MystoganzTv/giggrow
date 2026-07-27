@@ -59,8 +59,6 @@ private struct ImportedSource: Identifiable {
     /// For a weekly total: how much of it each day earned, read off the bar
     /// chart. Nil when the chart couldn't be measured.
     var dailyShares: [Double]?
-    /// Whether to split the week into days on save.
-    var splitAcrossWeek = false
     /// Set when this looks like something already in the store. Not a block —
     /// a driver may legitimately be replacing a bad import — but silence here
     /// means quietly doubling a week's income, which is the worst kind of
@@ -68,6 +66,10 @@ private struct ImportedSource: Identifiable {
     var isDuplicate: Bool = false
     /// Excluded from the save. Duplicates start excluded.
     var isSkipped: Bool = false
+    /// The driver deliberately chose to include a duplicate after seeing the
+    /// warning. Without remembering this, changing its app/date immediately
+    /// runs duplicate detection again and silently excludes it.
+    var duplicateOverride = false
     /// Ticked off by hand. With a week of near-identical cards on screen,
     /// there is otherwise no way to remember which ones you've already been
     /// through — you check the same three twice and miss the fourth.
@@ -85,12 +87,17 @@ private struct ImportedSource: Identifiable {
     }
     var miles: Double { Double(milesText) ?? 0 }
 
-    /// The key screenshots are merged on. Same day and same period means the
-    /// same block of time.
+    /// The key screenshots are merged on. Platform is part of the key
+    /// because an Uber weekly total and a Lyft weekly total carry independent
+    /// online hours. Treating them as one simultaneous block silently drops
+    /// time for drivers who switch apps rather than multi-app.
     func groupKey(_ calendar: Calendar) -> String {
         let anchor = period == .week ? calendar.startOfWeek(for: date)
                                      : calendar.startOfDay(for: date)
-        return "\(period.rawValue)-\(anchor.timeIntervalSince1970)"
+        let shape = period == .week
+            ? (dailyShares != nil ? "split" : "whole")
+            : "day"
+        return "\(period.rawValue)-\(shape)-\(platform.lowercased())-\(anchor.timeIntervalSince1970)"
     }
 }
 
@@ -132,10 +139,11 @@ struct ImportScreenshotView: View {
 
     private struct SaveOutcome: Identifiable {
         let id = UUID()
-        /// How many days of driving were stored. "Shifts" is the model's word
-        /// for a block of time; to a driver it means a day at work, and
-        /// saying "1 shift" for a week they drove six days is nonsense.
-        let days: Int
+        /// Derived daily rows plus any weekly rows that were kept whole.
+        /// These are storage entries, not claims about how many shifts the
+        /// driver actually worked.
+        let entries: Int
+        let reports: Int
         /// True when a weekly total was kept whole rather than split.
         let wasWholeWeek: Bool
         let gross: Double
@@ -170,6 +178,13 @@ struct ImportScreenshotView: View {
                             }
                             addMore
                             summaryCard
+                            if let saveBlockingMessage {
+                                Text(saveBlockingMessage)
+                                    .ggText(GG.Typo.footnote,
+                                            color: GG.Palette.amber.opacity(0.95))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.horizontal, 6)
+                            }
                         }
 
                         if let errorMessage {
@@ -425,9 +440,17 @@ struct ImportScreenshotView: View {
                                         color: GG.Palette.amber.opacity(0.95))
                                 .fixedSize(horizontal: false, vertical: true)
                             Button {
-                                source.wrappedValue.isSkipped.toggle()
+                                if value.isSkipped {
+                                    source.wrappedValue.duplicateOverride = true
+                                    source.wrappedValue.isSkipped = false
+                                } else {
+                                    source.wrappedValue.duplicateOverride = false
+                                    source.wrappedValue.isSkipped = true
+                                }
                             } label: {
-                                Text(value.isSkipped ? "Import it anyway" : "Skip this one")
+                                Text(value.isSkipped
+                                     ? "Include this corrected import"
+                                     : "Exclude this duplicate")
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundStyle(GG.Palette.violet300)
                             }
@@ -522,6 +545,12 @@ struct ImportScreenshotView: View {
                     if value.period == .week, let shares = value.dailyShares {
                         RowDivider()
                         splitRow(source, shares: shares)
+                    } else if value.period == .week {
+                        RowDivider()
+                        Text("Daily estimate unavailable—the chart couldn't be read. The exact weekly total can still be saved.")
+                            .ggText(.system(size: 11.5, weight: .regular),
+                                    color: GG.Palette.amber.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     RowDivider()
@@ -571,7 +600,15 @@ struct ImportScreenshotView: View {
                                 .padding(.vertical, 5)
                                 .background(GG.Palette.amber.opacity(0.14), in: Capsule())
                         } else {
-                            miniStat(value.period == .day ? "Day" : "Week")
+                            let splitDays = value.dailyShares?
+                                .filter { $0 > 0.0001 }.count ?? 0
+                            miniStat(
+                                value.period == .day
+                                    ? "Day"
+                                    : (splitDays > 0
+                                       ? "\(splitDays) earning days"
+                                       : "Week")
+                            )
                         }
                         if value.hours > 0 {
                             miniStat(Hours.clock(value.hours))
@@ -580,14 +617,22 @@ struct ImportScreenshotView: View {
                                 .ggText(.system(size: 12, weight: .medium), color: GG.Palette.amber)
                         }
                         Spacer(minLength: 0)
-                        if value.isReviewed {
+                        if value.isSkipped {
+                            Text(value.isDuplicate ? "Duplicate" : "Excluded")
+                                .ggText(.system(size: 12, weight: .semibold),
+                                        color: GG.Palette.amber)
+                        } else if !isReady(value) {
+                            Text("Needs info")
+                                .ggText(.system(size: 12, weight: .semibold),
+                                        color: GG.Palette.amber)
+                        } else if value.isReviewed {
                             HStack(spacing: 4) {
                                 CheckGlyph()
                                     .stroke(GG.Palette.mint,
                                             style: StrokeStyle(lineWidth: 2.2, lineCap: .round,
                                                                lineJoin: .round))
                                     .frame(width: 9, height: 9)
-                                Text("Checked")
+                                Text("Ready")
                                     .ggText(.system(size: 12, weight: .semibold),
                                             color: GG.Palette.mint)
                             }
@@ -608,7 +653,6 @@ struct ImportScreenshotView: View {
                     .frame(width: 3)
                     .padding(.vertical, 14)
                     .offset(x: -9)
-                    .opacity(value.isSkipped ? 0 : 1)
             }
             // The whole card is the target while collapsed. A tap strip the
             // width of the header is a hit area you have to aim for.
@@ -776,13 +820,20 @@ struct ImportScreenshotView: View {
 
     /// Where this card stands: needs something, been checked, or untouched.
     private func statusColour(_ value: ImportedSource) -> Color {
-        if value.needsDate || value.platform.isEmpty || value.hours <= 0 {
+        if value.isSkipped || !isReady(value) {
             return GG.Palette.amber
         }
         return value.isReviewed ? GG.Palette.mint : Color.clear
     }
 
-    /// Offer to break the week into its days.
+    private func isReady(_ value: ImportedSource) -> Bool {
+        !value.platform.isEmpty
+            && value.gross > 0
+            && value.hours > 0
+            && !value.needsDate
+    }
+
+    /// Offer to estimate which calendar days received the week's earnings.
     ///
     /// The total is exact — it's printed on the screen. The split is measured
     /// off a bar chart maybe eighty pixels tall, so it's good to a few dollars
@@ -791,56 +842,49 @@ struct ImportScreenshotView: View {
     @ViewBuilder
     private func splitRow(_ source: Binding<ImportedSource>, shares: [Double]) -> some View {
         let value = source.wrappedValue
+        let calendar = Calendar.gigGrow
+        let weekStart = calendar.startOfWeek(for: value.date)
 
         VStack(alignment: .leading, spacing: 10) {
-            Toggle(isOn: source.splitAcrossWeek) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Split across the week")
-                        .ggText(GG.Typo.rowLabel)
-                    Text("Seven days instead of one block, using the bar heights from the chart.")
-                        .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .tint(GG.Palette.violet500)
-
-            if value.splitAcrossWeek {
-                let calendar = Calendar.gigGrow
-                let weekStart = calendar.startOfWeek(for: value.date)
-                let f = DateFormatter()
-                f.dateFormat = "EEE"
-
-                VStack(spacing: 0) {
-                    ForEach(Array(shares.enumerated()), id: \.offset) { index, share in
-                        if let day = calendar.date(byAdding: .day, value: index, to: weekStart) {
-                            HStack {
-                                Text(f.string(from: day))
-                                    .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
-                                    .frame(width: 38, alignment: .leading)
-                                // The bar, redrawn — so the split can be
-                                // checked against the screenshot by eye.
-                                GeometryReader { geo in
-                                    Capsule()
-                                        .fill(share > 0.001
-                                              ? AnyShapeStyle(GG.Gradients.brandMark)
-                                              : AnyShapeStyle(GG.Surface.glassFaint))
-                                        .frame(width: max(geo.size.width * share * 3, 2))
-                                }
-                                .frame(height: 6)
-                                Text(share > 0.001 ? Money.cents(value.gross * share) : "—")
-                                    .ggText(.system(size: 12.5, weight: .medium),
-                                            color: share > 0.001 ? GG.Ink.secondary : GG.Ink.muted)
-                                    .frame(width: 70, alignment: .trailing)
-                            }
-                            .padding(.vertical, 5)
-                        }
-                    }
-                }
-
-                Text("The week's total is exact. The day-by-day split is read off the chart, so treat each day as approximate.")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Estimated earnings by day")
+                    .ggText(GG.Typo.rowLabel)
+                Text("Read from the chart automatically. It cannot identify exact shifts or daily online hours.")
                     .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            VStack(spacing: 0) {
+                ForEach(Array(shares.enumerated()), id: \.offset) { index, share in
+                    if let day = calendar.date(byAdding: .day, value: index, to: weekStart) {
+                        HStack {
+                            Text(shortWeekdayLabel(for: day))
+                                .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                                .frame(width: 38, alignment: .leading)
+                            // The bar, redrawn — so the split can be
+                            // checked against the screenshot by eye.
+                            GeometryReader { geo in
+                                Capsule()
+                                    .fill(share > 0.001
+                                          ? AnyShapeStyle(GG.Gradients.brandMark)
+                                          : AnyShapeStyle(GG.Surface.glassFaint))
+                                    .frame(width: min(max(geo.size.width * share * 3, 2),
+                                                      geo.size.width))
+                            }
+                            .frame(height: 6)
+                            Text(share > 0.001 ? Money.cents(value.gross * share) : "—")
+                                .ggText(.system(size: 12.5, weight: .medium),
+                                        color: share > 0.001 ? GG.Ink.secondary : GG.Ink.muted)
+                                .frame(width: 70, alignment: .trailing)
+                        }
+                        .padding(.vertical, 5)
+                    }
+                }
+            }
+
+            Text("The weekly total is exact; each daily amount is approximate. These are days with earnings, not necessarily days worked—late tips or adjustments can add a day.")
+                .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 13)
     }
@@ -852,6 +896,12 @@ struct ImportScreenshotView: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(GG.Surface.glassFaint, in: Capsule())
+    }
+
+    private func shortWeekdayLabel(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter.string(from: date)
     }
 
     /// The words around a parsed figure, trimmed to a chip's worth.
@@ -963,7 +1013,7 @@ struct ImportScreenshotView: View {
     private var summaryCard: some View {
         HeroCard(glow: true) {
             VStack(alignment: .leading, spacing: 10) {
-                Text((blockCount == 1 ? "This block" : "\(blockCount) shifts").uppercased())
+                Text("\(appCount) \(appCount == 1 ? "APP" : "APPS")")
                     .ggText(GG.Typo.heroEyebrow,
                             tracking: GG.Typo.heroEyebrowTracking,
                             color: Color.white.opacity(0.55))
@@ -977,9 +1027,22 @@ struct ImportScreenshotView: View {
                     summaryStat("Time", totalHours > 0 ? Hours.clock(totalHours) : "—")
                     summaryStat("Per mile",
                                 totalMiles > 0 ? Money.cents(totalGross / totalMiles) : "—")
-                    summaryStat(daysToStore == 1 ? "Day" : "Days", "\(daysToStore)")
+                    summaryStat("Calendar days",
+                                calendarDayCount.map(String.init) ?? "—")
                     summaryStat("Checked", "\(reviewedCount)/\(included.count)")
                 }
+
+                if !coverageLabels.isEmpty {
+                    Text(coverageLabels.joined(separator: "  ·  "))
+                        .ggText(.system(size: 11.5, weight: .medium),
+                                color: Color.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text("Online time is added across apps; GigGrow does not assume Uber and Lyft were running simultaneously.")
+                    .ggText(.system(size: 10.5, weight: .regular),
+                            color: Color.white.opacity(0.40))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -1078,18 +1141,15 @@ struct ImportScreenshotView: View {
 
     private var totalGross: Double { included.reduce(0) { $0 + $1.gross } }
 
-    /// Summed across blocks, not across screenshots: two apps in the same
-    /// block share those hours, and adding them would halve every rate.
+    /// Each app report carries its own online total. The importer cannot
+    /// prove overlap, so it keeps those denominators independent and adds
+    /// them instead of silently discarding the shorter platform's time.
     private var totalHours: Double {
-        Dictionary(grouping: included) { $0.groupKey(Calendar.gigGrow) }
-            .values
-            .reduce(0) { $0 + ($1.map(\.hours).max() ?? 0) }
+        included.reduce(0) { $0 + $1.hours }
     }
 
     private var totalMiles: Double {
-        Dictionary(grouping: included) { $0.groupKey(Calendar.gigGrow) }
-            .values
-            .reduce(0) { $0 + ($1.map(\.miles).max() ?? 0) }
+        included.reduce(0) { $0 + $1.miles }
     }
 
     /// Unchecked first, then checked, then skipped — stable within each
@@ -1107,23 +1167,53 @@ struct ImportScreenshotView: View {
 
     private var reviewedCount: Int { included.filter(\.isReviewed).count }
 
-    /// Days of driving this import will produce — a split week counts as the
-    /// days it contains, not as the one screenshot it arrived in.
-    private var daysToStore: Int {
-        Dictionary(grouping: included) { $0.groupKey(Calendar.gigGrow) }
-            .values
-            .reduce(0) { total, group in
-                guard let first = group.first else { return total }
-                if first.period == .week, first.splitAcrossWeek,
-                   let shares = first.dailyShares {
-                    return total + shares.filter { $0 > 0.005 }.count
-                }
-                return total + 1
-            }
+    private var appCount: Int {
+        Set(included.map(\.platform).filter { !$0.isEmpty }).count
     }
 
-    private var blockCount: Int {
-        Set(included.map { $0.groupKey(Calendar.gigGrow) }).count
+    /// Distinct dates represented across every app. Uber and Lyft can both
+    /// contribute to Monday without turning Monday into two calendar days.
+    /// A whole weekly total with no readable distribution makes this
+    /// unknowable, so the summary shows a dash rather than "1".
+    private var calendarDayCount: Int? {
+        let calendar = Calendar.gigGrow
+        var dates: Set<Date> = []
+
+        for source in included {
+            if source.period == .day {
+                dates.insert(calendar.startOfDay(for: source.date))
+                continue
+            }
+
+            guard let shares = source.dailyShares
+            else { return nil }
+
+            let weekStart = calendar.startOfWeek(for: source.date)
+            for (index, share) in shares.enumerated() where share > 0.0001 {
+                guard let day = calendar.date(byAdding: .day,
+                                              value: index,
+                                              to: weekStart)
+                else { continue }
+                dates.insert(calendar.startOfDay(for: day))
+            }
+        }
+        return dates.count
+    }
+
+    /// Coverage is reported per app rather than collapsed into a fictional
+    /// number of shifts. A non-zero bar is an earnings day; it may be a late
+    /// tip or adjustment and therefore is not proof the driver worked.
+    private var coverageLabels: [String] {
+        included.map { source in
+            if source.period == .day {
+                return "\(source.platform): 1 report day"
+            }
+            if let shares = source.dailyShares {
+                let count = shares.filter { $0 > 0.0001 }.count
+                return "\(source.platform): \(count) earning \(count == 1 ? "day" : "days")"
+            }
+            return "\(source.platform): weekly total"
+        }
     }
 
     /// Names the actual clash rather than warning in general terms.
@@ -1148,8 +1238,27 @@ struct ImportScreenshotView: View {
     private var included: [ImportedSource] { sources.filter { !$0.isSkipped } }
 
     private var canSave: Bool {
-        included.contains { !$0.platform.isEmpty && $0.gross > 0 }
-            && included.allSatisfy { $0.platform.isEmpty || ($0.hours > 0 && !$0.needsDate) }
+        !included.isEmpty
+            && included.allSatisfy(isReady)
+    }
+
+    private var saveBlockingMessage: String? {
+        guard !canSave else { return nil }
+        if included.isEmpty, !sources.isEmpty {
+            return "Nothing is included. These reports were already imported, so GigGrow excluded them to prevent double-counting. Open each card and tap “Include this corrected import”, or delete the previous import first."
+        }
+        let missingApps = included.filter { $0.platform.isEmpty }.count
+        let missingGross = included.filter { $0.gross <= 0 }.count
+        let missingHours = included.filter { $0.hours <= 0 }.count
+        let missingDates = included.filter(\.needsDate).count
+        var reasons: [String] = []
+        if missingApps > 0 { reasons.append("\(missingApps) app name") }
+        if missingGross > 0 { reasons.append("\(missingGross) gross total") }
+        if missingHours > 0 { reasons.append("\(missingHours) online time") }
+        if missingDates > 0 { reasons.append("\(missingDates) date") }
+        return reasons.isEmpty
+            ? "Review the included reports before saving."
+            : "Save is waiting for: \(reasons.joined(separator: ", "))."
     }
 
     /// Whether a shift already stored covers this screenshot's day with the
@@ -1248,15 +1357,36 @@ struct ImportScreenshotView: View {
                 period = .week
                 // A week's bars are the only record of its shape. Read them
                 // now so the driver can choose to keep it.
-                shares = ChartDayDetector.dailyShares(image: cgImage, lines: lines)
+                shares = ChartDayDetector.dailyShares(
+                    image: cgImage,
+                    lines: lines,
+                    total: best.amount
+                )
                 note = headerWeek != nil
-                    ? "Every bar is filled, so this is the whole week."
-                    : "Every bar is filled, so this is a whole week — but the date header couldn't be read."
+                    ? "This appears to be the weekly earnings chart."
+                    : "This appears to be a weekly chart, but the date header couldn't be read."
 
             case (.inconclusive, _):
-                note = headerWeek != nil
-                    ? "Couldn't tell a single day from the chart, so this is treated as the week. Switch it below if it's one day."
-                    : "Couldn't read the date header or tell which day this is. Set both below."
+                // Some weekly charts (notably Lyft in dark mode) don't have
+                // enough saturated pixels to classify as aggregate, but the
+                // weekday row and printed daily dollar labels still provide
+                // a usable earnings distribution.
+                if parsed.platformName == "Lyft" {
+                    shares = ChartDayDetector.dailyShares(
+                        image: cgImage,
+                        lines: lines,
+                        total: best.amount
+                    )
+                }
+                if shares != nil {
+                    note = headerWeek != nil
+                        ? "Weekly earnings distribution read from the chart."
+                        : "Weekly earnings distribution found, but the date header couldn't be read."
+                } else {
+                    note = headerWeek != nil
+                        ? "Couldn't identify a selected day, so this is kept as a weekly total."
+                        : "Couldn't read the date header or identify a selected day. Set both below."
+                }
             }
 
             sources.append(
@@ -1277,11 +1407,10 @@ struct ImportScreenshotView: View {
                     date: resolved,
                     detectedNote: note,
                     needsDate: needsDate,
-                    dailyShares: shares,
-                    // Default on. A week kept whole is one opaque block; split
-                    // it and the driver can see which days paid, which is the
-                    // question they opened the app with.
-                    splitAcrossWeek: shares != nil
+                    dailyShares: shares
+                    // A readable weekly chart is always stored by day. The
+                    // only honest reason to keep one opaque total is that no
+                    // daily distribution was available.
                 )
             )
         }
@@ -1301,7 +1430,9 @@ struct ImportScreenshotView: View {
         for index in sources.indices {
             let duplicate = alreadyStored(sources[index])
             sources[index].isDuplicate = duplicate
-            if duplicate { sources[index].isSkipped = true }
+            if duplicate && !sources[index].duplicateOverride {
+                sources[index].isSkipped = true
+            }
         }
     }
 
@@ -1311,9 +1442,9 @@ struct ImportScreenshotView: View {
 
     // MARK: Save
 
-    /// Screenshots are grouped by the block they describe, and each group
-    /// becomes one shift. Two apps on the same Tuesday share a shift and its
-    /// hours; Tuesday and Wednesday do not.
+    /// Screenshots are grouped by platform and the period they describe.
+    /// Platform time stays independent: without trip-level timestamps there
+    /// is no evidence that Uber's online hours overlap Lyft's.
     private func save() {
         guard canSave else { return }
 
@@ -1340,13 +1471,13 @@ struct ImportScreenshotView: View {
                               miles: miles)
 
             case .week:
-                if first.splitAcrossWeek, let shares = first.dailyShares {
-                    // Seven real days instead of one opaque block. The total
-                    // and the hours are exact and get divided by the same
-                    // proportions, so every rate stays consistent with the
-                    // week it came from.
-                    daysStored += saveSplitWeek(group, shares: shares, hours: hours,
-                                                miles: miles, calendar: calendar)
+                if first.dailyShares != nil {
+                    // Each platform keeps the shape of its own chart. Reusing
+                    // Uber's bars for Lyft (or the reverse) fabricates work
+                    // on days where that app was actually idle.
+                    daysStored += saveSplitWeek(
+                        group, hours: hours, miles: miles, calendar: calendar
+                    )
                     continue
                 }
                 // Spans the week it covers. `recordedHours` carries the real
@@ -1411,37 +1542,59 @@ struct ImportScreenshotView: View {
     /// shifts — a day you didn't drive is not a day you earned nothing, and
     /// an empty row would drag your average down.
     @discardableResult
-    private func saveSplitWeek(_ group: [ImportedSource], shares: [Double],
+    private func saveSplitWeek(_ group: [ImportedSource],
                                hours: Double, miles: Double,
                                calendar: Calendar) -> Int {
         guard let first = group.first else { return 0 }
         var created = 0
         let weekStart = calendar.startOfWeek(for: first.date)
+        let allocations = WeeklySplitAllocator.allocate(group.compactMap { source in
+            guard let shares = source.dailyShares else { return nil }
+            return WeeklyPlatformSplit(
+                platform: source.platform,
+                gross: source.gross,
+                tips: source.tips,
+                promotions: source.promotions,
+                trips: Int(source.unitsText) ?? 0,
+                dailyShares: shares
+            )
+        })
 
-        for (index, share) in shares.enumerated() where share > 0.005 {
-            guard let day = calendar.date(byAdding: .day, value: index, to: weekStart),
+        for allocation in allocations {
+            guard let day = calendar.date(byAdding: .day,
+                                          value: allocation.dayIndex,
+                                          to: weekStart),
                   let start = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: day)
             else { continue }
 
-            let dayHours = hours * share
+            // Weekly screenshots do not contain hours per day. Allocate the
+            // confirmed weekly total in proportion to combined earnings so
+            // the overall $/hour remains exact, while keeping it explicitly
+            // marked as estimated/aggregate.
+            let dayHours = hours * allocation.combinedShare
             let shift = Shift(start: start,
                               end: start.addingTimeInterval(dayHours * 3600),
-                              miles: miles * share)
-            // Not an aggregate: this is one day, and it should feed the
-            // peak-hours chart like any other.
+                              miles: miles * allocation.combinedShare)
+            // The day is real, but 9am is only a storage anchor. A weekly
+            // screenshot says how many hours were online, not which hours of
+            // the clock produced the money, so it must not fabricate an
+            // hourly peak in Analytics.
+            shift.recordedHours = dayHours
+            shift.isAggregate = true
             shift.note = "From a weekly screenshot — day split read off the chart"
             context.insert(shift)
 
-            for source in group {
-                guard let account = accounts.first(where: { $0.name == source.platform })
+            for dayEarning in allocation.earnings {
+                guard let account = accounts.first(where: {
+                    $0.name == dayEarning.platform
+                })
                 else { continue }
                 let earning = PlatformEarning(
                     account: account,
-                    gross: source.gross * share,
-                    tips: source.tips * share,
-                    promotions: source.promotions * share,
-                    // Trips can't be split into fractions of a delivery.
-                    trips: Int((Double(Int(source.unitsText) ?? 0) * share).rounded())
+                    gross: dayEarning.gross,
+                    tips: dayEarning.tips,
+                    promotions: dayEarning.promotions,
+                    trips: dayEarning.trips
                 )
                 context.insert(earning)
                 earning.shift = shift
@@ -1467,8 +1620,9 @@ struct ImportScreenshotView: View {
         let thisWeek = calendar.startOfWeek(for: .now)
 
         outcome = SaveOutcome(
-            days: daysStored,
-            wasWholeWeek: saved.contains { $0.period == .week && !$0.splitAcrossWeek },
+            entries: daysStored,
+            reports: saved.count,
+            wasWholeWeek: saved.contains { $0.period == .week && $0.dailyShares == nil },
             gross: saved.reduce(0) { $0 + $1.gross },
             earliest: dates.min() ?? .now,
             latest: dates.max() ?? .now,
@@ -1481,16 +1635,17 @@ struct ImportScreenshotView: View {
         f.dateFormat = "MMM d"
 
         let span = calendarSpan(result, formatter: f)
-        // "across 1 shift" for a week you drove six days is the app's own
-        // vocabulary leaking out. A shift is a block of time in the model;
-        // to a driver it means a day at work.
         var text: String
-        if result.days > 1 {
-            text = "\(Money.cents(result.gross)) across \(result.days) days, \(span)."
+        if result.reports > 1 {
+            text = "\(Money.cents(result.gross)) from \(result.reports) app reports, \(span)."
         } else if result.wasWholeWeek {
             text = "\(Money.cents(result.gross)) for the week of \(span), kept as one total."
         } else {
             text = "\(Money.cents(result.gross)) on \(span)."
+        }
+
+        if result.entries > result.reports {
+            text += "\n\nThe chart produced \(result.entries) estimated daily earnings entries. That is not a count of actual shifts."
         }
 
         if result.outsideThisWeek {

@@ -186,7 +186,12 @@ enum EarningsParser {
         // "Online" and "Trips" sit side by side with their values beneath,
         // so the line before "47" is "20 h 21 m" — following reading order
         // read the trip count as 20.
-        result.units = valuesUnderLabel(cues: unitCues, in: lines)
+        result.units = valuesUnderLabel(
+            cues: unitCues,
+            excluding: ["rejected", "declined", "cancelled", "canceled"],
+            preferred: ["completed", "complete"],
+            in: lines
+        )
             .compactMap { candidate in
                 guard let whole = Int(exactly: candidate.value.rounded()) else { return nil }
                 return ParsedCandidate(value: whole,
@@ -201,6 +206,20 @@ enum EarningsParser {
             if let value = amountBesideLabel(cues: kind.cues, in: lines) {
                 result.breakdown[kind] = value
             }
+        }
+
+        // Uber's earnings graph prints its highest day beside the dotted
+        // guide line. If Vision misses the large centred total, that small
+        // axis figure used to become "gross" merely because it was the first
+        // remaining dollar amount. On an Uber summary, accept only a total
+        // we can identify structurally or reconstruct from every visible
+        // component. An empty review field is safer than invented income.
+        if isUberEarningsSummary(result, lines: lines) {
+            result.amounts = trustedUberGrossCandidates(
+                from: lines,
+                parsed: result,
+                tallest: tallest
+            )
         }
 
         // Strongest cue first; ties broken by the larger figure, since the
@@ -228,12 +247,153 @@ enum EarningsParser {
     private static let unitCues  = ["trip", "trips", "delivery", "deliveries",
                                     "order", "orders", "batch", "batches",
                                     "ride", "rides", "job", "jobs"]
-    private static let mileCues  = ["mile", "miles", "mi"]
+    private static let mileCues  = ["mile", "miles", "mileage", "mi"]
+
+    private static func isUberEarningsSummary(_ parsed: ParsedEarnings,
+                                              lines: [RecognisedLine]) -> Bool {
+        guard parsed.platformName == "Uber" else { return false }
+        let text = lines.map(\.text).joined(separator: " ").lowercased()
+        return text.contains("total earnings")
+            && text.contains("online")
+            && (text.contains("trip") || text.contains("delivery"))
+    }
+
+    private static func trustedUberGrossCandidates(
+        from lines: [RecognisedLine],
+        parsed: ParsedEarnings,
+        tallest: CGFloat
+    ) -> [ParsedCandidate<Double>] {
+        var trusted: [ParsedCandidate<Double>] = []
+
+        if let labelled = amountForDriverTotal(in: lines) {
+            trusted.append(labelled)
+        }
+
+        // The selected day/week amount is the large centred figure above the
+        // graph. The graph maximum is small and left-aligned, so it cannot
+        // pass this geometry check even when it is the only number OCR saw.
+        for line in lines {
+            let relativeSize = tallest > 0 ? line.box.height / tallest : 0
+            let centre = line.box.midX
+            guard relativeSize >= 0.65,
+                  centre >= 0.25, centre <= 0.75
+            else { continue }
+            for amount in currencyAmounts(in: line.text) {
+                trusted.append(
+                    ParsedCandidate(
+                        value: amount,
+                        source: line.text,
+                        confidence: min(Double(line.confidence) * 0.95, 0.95)
+                    )
+                )
+            }
+        }
+
+        // When every row exists, the breakdown is an independent checksum
+        // for the headline: Net Fare + Promotions + Tips = Total Earnings.
+        // Requiring all three labels avoids silently treating a missed row
+        // as zero.
+        let hasEveryComponent = BreakdownKind.allCases.allSatisfy { kind in
+            lines.contains { line in
+                let lower = line.text.lowercased()
+                return kind.cues.contains { lower.contains($0) }
+            } && parsed.breakdown[kind] != nil
+        }
+        if hasEveryComponent,
+           let fare = parsed.breakdown[.netFare],
+           let promotions = parsed.breakdown[.promotions],
+           let tips = parsed.breakdown[.tips] {
+            trusted.append(
+                ParsedCandidate(
+                    value: fare + promotions + tips,
+                    source: "Net Fare + Promotions + Tips",
+                    confidence: 0.99
+                )
+            )
+        }
+
+        return trusted
+    }
+
+    /// Finds the driver's own labelled total, never a customer's total.
+    private static func amountForDriverTotal(
+        in lines: [RecognisedLine]
+    ) -> ParsedCandidate<Double>? {
+        let cues = ["your total earnings", "total earnings"]
+
+        for label in lines {
+            let lower = label.text.lowercased()
+            guard cues.contains(where: { lower.contains($0) }),
+                  !notYoursCues.contains(where: { lower.contains($0) })
+            else { continue }
+
+            if let amount = currencyAmounts(in: label.text).first {
+                return ParsedCandidate(
+                    value: amount,
+                    source: label.text,
+                    confidence: Double(label.confidence)
+                )
+            }
+
+            let sameRow = lines
+                .filter { $0.text != label.text }
+                .filter { verticallyOverlaps($0.box, label.box) }
+                .filter { $0.box.minX >= label.box.minX }
+                .sorted { $0.box.minX < $1.box.minX }
+            if let money = sameRow.first(where: {
+                currencyAmounts(in: $0.text).first != nil
+            }), let amount = currencyAmounts(in: money.text).first {
+                return ParsedCandidate(
+                    value: amount,
+                    source: "\(label.text) \(money.text)",
+                    confidence: min(Double(label.confidence),
+                                    Double(money.confidence))
+                )
+            }
+
+            let below = lines
+                .filter { $0.topDownY > label.topDownY }
+                .filter { $0.topDownY - label.topDownY < 0.10 }
+                .filter { horizontallyOverlaps($0.box, label.box) }
+                .sorted { $0.topDownY < $1.topDownY }
+            if let money = below.first(where: {
+                currencyAmounts(in: $0.text).first != nil
+            }), let amount = currencyAmounts(in: money.text).first {
+                return ParsedCandidate(
+                    value: amount,
+                    source: "\(label.text) \(money.text)",
+                    confidence: min(Double(label.confidence),
+                                    Double(money.confidence))
+                )
+            }
+        }
+        return nil
+    }
 
     private static func detectPlatform(_ lines: [RecognisedLine]) -> String? {
         let haystack = lines.map { $0.text.lowercased() }.joined(separator: " ")
         for (name, keywords) in platformKeywords {
             if keywords.contains(where: { haystack.contains($0) }) { return name }
+        }
+        // Lyft's earnings screen does not currently print the Lyft name.
+        // These three labels appear together on its weekly dashboard and
+        // are more reliable than leaving the platform blank.
+        if haystack.contains("rides rejected"),
+           haystack.contains("weekly stats"),
+           haystack.contains("cash out") {
+            return "Lyft"
+        }
+        // Uber's weekly earnings page also omits the brand name. Its stat
+        // and breakdown vocabulary together form a stable signature; without
+        // this the review could save Lyft and silently drop the unassigned
+        // Uber screenshot.
+        if haystack.contains("total earnings"),
+           haystack.contains("online"),
+           haystack.contains("trips"),
+           (haystack.contains("net fare")
+            || haystack.contains("points")
+            || haystack.contains("how we calculate stats")) {
+            return "Uber"
         }
         return nil
     }
@@ -281,17 +441,52 @@ enum EarningsParser {
     /// line *below* it whose horizontal span overlaps the label's — which is
     /// what "underneath it" means on screen.
     private static func valuesUnderLabel(cues: [String],
+                                         excluding excludedCues: [String] = [],
+                                         preferred preferredCues: [String] = [],
                                          in lines: [RecognisedLine]) -> [ParsedCandidate<Double>] {
         var found: [ParsedCandidate<Double>] = []
+        var preferredFound: [ParsedCandidate<Double>] = []
 
         for label in lines {
             let lower = label.text.lowercased()
-            guard cues.contains(where: { lower.contains($0) }) else { continue }
+            guard cues.contains(where: { containsWholeCue($0, in: lower) }) else { continue }
+            guard !excludedCues.contains(where: { lower.contains($0) }) else { continue }
+
+            let isPreferred = preferredCues.contains(where: { lower.contains($0) })
+            let confidence = min(
+                Double(label.confidence) * (isPreferred ? 1.05 : 0.85),
+                1
+            )
 
             // The label may carry its own value — "47 trips" on one line.
             if let inline = firstNumber(in: label.text), !label.text.contains("$") {
-                found.append(ParsedCandidate(value: inline, source: label.text,
-                                             confidence: Double(label.confidence)))
+                let candidate = ParsedCandidate(value: inline, source: label.text,
+                                                confidence: confidence)
+                found.append(candidate)
+                if isPreferred { preferredFound.append(candidate) }
+                continue
+            }
+
+            // Lyft writes "Rides completed" on the left and "60" at the
+            // far-right edge of the same card row. Their boxes do not
+            // overlap horizontally, so a strictly "under label" search
+            // misses 60 and later mistakes "16 rides" in Tip Stats for the
+            // completed count.
+            let sameRow = lines
+                .filter { $0.text != label.text }
+                .filter { verticallyOverlaps($0.box, label.box) }
+                .filter { $0.box.minX >= label.box.maxX }
+                .sorted { $0.box.minX < $1.box.minX }
+
+            if let line = sameRow.first(where: {
+                !$0.text.contains("$")
+                    && duration(in: $0.text, context: "") == nil
+                    && firstNumber(in: $0.text) != nil
+            }), let value = firstNumber(in: line.text) {
+                let candidate = ParsedCandidate(value: value, source: line.text,
+                                                confidence: confidence)
+                found.append(candidate)
+                if isPreferred { preferredFound.append(candidate) }
                 continue
             }
 
@@ -306,12 +501,31 @@ enum EarningsParser {
                       // read as 20 trips.
                       duration(in: line.text, context: "") == nil,
                       let value = firstNumber(in: line.text) else { continue }
-                found.append(ParsedCandidate(value: value, source: line.text,
-                                             confidence: Double(line.confidence)))
+                let candidate = ParsedCandidate(
+                    value: value,
+                    source: line.text,
+                    confidence: min(confidence, Double(line.confidence))
+                )
+                found.append(candidate)
+                if isPreferred { preferredFound.append(candidate) }
                 break
             }
         }
-        return found
+        // When the screen explicitly says "completed", alternatives from
+        // cards such as "16 rides tipped" are not alternative totals. They
+        // describe a different statistic and should not be offered at all.
+        return preferredFound.isEmpty ? found : preferredFound
+    }
+
+    /// Matches `mi` as a word, not as the first two letters of `min`.
+    ///
+    /// This distinction matters on Lyft: "30 hr 23 min" used to become both
+    /// 30 hours and 30 imaginary miles.
+    private static func containsWholeCue(_ cue: String, in text: String) -> Bool {
+        if cue.contains(" ") { return text.contains(cue) }
+        let words = text.split { !$0.isLetter && !$0.isNumber }
+            .map { $0.lowercased() }
+        return words.contains(cue)
     }
 
     /// True when two boxes share horizontal space — the same column.
@@ -341,6 +555,22 @@ enum EarningsParser {
 
             for line in sameRow {
                 // A negative is a fee Uber kept, not something earned.
+                let text = line.text
+                guard !text.contains("-$"), !text.contains("−$"),
+                      !text.hasPrefix("-"), !text.hasPrefix("−") else { continue }
+                if let amount = currencyAmounts(in: text).first { return amount }
+            }
+
+            // Lyft's "TIP STATS" is a card heading with the amount beneath
+            // it, not a table row. It is close and in the same column, but
+            // does not vertically overlap the heading.
+            let below = lines
+                .filter { $0.topDownY > label.topDownY }
+                .filter { $0.topDownY - label.topDownY < 0.12 }
+                .filter { horizontallyOverlaps($0.box, label.box) }
+                .sorted { $0.topDownY < $1.topDownY }
+
+            for line in below {
                 let text = line.text
                 guard !text.contains("-$"), !text.contains("−$"),
                       !text.hasPrefix("-"), !text.hasPrefix("−") else { continue }

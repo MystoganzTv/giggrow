@@ -24,14 +24,51 @@ enum Seed {
     /// Deliberately does **not** create a `DriverProfile` — see `hasCompletedOnboarding`.
     static func bootstrapPlatformsIfNeeded(_ context: ModelContext) {
         let existing = (try? context.fetch(FetchDescriptor<PlatformAccount>())) ?? []
-        guard existing.isEmpty else { return }
-
-        // Explicit loop rather than `forEach(context.insert)` — passing a
-        // generic method as a function value leaves T unresolved.
-        for account in defaultAccounts() {
-            context.insert(account)
+        if existing.isEmpty {
+            // Explicit loop rather than `forEach(context.insert)` — passing a
+            // generic method as a function value leaves T unresolved.
+            for account in defaultAccounts() {
+                context.insert(account)
+            }
+        } else {
+            // Platform vocabulary is part of the catalogue, not user data.
+            // Existing installs were seeded with "trips" for Lyft even
+            // though Lyft itself calls them rides.
+            existing.first { $0.name == "Uber" }?.unitNoun = "trips"
+            existing.first { $0.name == "Lyft" }?.unitNoun = "rides"
         }
         try? context.save()
+    }
+
+    /// Repairs defaults that can be proven wrong from existing structured
+    /// data. Earlier onboarding saved every vehicle as gasoline and seeded an
+    /// oil change. A Tesla is unambiguously electric, so leaving those values
+    /// in place would be knowingly false rather than a user preference.
+    static func repairKnownVehicleDefaults(_ context: ModelContext) {
+        let vehicles = (try? context.fetch(FetchDescriptor<VehicleRecord>())) ?? []
+        for vehicle in vehicles {
+            if let inferred = FuelType.unambiguousType(
+                make: vehicle.make,
+                model: vehicle.model.isEmpty ? vehicle.name : vehicle.model
+            ), vehicle.fuelType == .gasoline {
+                vehicle.fuelType = inferred
+                vehicle.detail = vehicle.displayDetail
+            }
+            removeInapplicableService(for: vehicle, in: context)
+        }
+        try? context.save()
+    }
+
+    static func removeInapplicableService(for vehicle: VehicleRecord,
+                                           in context: ModelContext) {
+        guard vehicle.fuelType == .electric else { return }
+        let obsolete = vehicle.service.filter {
+            $0.name.localizedCaseInsensitiveContains("oil change")
+        }
+        vehicle.service.removeAll {
+            $0.name.localizedCaseInsensitiveContains("oil change")
+        }
+        for record in obsolete { context.delete(record) }
     }
 
     /// Onboarding is complete once a profile exists. One check, one meaning.
@@ -46,8 +83,9 @@ enum Seed {
         _ context: ModelContext,
         name: String,
         location: String,
-        vehicleName: String,
-        vehicleDetail: String,
+        vehicleMake: String,
+        vehicleModel: String,
+        vehiclePlate: String,
         odometer: Int,
         activePlatformNames: Set<String>,
         taxRate: Double = 25,
@@ -71,18 +109,30 @@ enum Seed {
         profile.stateCode = stateCode
         context.insert(profile)
 
-        if !vehicleName.isEmpty {
+        if !vehicleMake.isEmpty || !vehicleModel.isEmpty || !vehiclePlate.isEmpty {
+            let displayName = [vehicleMake, vehicleModel]
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            let fuelType = FuelType.unambiguousType(
+                make: vehicleMake,
+                model: vehicleModel
+            ) ?? .gasoline
             let vehicle = VehicleRecord(
-                name: vehicleName,
-                detail: vehicleDetail,
+                name: displayName,
+                detail: vehiclePlate,
                 odometerBaseline: odometer,
-                odometerAsOf: .now
+                odometerAsOf: .now,
+                make: vehicleMake,
+                model: vehicleModel,
+                plate: vehiclePlate,
+                fuelType: fuelType
             )
             context.insert(vehicle)
 
             // Service intervals are seeded relative to the driver's own
             // odometer, so the schedule means something from day one.
-            for record in defaultService(baseOdometer: odometer) {
+            for record in defaultService(baseOdometer: odometer,
+                                         fuelType: fuelType) {
                 record.vehicle = vehicle
                 context.insert(record)
             }
@@ -107,7 +157,7 @@ enum Seed {
                             unitNoun: "trips", sortIndex: 0),
             PlatformAccount(name: "Lyft", short: "Lyft", initial: "L",
                             gradientStart: 0xC084FC, gradientEnd: 0x8B5CF6,
-                            unitNoun: "trips", sortIndex: 1),
+                            unitNoun: "rides", sortIndex: 1),
             PlatformAccount(name: "DoorDash", short: "DoorDash", initial: "D",
                             gradientStart: 0x818CF8, gradientEnd: 0x4F76F6,
                             unitNoun: "orders", sortIndex: 2),
@@ -128,8 +178,9 @@ enum Seed {
     /// Standard intervals measured forward from the driver's own odometer.
     /// Nothing starts overdue — claiming a stranger's tyres need rotating is
     /// the kind of fabricated detail that costs trust on first launch.
-    static func defaultService(baseOdometer: Int) -> [ServiceRecord] {
-        [
+    static func defaultService(baseOdometer: Int,
+                               fuelType: FuelType = .gasoline) -> [ServiceRecord] {
+        var records = [
             ServiceRecord(name: "Oil change",
                           dueAtMileage: baseOdometer + 5_000,
                           intervalMiles: 5_000),
@@ -143,6 +194,12 @@ enum Seed {
                           dueOn: Calendar.gigGrow.date(byAdding: .year, value: 1, to: .now),
                           intervalMonths: 12)
         ]
+        if fuelType == .electric {
+            records.removeAll {
+                $0.name.localizedCaseInsensitiveContains("oil change")
+            }
+        }
+        return records
     }
 
     // MARK: Erasing

@@ -268,11 +268,13 @@ struct VehicleEditorView: View {
         }
 
         if isNew {
-            for record in Seed.defaultService(baseOdometer: odometer) {
+            for record in Seed.defaultService(baseOdometer: odometer,
+                                              fuelType: fuelType) {
                 context.insert(record)
                 record.vehicle = vehicle
             }
         }
+        Seed.removeInapplicableService(for: vehicle, in: context)
 
         try? context.save()
         dismiss()

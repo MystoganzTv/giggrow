@@ -74,7 +74,10 @@ struct RootView: View {
         return EarningsSnapshot.build(
             shifts: shifts,
             expenses: expenses,
-            accounts: accounts.filter(\.isActive),
+            // Historical earnings do not disappear because a platform was
+            // later switched off. SnapshotBuilder already omits accounts
+            // with no activity in the selected period.
+            accounts: accounts,
             profile: profile,
             vehicle: vehicles.first,
             // The window the driver is pointing at, not always the present.
@@ -103,6 +106,7 @@ struct RootView: View {
             // The platform catalogue is reference data, not user data, so it
             // is safe to create before onboarding runs.
             Seed.bootstrapPlatformsIfNeeded(context)
+            Seed.repairKnownVehicleDefaults(context)
             configureTracker()
             rebuild()
             UNUserNotificationCenter.current().delegate = notificationDelegate

@@ -12,6 +12,59 @@ import SwiftData
 @MainActor
 final class ImportAndVehicleTests: XCTestCase {
 
+    func testRideSharePlatformsUseTheirOwnWorkVocabulary() {
+        let accounts = Dictionary(
+            uniqueKeysWithValues: Seed.defaultAccounts().map { ($0.name, $0.unitNoun) }
+        )
+
+        XCTAssertEqual(accounts["Uber"], "trips")
+        XCTAssertEqual(accounts["Lyft"], "rides")
+    }
+
+    func testTeslaDefaultsToElectricAndHasNoOilService() throws {
+        XCTAssertEqual(
+            FuelType.unambiguousType(make: "Tesla", model: "Model Y"),
+            .electric
+        )
+        let service = Seed.defaultService(
+            baseOdometer: 29_329,
+            fuelType: .electric
+        )
+        XCTAssertFalse(service.contains {
+            $0.name.localizedCaseInsensitiveContains("oil change")
+        })
+    }
+
+    func testExistingTeslaGasolineDefaultIsRepaired() throws {
+        let context = try TestStore.makeContext()
+        let vehicle = VehicleRecord(
+            name: "Tesla Model Y",
+            detail: "Gasoline · SVERIGE",
+            odometerBaseline: 29_329,
+            make: "Tesla",
+            model: "Model Y",
+            plate: "SVERIGE",
+            fuelType: .gasoline
+        )
+        context.insert(vehicle)
+        let oil = ServiceRecord(
+            name: "Oil change",
+            dueAtMileage: 34_329,
+            intervalMiles: 5_000
+        )
+        context.insert(oil)
+        oil.vehicle = vehicle
+        vehicle.service.append(oil)
+
+        Seed.repairKnownVehicleDefaults(context)
+
+        XCTAssertEqual(vehicle.fuelType, .electric)
+        XCTAssertEqual(vehicle.displayDetail, "Electric · SVERIGE")
+        XCTAssertFalse(vehicle.service.contains {
+            $0.name.localizedCaseInsensitiveContains("oil change")
+        })
+    }
+
     // MARK: The invented hour
 
     /// A Spark screenshot showing $185.27 and no duration produced a one-hour
@@ -60,6 +113,106 @@ final class ImportAndVehicleTests: XCTestCase {
 
         XCTAssertEqual(snapshot.perMileLabel, "—")
         XCTAssertEqual(snapshot.perHourLabel, "$40.00", "hours were real, so this one is a figure")
+    }
+
+    func testInactivePlatformStillAppearsWhenItHasEarnings() throws {
+        let context = try TestStore.makeContext()
+        let profile = Fixture.profile(context)
+        let account = Fixture.account(context, name: "Uber")
+        account.isActive = false
+        Fixture.shift(context, from: 9, to: 14, miles: 0, splits: [(account, 200, 8)])
+
+        let snapshot = EarningsSnapshot.build(
+            shifts: try context.fetch(FetchDescriptor<Shift>()),
+            expenses: [],
+            accounts: [account],
+            profile: profile,
+            vehicle: nil
+        )
+
+        XCTAssertEqual(snapshot.platforms.map(\.name), ["Uber"],
+                       "turning an app off must not erase its historical comparison row")
+    }
+
+    func testDaySplitFromWeeklyScreenshotDoesNotInventClockHours() throws {
+        let context = try TestStore.makeContext()
+        let profile = Fixture.profile(context)
+        let account = Fixture.account(context, name: "Lyft")
+        let start = Calendar.gigGrow.date(
+            bySettingHour: 9, minute: 0, second: 0, of: Fixture.weekStart()
+        )!
+        let shift = Shift(
+            start: start,
+            end: start.addingTimeInterval(3 * 3_600),
+            note: "From a weekly screenshot — day split read off the chart"
+        )
+        context.insert(shift)
+        let earning = PlatformEarning(account: account, gross: 150, trips: 10)
+        context.insert(earning)
+        earning.shift = shift
+        shift.earnings.append(earning)
+
+        let snapshot = EarningsSnapshot.build(
+            shifts: [shift],
+            expenses: [],
+            accounts: [account],
+            profile: profile,
+            vehicle: nil
+        )
+
+        XCTAssertEqual(snapshot.onlineHours, 3, accuracy: 0.001,
+                       "weekly total hours remain useful for the overall hourly rate")
+        XCTAssertEqual(snapshot.series.hourly.reduce(0, +), 0, accuracy: 0.001,
+                       "9am was a storage anchor, not observed time-of-day data")
+    }
+
+    func testWeeklyPlatformsKeepTheirOwnActiveDays() throws {
+        let days = WeeklySplitAllocator.allocate([
+            WeeklyPlatformSplit(
+                platform: "Lyft", gross: 100, tips: 10,
+                promotions: 0, trips: 10,
+                dailyShares: [0.5, 0.5, 0, 0, 0, 0, 0]
+            ),
+            WeeklyPlatformSplit(
+                platform: "Uber", gross: 50, tips: 5,
+                promotions: 0, trips: 5,
+                dailyShares: [0, 0.2, 0.8, 0, 0, 0, 0]
+            )
+        ])
+
+        XCTAssertEqual(days.map(\.dayIndex), [0, 1, 2])
+        XCTAssertEqual(days[0].earnings.map(\.platform), ["Lyft"],
+                       "Uber must not inherit Lyft's Monday bar")
+        XCTAssertEqual(Set(days[1].earnings.map(\.platform)), Set(["Lyft", "Uber"]))
+        XCTAssertEqual(days[2].earnings.map(\.platform), ["Uber"],
+                       "Lyft must not inherit Uber's Wednesday bar")
+
+        let lyftTotal = days.flatMap(\.earnings)
+            .filter { $0.platform == "Lyft" }
+            .reduce(0) { $0 + $1.gross }
+        let uberTotal = days.flatMap(\.earnings)
+            .filter { $0.platform == "Uber" }
+            .reduce(0) { $0 + $1.gross }
+        XCTAssertEqual(lyftTotal, 100, accuracy: 0.001)
+        XCTAssertEqual(uberTotal, 50, accuracy: 0.001)
+        XCTAssertEqual(days.reduce(0) { $0 + $1.combinedShare }, 1, accuracy: 0.001)
+    }
+
+    func testZeroSundayShareCreatesNoLyftSundayEarning() throws {
+        let days = WeeklySplitAllocator.allocate([
+            WeeklyPlatformSplit(
+                platform: "Lyft", gross: 998.31, tips: 89.67,
+                promotions: 0, trips: 60,
+                dailyShares: [
+                    5 / 998.0, 142 / 998.0, 300 / 998.0,
+                    123 / 998.0, 273 / 998.0, 155 / 998.0, 0
+                ]
+            )
+        ])
+
+        XCTAssertEqual(days.map(\.dayIndex), [0, 1, 2, 3, 4, 5])
+        XCTAssertNil(days.first(where: { $0.dayIndex == 6 }),
+                     "the dark Sunday dot in Lyft is zero, not a worked shift")
     }
 
     // MARK: Fuel type
@@ -144,5 +297,28 @@ final class ImportAndVehicleTests: XCTestCase {
         let vehicle = VehicleRecord(odometerBaseline: 0, model: "Model Y")
         context.insert(vehicle)
         XCTAssertEqual(vehicle.displayName, "Model Y")
+    }
+
+    func testOnboardingStoresMakeModelAndPlateSeparately() throws {
+        let context = try TestStore.makeContext()
+
+        Seed.completeOnboarding(
+            context,
+            name: "Enrique",
+            location: "Florida",
+            vehicleMake: "Tesla",
+            vehicleModel: "Model Y",
+            vehiclePlate: "SVERIGE",
+            odometer: 12_345,
+            activePlatformNames: []
+        )
+
+        let vehicle = try XCTUnwrap(
+            context.fetch(FetchDescriptor<VehicleRecord>()).first
+        )
+        XCTAssertEqual(vehicle.make, "Tesla")
+        XCTAssertEqual(vehicle.model, "Model Y")
+        XCTAssertEqual(vehicle.plate, "SVERIGE")
+        XCTAssertEqual(vehicle.displayName, "Tesla Model Y")
     }
 }

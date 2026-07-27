@@ -334,8 +334,12 @@ extension EarningsSnapshot {
                 primary[bucket] += shift.gross
             }
             // An imported week has a real total but no idea which hours of
-            // the day produced it. Spreading it would invent a peak.
-            if !shift.isAggregate {
+            // the day produced it. Spreading it would invent a peak. Older
+            // builds saved day-split weeks as ordinary 9am shifts, so keep
+            // recognising their note as aggregate data too.
+            let isDerivedFromWeeklyChart =
+                shift.note?.hasPrefix("From a weekly screenshot") == true
+            if !shift.isAggregate && !isDerivedFromWeeklyChart {
                 spread(shift: shift, into: &hourly, calendar: calendar)
             }
         }
@@ -435,4 +439,3 @@ extension EarningsSnapshot {
     }
 
 }
-

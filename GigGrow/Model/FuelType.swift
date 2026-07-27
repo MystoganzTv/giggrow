@@ -61,4 +61,26 @@ enum FuelType: String, Codable, CaseIterable, Identifiable {
         guard value > 0 else { return false }
         return burnsFuel ? (5...150).contains(value) : (0.5...10).contains(value)
     }
+
+    /// Returns a type only when the make itself is unambiguous. This is used
+    /// to repair old onboarding records that defaulted every vehicle to
+    /// gasoline. It deliberately does not guess for mixed manufacturers.
+    static func unambiguousType(make: String, model: String = "") -> FuelType? {
+        let normalizedMake = make
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedModel = model
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let electricOnlyMakes: Set<String> = [
+            "tesla", "rivian", "lucid", "polestar"
+        ]
+        if electricOnlyMakes.contains(normalizedMake) { return .electric }
+        if normalizedMake.isEmpty,
+           electricOnlyMakes.contains(where: { normalizedModel.hasPrefix($0 + " ") }) {
+            return .electric
+        }
+        return nil
+    }
 }

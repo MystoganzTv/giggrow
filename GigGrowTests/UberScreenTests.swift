@@ -43,12 +43,14 @@ final class UberScreenTests: XCTestCase {
             line("47",              x: 0.52, width: 0.08, y: 0.41, height: 0.022),
             line("Points",          x: 0.04, width: 0.16, y: 0.44, height: 0.016),
             line("89",              x: 0.04, width: 0.08, y: 0.47, height: 0.022),
+            line("How we calculate stats", x: 0.04, width: 0.34, y: 0.52, height: 0.016),
             line("Net Fare",        x: 0.04, width: 0.18, y: 0.59, height: 0.016),
             line("$610.92",         x: 0.74, width: 0.16, y: 0.59, height: 0.016),
             line("Promotions",      x: 0.04, width: 0.22, y: 0.63, height: 0.016),
             line("$94.95",          x: 0.76, width: 0.14, y: 0.63, height: 0.016),
             line("Tip",             x: 0.04, width: 0.08, y: 0.66, height: 0.016),
-            line("$123.54",         x: 0.74, width: 0.16, y: 0.66, height: 0.016)
+            line("$123.54",         x: 0.74, width: 0.16, y: 0.66, height: 0.016),
+            line("Total Earnings",  x: 0.04, width: 0.28, y: 0.70, height: 0.018)
         ]
     }
 
@@ -56,6 +58,10 @@ final class UberScreenTests: XCTestCase {
         let parsed = EarningsParser.parse(weeklySummary)
         XCTAssertEqual(parsed.best.amount, 829.41,
                        "the headline total, not the net fare or a chart label")
+    }
+
+    func testWeeklyLayoutIdentifiesUberWithoutABrandLabel() {
+        XCTAssertEqual(EarningsParser.parse(weeklySummary).platformName, "Uber")
     }
 
     /// The regression that started this: "Online" and "Trips" are side by
@@ -79,6 +85,53 @@ final class UberScreenTests: XCTestCase {
         let top = parsed.amounts.first
         XCTAssertEqual(top?.value, 829.41)
         XCTAssertNotEqual(top?.value, 321.48)
+    }
+
+    func testChartMaximumIsNeverUsedAsGrossWhenHeadlineOCRIsMissing() {
+        let lines = [
+            line("Jul 20 - Jul 26", x: 0.32, width: 0.36, y: 0.08),
+            line("$113", x: 0.02, width: 0.12, y: 0.15, height: 0.012),
+            line("Stats", x: 0.04, width: 0.16, y: 0.34, height: 0.022),
+            line("Online", x: 0.04, width: 0.16, y: 0.38),
+            line("Trips", x: 0.52, width: 0.12, y: 0.38),
+            line("10 h 00 m", x: 0.04, width: 0.24, y: 0.41),
+            line("20", x: 0.52, width: 0.08, y: 0.41),
+            line("How we calculate stats", x: 0.04, width: 0.34, y: 0.52),
+            line("Net Fare", x: 0.04, width: 0.18, y: 0.59),
+            line("$200.00", x: 0.74, width: 0.16, y: 0.59),
+            line("Promotions", x: 0.04, width: 0.22, y: 0.63),
+            line("$20.00", x: 0.76, width: 0.14, y: 0.63),
+            line("Tip", x: 0.04, width: 0.08, y: 0.66),
+            line("$25.34", x: 0.74, width: 0.16, y: 0.66),
+            line("Total Earnings", x: 0.04, width: 0.28, y: 0.70)
+        ]
+
+        let parsed = EarningsParser.parse(lines)
+
+        XCTAssertEqual(parsed.platformName, "Uber")
+        XCTAssertEqual(parsed.best.amount ?? 0, 245.34, accuracy: 0.001,
+                       "gross is the verified breakdown sum, not the chart's $113 maximum")
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 113 })
+    }
+
+    func testChartMaximumLeavesGrossBlankWhenNoTotalCanBeVerified() {
+        let lines = [
+            line("Jul 20 - Jul 26", x: 0.32, width: 0.36, y: 0.08),
+            line("$113", x: 0.02, width: 0.12, y: 0.15, height: 0.012),
+            line("Stats", x: 0.04, width: 0.16, y: 0.34),
+            line("Online", x: 0.04, width: 0.16, y: 0.38),
+            line("Trips", x: 0.52, width: 0.12, y: 0.38),
+            line("10 h 00 m", x: 0.04, width: 0.24, y: 0.41),
+            line("20", x: 0.52, width: 0.08, y: 0.41),
+            line("How we calculate stats", x: 0.04, width: 0.34, y: 0.52),
+            line("Total Earnings", x: 0.04, width: 0.28, y: 0.70)
+        ]
+
+        let parsed = EarningsParser.parse(lines)
+
+        XCTAssertNil(parsed.best.amount,
+                     "an empty field requiring review is safer than invented gross")
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 113 })
     }
 
     func testDateRangeYieldsBothEnds() {

@@ -34,7 +34,7 @@ struct OnboardingView: View {
     @FocusState private var focused: Field?
 
     private enum Field: Hashable {
-        case name, vehicle, odometer
+        case name, vehicleMake, vehicleModel, vehiclePlate, odometer
     }
 
     // Step 1
@@ -45,8 +45,9 @@ struct OnboardingView: View {
     @State private var taxRate: Double = 25
 
     // Step 3
-    @State private var vehicleName = ""
-    @State private var vehicleDetail = ""
+    @State private var vehicleMake = ""
+    @State private var vehicleModel = ""
+    @State private var vehiclePlate = ""
     @State private var odometerText = ""
 
     // Step 4
@@ -110,7 +111,7 @@ struct OnboardingView: View {
             // state step or it covers the wheel.
             switch newStep {
             case 0: focused = .name
-            case 2: focused = .vehicle
+            case 2: focused = .vehicleMake
             default: focused = nil
             }
         }
@@ -186,9 +187,22 @@ struct OnboardingView: View {
 
             GlassCard {
                 VStack(spacing: 0) {
-                    field("Vehicle", text: $vehicleName, placeholder: "2022 Toyota RAV4", optional: true)
+                    field("Make", text: $vehicleMake, placeholder: "Tesla", optional: true)
+                        .focused($focused, equals: .vehicleMake)
+                        .submitLabel(.next)
+                        .onSubmit { focused = .vehicleModel }
                     RowDivider()
-                    field("Details", text: $vehicleDetail, placeholder: "Hybrid · 7KJD812", optional: true)
+                    field("Model", text: $vehicleModel, placeholder: "Model Y", optional: true)
+                        .focused($focused, equals: .vehicleModel)
+                        .submitLabel(.next)
+                        .onSubmit { focused = .vehiclePlate }
+                    RowDivider()
+                    field("Plate", text: $vehiclePlate, placeholder: "SVERIGE", optional: true)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .focused($focused, equals: .vehiclePlate)
+                        .submitLabel(.next)
+                        .onSubmit { focused = .odometer }
                     RowDivider()
                     numberField("Odometer", text: $odometerText, suffix: "mi")
                 }
@@ -404,8 +418,9 @@ struct OnboardingView: View {
             context,
             name: name.trimmingCharacters(in: .whitespaces),
             location: place,
-            vehicleName: vehicleName.trimmingCharacters(in: .whitespaces),
-            vehicleDetail: vehicleDetail.trimmingCharacters(in: .whitespaces),
+            vehicleMake: vehicleMake.trimmingCharacters(in: .whitespaces),
+            vehicleModel: vehicleModel.trimmingCharacters(in: .whitespaces),
+            vehiclePlate: vehiclePlate.trimmingCharacters(in: .whitespaces).uppercased(),
             odometer: Int(odometerText) ?? 0,
             activePlatformNames: selectedPlatforms,
             taxRate: taxRate,

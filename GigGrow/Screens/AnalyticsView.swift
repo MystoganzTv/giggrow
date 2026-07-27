@@ -207,6 +207,12 @@ struct AnalyticsView: View {
                             .frame(width: 58, alignment: .trailing)
                     }
                 }
+
+                if snapshot.platforms.count == 1, let only = snapshot.platforms.first {
+                    Text("Only \(only.name) has earnings in \(selection.title). Choose Month or Year to compare apps imported in different weeks.")
+                        .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -224,14 +230,21 @@ struct AnalyticsView: View {
                         .ggText(GG.Typo.captionMuted, color: GG.Ink.tertiary)
                 }
 
-                ColoredBarChart(bars: snapshot.series.hourly
-                                    .chartColoredBars(palette: Self.hourPalette),
-                                maxHeight: 1,
-                                height: 78)
-                    .padding(.top, 16)
+                if snapshot.series.hourly.contains(where: { $0 > 0 }) {
+                    ColoredBarChart(bars: snapshot.series.hourly
+                                        .chartColoredBars(palette: Self.hourPalette),
+                                    maxHeight: 1,
+                                    height: 78)
+                        .padding(.top, 16)
 
-                AxisLabels(labels: ChartSeries.hourLabels)
-                    .padding(.top, 6)
+                    AxisLabels(labels: ChartSeries.hourLabels)
+                        .padding(.top, 6)
+                } else {
+                    Text("Weekly summaries include total online time, but not the time of day. Log a shift with start and end times to unlock hourly earnings.")
+                        .ggText(.system(size: 12.5, weight: .regular), color: GG.Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 13)
+                }
             }
         }
     }
