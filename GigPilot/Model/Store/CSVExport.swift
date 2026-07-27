@@ -41,7 +41,8 @@ enum CSVExport {
     static func shifts(_ shifts: [Shift]) -> String {
         var rows = [
             "shift_id,date,start,end,online_hours,active_hours,idle_hours,"
-            + "shift_miles,platform,gross,tips,units,attributed_hours,attributed_miles"
+            + "shift_miles,platform,gross,base_fare,promotions,tips,units,"
+            + "attributed_hours,attributed_miles"
         ]
 
         let day = formatter("yyyy-MM-dd")
@@ -61,7 +62,8 @@ enum CSVExport {
             ]
 
             if shift.earnings.isEmpty {
-                rows.append((base + ["", "0", "0", "0", num(shift.hours), num(shift.miles)])
+                rows.append((base + ["", "0", "0", "0", "0", "0",
+                                     num(shift.hours), num(shift.miles)])
                     .joined(separator: ","))
                 continue
             }
@@ -70,6 +72,10 @@ enum CSVExport {
                 rows.append((base + [
                     escape(earning.account?.name ?? "Unknown"),
                     num(earning.gross),
+                    // Split out because an accountant asking "how much of
+                    // this is repeatable" can't get it from a single total.
+                    num(earning.baseFare),
+                    num(earning.promotions),
                     num(earning.tips),
                     "\(earning.trips)",
                     num(ShiftAttribution.hours(of: earning, in: shift)),

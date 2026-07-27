@@ -42,6 +42,8 @@ private struct ImportedSource: Identifiable {
     let parsed: ParsedEarnings
     var platform: String
     var amountText: String
+    var tipsText: String
+    var promotionsText: String
     var unitsText: String
     var hoursText: String
     var milesText: String
@@ -55,6 +57,10 @@ private struct ImportedSource: Identifiable {
     var needsDate: Bool = false
 
     var gross: Double { Double(amountText) ?? 0 }
+    var tips: Double { Double(tipsText) ?? 0 }
+    var promotions: Double { Double(promotionsText) ?? 0 }
+    /// What the platform paid for the work itself.
+    var baseFare: Double { max(gross - tips - promotions, 0) }
     var hours: Double { Double(hoursText) ?? 0 }
     var miles: Double { Double(milesText) ?? 0 }
 
@@ -386,6 +392,23 @@ struct ImportScreenshotView: View {
                               alternatives: value.parsed.amounts.map {
                                   (String(format: "%.2f", $0.value), context(of: $0.source))
                               })
+                    // The breakdown was on the screen and being thrown away.
+                    // It's what answers "was this a good day or a good quest".
+                    RowDivider()
+                    figureRow("of which tips", text: source.tipsText, prefix: "$",
+                              alternatives: value.parsed.amounts.map {
+                                  (String(format: "%.2f", $0.value), context(of: $0.source))
+                              })
+                    RowDivider()
+                    figureRow("of which promotions", text: source.promotionsText, prefix: "$",
+                              alternatives: value.parsed.amounts.map {
+                                  (String(format: "%.2f", $0.value), context(of: $0.source))
+                              })
+
+                    if value.gross > 0 {
+                        breakdownSummary(value)
+                    }
+
                     RowDivider()
                     // "Units" meant nothing to anyone. Every app has its own
                     // word for the thing it counts, and it is on the screen
@@ -398,8 +421,11 @@ struct ImportScreenshotView: View {
                     RowDivider()
                     figureRow("Hours online", text: source.hoursText, prefix: "",
                               required: true,
+                              suffix: clock(value.hours),
                               alternatives: value.parsed.hours.map {
-                                  (String(format: "%.2f", $0.value), context(of: $0.source))
+                                  // The chip shows what the screenshot says,
+                                  // so it can be matched by eye.
+                                  (String(format: "%.2f", $0.value), clock($0.value))
                               })
                     RowDivider()
                     figureRow("Miles", text: source.milesText, prefix: "",
@@ -453,7 +479,7 @@ struct ImportScreenshotView: View {
                             miniStat(value.period == .day ? "Day" : "Week")
                         }
                         if value.hours > 0 {
-                            miniStat(String(format: "%.2f h", value.hours))
+                            miniStat(clock(value.hours))
                         } else {
                             Text("Hours missing")
                                 .gpText(.system(size: 12, weight: .medium), color: GP.Palette.amber)
@@ -472,6 +498,61 @@ struct ImportScreenshotView: View {
             guard !isOpen else { return }
             withAnimation(.easeOut(duration: 0.2)) { expanded = value.id }
         }
+    }
+
+    /// Shows the three parts against the total. If they don't add up, one
+    /// was misread — and that is worth catching here rather than in April.
+    @ViewBuilder
+    private func breakdownSummary(_ value: ImportedSource) -> some View {
+        let parts = value.tips + value.promotions
+        let balances = parts <= value.gross + 0.02
+
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 0) {
+                Text("Fare ")
+                    .gpText(.system(size: 12.5, weight: .regular), color: GP.Ink.muted)
+                Text(Money.cents(value.baseFare))
+                    .gpText(.system(size: 12.5, weight: .semibold), color: GP.Ink.secondary)
+                if value.promotions > 0 {
+                    Text("  ·  Promos ")
+                        .gpText(.system(size: 12.5, weight: .regular), color: GP.Ink.muted)
+                    Text(Money.cents(value.promotions))
+                        .gpText(.system(size: 12.5, weight: .semibold), color: GP.Palette.amber)
+                }
+                if value.tips > 0 {
+                    Text("  ·  Tips ")
+                        .gpText(.system(size: 12.5, weight: .regular), color: GP.Ink.muted)
+                    Text(Money.cents(value.tips))
+                        .gpText(.system(size: 12.5, weight: .semibold), color: GP.Palette.mint)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if !balances {
+                Text("Tips and promotions come to more than the total — one of these was read wrong.")
+                    .gpText(.system(size: 11.5, weight: .regular),
+                            color: GP.Palette.amber.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if value.promotions > 0 {
+                let share = Int((value.promotions / value.gross * 100).rounded())
+                Text("\(share)% of this came from promotions, which won't repeat on a normal day.")
+                    .gpText(.system(size: 11.5, weight: .regular), color: GP.Ink.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    /// "4.37" is 4 h 22 m — the same figure the screenshot shows, in the
+    /// decimal form the app divides by. Nobody reads their day in hundredths
+    /// of an hour, though, so the familiar form is shown next to it. Seeing
+    /// 4.37 where the photo says 4h22m makes the whole import look wrong.
+    private func clock(_ hours: Double) -> String {
+        guard hours > 0 else { return "" }
+        let whole = Int(hours)
+        let minutes = Int((hours - Double(whole)) * 60 + 0.5)
+        // Rounding can push 59.6 minutes to 60.
+        return minutes == 60 ? "\(whole + 1)h 0m" : "\(whole)h \(minutes)m"
     }
 
     private func miniStat(_ text: String) -> some View {
@@ -631,6 +712,7 @@ struct ImportScreenshotView: View {
     /// "291.64 · Total Earnings" answers it on the spot.
     private func figureRow(_ label: String, text: Binding<String>, prefix: String,
                            required: Bool = false,
+                           suffix: String = "",
                            alternatives: [(value: String, source: String)]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -651,7 +733,13 @@ struct ImportScreenshotView: View {
                     .multilineTextAlignment(.trailing)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(maxWidth: 110)
+                    .frame(maxWidth: 90)
+
+                if !suffix.isEmpty {
+                    Text(suffix)
+                        .gpText(.system(size: 12.5, weight: .medium), color: GP.Ink.muted)
+                        .frame(minWidth: 54, alignment: .trailing)
+                }
             }
 
             // Other readings, so a wrong pick is one tap to fix.
@@ -830,6 +918,8 @@ struct ImportScreenshotView: View {
                     // screenshot of the same block — that would double it.
                     platform: parsed.platformName ?? "",
                     amountText: best.amount.map { String(format: "%.2f", $0) } ?? "",
+                    tipsText: parsed.tips.map { String(format: "%.2f", $0) } ?? "",
+                    promotionsText: parsed.promotions.map { String(format: "%.2f", $0) } ?? "",
                     unitsText: best.units.map(String.init) ?? "",
                     hoursText: best.hours.map { String(format: "%.2f", $0) } ?? "",
                     milesText: best.miles.map { String(format: "%.0f", $0) } ?? "",
@@ -903,12 +993,16 @@ struct ImportScreenshotView: View {
 
                 if let existing = byAccount[source.platform] {
                     existing.gross += source.gross
+                    existing.tips += source.tips
+                    existing.promotions += source.promotions
                     existing.trips += Int(source.unitsText) ?? 0
                     continue
                 }
 
                 let earning = PlatformEarning(account: account,
                                               gross: source.gross,
+                                              tips: source.tips,
+                                              promotions: source.promotions,
                                               trips: Int(source.unitsText) ?? 0)
                 context.insert(earning)
                 earning.shift = shift

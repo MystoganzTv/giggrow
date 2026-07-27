@@ -43,6 +43,45 @@ struct ParsedEarnings {
     /// Every line read, kept so the review screen can show its working.
     var allLines: [String] = []
 
+    /// The amount whose line mentions one of these words.
+    ///
+    /// The breakdown is already parsed — every one of those figures is in
+    /// `amounts` with the line it came from. Nothing new has to be read; the
+    /// importer simply stopped throwing the labels away.
+    func amount(labelled cues: [String]) -> Double? {
+        amounts.first { candidate in
+            let line = candidate.source.lowercased()
+            return cues.contains { line.contains($0) }
+        }?.value
+    }
+
+    /// Uber writes "Tip", Lyft "Tips", DoorDash "Customer tips".
+    var tips: Double? { amount(labelled: ["tip"]) }
+
+    /// Quests, surges, bonuses and challenges all land here.
+    var promotions: Double? {
+        amount(labelled: ["promotion", "promo", "quest", "bonus", "surge",
+                          "incentive", "challenge", "boost"])
+    }
+
+    /// The fare before anything was added to it.
+    var netFare: Double? {
+        amount(labelled: ["net fare", "fare", "base pay", "base fare"])
+    }
+
+    /// Whether the breakdown adds up to the headline.
+    ///
+    /// A free integrity check on the most important number in the app: if
+    /// fare + promotions + tips doesn't reach the total, one of the four was
+    /// misread and the driver should look before saving. Only meaningful
+    /// when all of them were found.
+    func reconciliation(against total: Double) -> (sum: Double, matches: Bool)? {
+        guard let netFare, total > 0 else { return nil }
+        let sum = netFare + (promotions ?? 0) + (tips ?? 0)
+        // Two cents of slack for rounding in the platform's own display.
+        return (sum, abs(sum - total) <= 0.02)
+    }
+
     var best: (amount: Double?, units: Int?, hours: Double?, miles: Double?, date: Date?) {
         (amounts.first?.value, units.first?.value, hours.first?.value,
          miles.first?.value, dates.first?.value)

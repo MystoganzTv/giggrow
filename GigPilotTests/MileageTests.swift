@@ -162,6 +162,71 @@ final class MileageTests: XCTestCase {
         XCTAssertFalse(profile.autoMileageTracking)
     }
 
+    // MARK: The earnings breakdown
+    //
+    // Uber's daily screen prints Net Fare, Promotions and Tip above the total.
+    // All three were parsed and then dropped, keeping only the total — which
+    // makes "was this a good day or a good quest" unanswerable.
+
+    /// The user's Monday: 102.18 fare + 5.11 promotions + 7.00 tip = 114.29.
+    private func mondayScreen() -> ParsedEarnings {
+        var parsed = ParsedEarnings()
+        parsed.amounts = [
+            ParsedCandidate(value: 114.29, source: "Total Earnings $114.29", confidence: 0.95),
+            ParsedCandidate(value: 102.18, source: "Net Fare $102.18", confidence: 0.9),
+            ParsedCandidate(value: 5.11, source: "Promotions $5.11", confidence: 0.9),
+            ParsedCandidate(value: 7.00, source: "Tip $7.00", confidence: 0.9)
+        ]
+        return parsed
+    }
+
+    func testBreakdownIsPickedOutByItsLabel() {
+        let parsed = mondayScreen()
+        XCTAssertEqual(parsed.netFare ?? 0, 102.18, accuracy: 0.001)
+        XCTAssertEqual(parsed.promotions ?? 0, 5.11, accuracy: 0.001)
+        XCTAssertEqual(parsed.tips ?? 0, 7.00, accuracy: 0.001)
+    }
+
+    /// The parts must reach the headline. When they don't, something was
+    /// misread — and April is a bad time to find out.
+    func testBreakdownReconcilesWithTheTotal() {
+        let check = mondayScreen().reconciliation(against: 114.29)
+        XCTAssertNotNil(check)
+        XCTAssertEqual(check?.sum ?? 0, 114.29, accuracy: 0.01)
+        XCTAssertTrue(check?.matches ?? false)
+    }
+
+    func testReconciliationFailsWhenAPartWasMisread() {
+        var parsed = mondayScreen()
+        parsed.amounts[1] = ParsedCandidate(value: 12.18, source: "Net Fare $12.18",
+                                            confidence: 0.9)
+        let check = parsed.reconciliation(against: 114.29)
+        XCTAssertFalse(check?.matches ?? true)
+    }
+
+    /// Base fare is derived, so it can never disagree with the other three.
+    func testBaseFareIsWhateverIsLeft() {
+        let earning = PlatformEarning(gross: 114.29, tips: 7.00, promotions: 5.11, trips: 7)
+        XCTAssertEqual(earning.baseFare, 102.18, accuracy: 0.001)
+        XCTAssertEqual(earning.supplementShare, 12.11 / 114.29, accuracy: 0.0001)
+    }
+
+    /// Nonsense in must not produce a negative fare.
+    func testBaseFareNeverGoesNegative() {
+        let earning = PlatformEarning(gross: 50, tips: 40, promotions: 30)
+        XCTAssertEqual(earning.baseFare, 0, accuracy: 0.001)
+    }
+
+    /// The export splits it out, and the columns must line up with the header
+    /// or every downstream cell shifts by one.
+    func testShiftExportColumnsMatchTheHeader() {
+        let csv = CSVExport.shifts([])
+        let headerColumns = csv.split(separator: "\n")[0].split(separator: ",").count
+        XCTAssertEqual(headerColumns, 16)
+        XCTAssertTrue(csv.contains("base_fare"))
+        XCTAssertTrue(csv.contains("promotions"))
+    }
+
     // MARK: The period header
     //
     // "Jun 1 - Jun 8" is the one date on an Uber screen that definitely

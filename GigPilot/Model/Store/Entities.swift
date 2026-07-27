@@ -98,7 +98,17 @@ final class PlatformEarning {
     /// Gross before expenses, including tips.
     var gross: Double
     /// Portion of `gross` that was tips, when known.
+    ///
+    /// Worth keeping separate: tips are the part of a day's takings the
+    /// platform didn't set, so a driver comparing apps needs to see whether
+    /// the good week was the algorithm or the customers.
     var tips: Double
+    /// Portion of `gross` from promotions, quests, surges and bonuses.
+    ///
+    /// The most important number nobody records. A week propped up by a $100
+    /// quest is not a week you can repeat, and "am I actually making this?"
+    /// can't be answered without splitting it out.
+    var promotions: Double
     /// Trips, deliveries, batches or blocks — whatever this app counts.
     var trips: Int
     /// Miles attributable to this platform, when the app reports them.
@@ -108,16 +118,28 @@ final class PlatformEarning {
     var account: PlatformAccount?
     var shift: Shift?
 
+    /// What's left once tips and promotions are taken out — the fare the
+    /// platform actually paid for the work. Derived rather than stored, so a
+    /// fourth number can never disagree with the other three.
+    var baseFare: Double { max(gross - tips - promotions, 0) }
+
+    /// Share of takings that came from tips and promotions rather than fares.
+    var supplementShare: Double {
+        gross > 0 ? (tips + promotions) / gross : 0
+    }
+
     init(
         account: PlatformAccount? = nil,
         gross: Double = 0,
         tips: Double = 0,
+        promotions: Double = 0,
         trips: Int = 0,
         reportedMiles: Double = 0
     ) {
         self.account = account
         self.gross = gross
         self.tips = tips
+        self.promotions = promotions
         self.trips = trips
         self.reportedMiles = reportedMiles
     }
