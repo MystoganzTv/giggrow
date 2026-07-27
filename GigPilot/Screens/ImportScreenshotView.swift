@@ -46,6 +46,7 @@ private struct ImportedSource: Identifiable {
     var promotionsText: String
     var unitsText: String
     var hoursText: String
+    var minutesText: String
     var milesText: String
     var period: ImportPeriod
     var date: Date
@@ -61,7 +62,11 @@ private struct ImportedSource: Identifiable {
     var promotions: Double { Double(promotionsText) ?? 0 }
     /// What the platform paid for the work itself.
     var baseFare: Double { max(gross - tips - promotions, 0) }
-    var hours: Double { Double(hoursText) ?? 0 }
+    /// Decimal inside, clock outside. The two fields are the only
+    /// representation the driver sees; this is what everything divides by.
+    var hours: Double {
+        Hours.decimal(hours: Int(hoursText) ?? 0, minutes: Int(minutesText) ?? 0)
+    }
     var miles: Double { Double(milesText) ?? 0 }
 
     /// The key screenshots are merged on. Same day and same period means the
@@ -419,14 +424,7 @@ struct ImportScreenshotView: View {
                                   ("\($0.value)", context(of: $0.source))
                               })
                     RowDivider()
-                    figureRow("Hours online", text: source.hoursText, prefix: "",
-                              required: true,
-                              suffix: clock(value.hours),
-                              alternatives: value.parsed.hours.map {
-                                  // The chip shows what the screenshot says,
-                                  // so it can be matched by eye.
-                                  (String(format: "%.2f", $0.value), clock($0.value))
-                              })
+                    timeRow(source)
                     RowDivider()
                     figureRow("Miles", text: source.milesText, prefix: "",
                               alternatives: value.parsed.miles.map {
@@ -479,7 +477,7 @@ struct ImportScreenshotView: View {
                             miniStat(value.period == .day ? "Day" : "Week")
                         }
                         if value.hours > 0 {
-                            miniStat(clock(value.hours))
+                            miniStat(Hours.clock(value.hours))
                         } else {
                             Text("Hours missing")
                                 .gpText(.system(size: 12, weight: .medium), color: GP.Palette.amber)
@@ -543,16 +541,86 @@ struct ImportScreenshotView: View {
         .padding(.top, 2)
     }
 
-    /// "4.37" is 4 h 22 m — the same figure the screenshot shows, in the
-    /// decimal form the app divides by. Nobody reads their day in hundredths
-    /// of an hour, though, so the familiar form is shown next to it. Seeing
-    /// 4.37 where the photo says 4h22m makes the whole import look wrong.
-    private func clock(_ hours: Double) -> String {
-        guard hours > 0 else { return "" }
-        let whole = Int(hours)
-        let minutes = Int((hours - Double(whole)) * 60 + 0.5)
-        // Rounding can push 59.6 minutes to 60.
-        return minutes == 60 ? "\(whole + 1)h 0m" : "\(whole)h \(minutes)m"
+    /// Time online, entered the way the screenshot writes it.
+    ///
+    /// Two fields rather than one decimal. Nobody knows what 4.37 hours is
+    /// without doing arithmetic, and being asked to type it is worse — the
+    /// driver reads "4 h 22 m" off the photo and would have to convert it
+    /// themselves to fill in a box marked Hours.
+    @ViewBuilder
+    private func timeRow(_ source: Binding<ImportedSource>) -> some View {
+        let value = source.wrappedValue
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Time online")
+                    .gpText(GP.Typo.rowLabel)
+                if value.hours <= 0 {
+                    Text("required")
+                        .gpText(.system(size: 11, weight: .medium), color: GP.Palette.amber)
+                }
+
+                Spacer(minLength: 12)
+
+                unitField(source.hoursText, placeholder: "0", unit: "h", width: 46)
+                unitField(source.minutesText, placeholder: "00", unit: "m", width: 46)
+            }
+
+            if value.parsed.hours.count > 1 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        ForEach(Array(value.parsed.hours.prefix(5).enumerated()),
+                                id: \.offset) { _, candidate in
+                            let split = Hours.split(candidate.value)
+                            let isPicked = abs(candidate.value - value.hours) < 0.005
+                            Button {
+                                source.wrappedValue.hoursText = "\(split.hours)"
+                                source.wrappedValue.minutesText = "\(split.minutes)"
+                            } label: {
+                                // Written exactly as the screenshot writes it,
+                                // so it can be matched without arithmetic.
+                                Text(Hours.spaced(candidate.value))
+                                    .font(.system(size: 12.5, weight: .semibold))
+                                    .foregroundStyle(isPicked ? GP.Palette.violet300
+                                                              : GP.Ink.secondary)
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 7)
+                                    .background(GP.Surface.glassFaint,
+                                                in: RoundedRectangle(cornerRadius: 10,
+                                                                     style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .strokeBorder(isPicked
+                                                          ? GP.Palette.violet400.opacity(0.55)
+                                                          : Color.clear, lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 14)
+    }
+
+    private func unitField(_ text: Binding<String>, placeholder: String,
+                           unit: String, width: CGFloat) -> some View {
+        HStack(spacing: 3) {
+            TextField(placeholder, text: text)
+                .keyboardType(.numberPad)
+                .focused($isEditingField)
+                .multilineTextAlignment(.trailing)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: width)
+            Text(unit)
+                .gpText(.system(size: 13.5, weight: .medium), color: GP.Ink.tertiary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(GP.Surface.glassFaint,
+                    in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private func miniStat(_ text: String) -> some View {
@@ -684,6 +752,7 @@ struct ImportScreenshotView: View {
                 HStack(spacing: 18) {
                     summaryStat("Per hour",
                                 totalHours > 0 ? Money.cents(totalGross / totalHours) : "—")
+                    summaryStat("Time", totalHours > 0 ? Hours.clock(totalHours) : "—")
                     summaryStat("Per mile",
                                 totalMiles > 0 ? Money.cents(totalGross / totalMiles) : "—")
                     summaryStat(blockCount == 1 ? "Shift" : "Shifts", "\(blockCount)")
@@ -921,7 +990,8 @@ struct ImportScreenshotView: View {
                     tipsText: parsed.tips.map { String(format: "%.2f", $0) } ?? "",
                     promotionsText: parsed.promotions.map { String(format: "%.2f", $0) } ?? "",
                     unitsText: best.units.map(String.init) ?? "",
-                    hoursText: best.hours.map { String(format: "%.2f", $0) } ?? "",
+                    hoursText: best.hours.map { "\(Hours.split($0).hours)" } ?? "",
+                    minutesText: best.hours.map { "\(Hours.split($0).minutes)" } ?? "",
                     milesText: best.miles.map { String(format: "%.0f", $0) } ?? "",
                     period: period,
                     date: resolved,

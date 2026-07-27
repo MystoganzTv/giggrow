@@ -162,6 +162,60 @@ final class MileageTests: XCTestCase {
         XCTAssertFalse(profile.autoMileageTracking)
     }
 
+    // MARK: Hours on screen
+    //
+    // Decimal inside, clock outside. The conversion lives in one place so the
+    // two can't drift, and these pin it to the figures the screenshots show.
+
+    func testClockMatchesWhatTheScreenshotsSay() {
+        // Every "Online" figure from the week that was imported.
+        XCTAssertEqual(Hours.clock(4.37), "4h 22m")
+        XCTAssertEqual(Hours.clock(3.73), "3h 44m")
+        XCTAssertEqual(Hours.clock(2.25), "2h 15m")
+        XCTAssertEqual(Hours.clock(8.82), "8h 49m")
+        XCTAssertEqual(Hours.clock(3.35), "3h 21m")
+        XCTAssertEqual(Hours.clock(6.17), "6h 10m")
+        XCTAssertEqual(Hours.clock(28.68), "28h 41m")
+    }
+
+    /// No "4h 0m" and no "0h 45m" — those read as bugs.
+    func testClockDropsTheEmptyHalf() {
+        XCTAssertEqual(Hours.clock(8), "8h")
+        XCTAssertEqual(Hours.clock(0.75), "45m")
+        XCTAssertEqual(Hours.clock(0), "0m")
+    }
+
+    /// Rounding happens once, on the total minutes. Truncating the hours
+    /// first turns 4.3999 into "4h 23m" one way and "4h 24m" the other.
+    func testMinutesRoundOnceAndDontOverflow() {
+        XCTAssertEqual(Hours.clock(4.99999), "5h")
+        XCTAssertEqual(Hours.split(1.9999).hours, 2)
+        XCTAssertEqual(Hours.split(1.9999).minutes, 0)
+    }
+
+    /// The round trip has to hold, or editing a field would nudge the value.
+    func testClockAndDecimalRoundTrip() {
+        for hours in [4.37, 3.73, 8.82, 0.25, 12.5, 28.68] {
+            let split = Hours.split(hours)
+            let back = Hours.decimal(hours: split.hours, minutes: split.minutes)
+            XCTAssertEqual(back, hours, accuracy: 1.0 / 120,
+                           "\(hours) should survive a trip through \(Hours.clock(hours))")
+        }
+    }
+
+    /// Rubbish typed into the minutes box must not create extra hours.
+    func testDecimalClampsNonsenseInput() {
+        XCTAssertEqual(Hours.decimal(hours: 4, minutes: 90), 4 + 59.0 / 60, accuracy: 0.001)
+        XCTAssertEqual(Hours.decimal(hours: -3, minutes: -10), 0, accuracy: 0.001)
+    }
+
+    /// The whole reason the decimal exists: it divides into a rate.
+    func testDecimalStillDividesIntoAnHourlyRate() {
+        let hours = Hours.decimal(hours: 4, minutes: 22)
+        XCTAssertEqual(114.29 / hours, 26.17, accuracy: 0.01)
+        XCTAssertEqual(Hours.clock(hours), "4h 22m")
+    }
+
     // MARK: The earnings breakdown
     //
     // Uber's daily screen prints Net Fare, Promotions and Tip above the total.

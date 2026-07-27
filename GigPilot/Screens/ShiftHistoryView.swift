@@ -102,7 +102,7 @@ struct ShiftHistoryView: View {
 
                 HStack(spacing: 24) {
                     stat("Shifts", "\(shifts.count)")
-                    stat("Hours", String(format: "%.0f", totalHours))
+                    stat("Time", Hours.clock(totalHours))
                     stat("Miles", Num.grouped(Int(totalMiles.rounded())))
                     if totalHours > 0 {
                         stat("Per hour", Money.cents(totalGross / totalHours))
@@ -214,7 +214,7 @@ struct ShiftHistoryView: View {
         let time = DateFormatter()
         time.dateFormat = "HH:mm"
         var parts = ["\(time.string(from: shift.start))–\(time.string(from: shift.end))"]
-        parts.append(String(format: "%.1f hrs", shift.hours))
+        parts.append(Hours.clock(shift.hours))
         if shift.miles > 0 { parts.append("\(Int(shift.miles.rounded())) mi") }
         if shift.tripCount > 0 { parts.append("\(shift.tripCount) units") }
         return parts.joined(separator: " · ")

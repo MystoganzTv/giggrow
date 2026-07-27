@@ -359,6 +359,50 @@ struct EarningsSnapshot {
 
 // MARK: - Formatting
 
+/// Hours, written the way people say them.
+///
+/// The app stores time as decimal hours because that's what divides into a
+/// rate — $114.29 over 4.37 hours is $26.16/h, and you can't do that with
+/// "4h 22m". But nobody reads their day in hundredths of an hour, and a
+/// screen showing 4.37 next to a screenshot that says 4h 22m looks broken
+/// even when it's right.
+///
+/// So: decimal inside, clock outside. This is the only place that converts,
+/// so the two can't drift.
+enum Hours {
+
+    /// `4h 22m`, `45m`, `8h`.
+    static func clock(_ hours: Double) -> String {
+        let (whole, minutes) = split(hours)
+        if whole == 0 { return "\(minutes)m" }
+        if minutes == 0 { return "\(whole)h" }
+        return "\(whole)h \(minutes)m"
+    }
+
+    /// `4 h 22 m` — the spaced form gig apps print, for sitting beside a
+    /// screenshot being checked by eye.
+    static func spaced(_ hours: Double) -> String {
+        let (whole, minutes) = split(hours)
+        if whole == 0 { return "\(minutes) m" }
+        if minutes == 0 { return "\(whole) h" }
+        return "\(whole) h \(minutes) m"
+    }
+
+    /// Whole hours and leftover minutes, with the rounding done once.
+    static func split(_ hours: Double) -> (hours: Int, minutes: Int) {
+        guard hours > 0 else { return (0, 0) }
+        // Round to the minute first, so 4.3667 can't become 4h 21.999m and
+        // then truncate to 21.
+        let totalMinutes = Int((hours * 60).rounded())
+        return (totalMinutes / 60, totalMinutes % 60)
+    }
+
+    /// Back to decimal, for storing.
+    static func decimal(hours: Int, minutes: Int) -> Double {
+        Double(max(hours, 0)) + Double(min(max(minutes, 0), 59)) / 60
+    }
+}
+
 enum Money {
     /// `$1,482.60` — matches the design's `money(total, 2)`.
     static func cents(_ value: Double) -> String {

@@ -258,7 +258,7 @@ struct DashboardView: View {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 6) {
                         Eyebrow(text: "Online hours")
-                        unitValue(String(format: "%.1f", snapshot.onlineHours), unit: " hrs")
+                        unitValue(Hours.clock(snapshot.onlineHours), unit: "")
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 6) {
@@ -270,11 +270,11 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 9) {
                     SplitBar(activeShare: snapshot.activeShare)
                     HStack {
-                        Text("Active \(String(format: "%.1f", snapshot.activeHours)) hrs")
+                        Text("Active \(Hours.clock(snapshot.activeHours))")
                             .gpText(.system(size: 13, weight: .medium),
                                     color: GP.Palette.violet300.opacity(0.9))
                         Spacer()
-                        Text("Idle \(String(format: "%.1f", snapshot.idleHours)) hrs")
+                        Text("Idle \(Hours.clock(snapshot.idleHours))")
                             .gpText(.system(size: 13, weight: .medium), color: GP.Ink.tertiary)
                     }
                 }
