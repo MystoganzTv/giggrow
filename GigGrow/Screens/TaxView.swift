@@ -165,7 +165,10 @@ struct TaxView: View {
                 deduction("Mileage deduction",
                           estimate.mileageDeduction,
                           note: String(format: "%.0f business miles", estimate.businessMiles))
-                deduction("Deductible expenses", estimate.expenses, note: nil)
+                deduction("Deductible expenses", estimate.expenses,
+                          note: coveredByMileage > 0
+                              ? "\(Money.cents(coveredByMileage)) of fuel, insurance and repairs isn't listed — the mileage rate already pays for those."
+                              : nil)
 
                 RowDivider(color: GG.Surface.divider)
                 line("Net business income", estimate.netBusinessIncome, emphasised: true)
@@ -320,6 +323,18 @@ struct TaxView: View {
         return Array(found.union([thisYear])).sorted(by: >).prefix(4).map { $0 }
     }
 
+    /// What was logged but left out, so the omission is visible rather than
+    /// looking like the app lost it.
+    private var coveredByMileage: Double {
+        let calendar = Calendar.gigGrow
+        return expenses
+            .filter {
+                calendar.component(.year, from: $0.date) == year
+                    && $0.isDeductible && $0.category.isCoveredByMileageRate
+            }
+            .reduce(0) { $0 + $1.amount }
+    }
+
     private var estimate: TaxEstimate {
         let calendar = Calendar.gigGrow
         let inYear = { (date: Date) in calendar.component(.year, from: date) == year }
@@ -329,11 +344,14 @@ struct TaxView: View {
             .filter { inYear($0.start) && $0.purpose.isDeductible }
             .reduce(0) { $0 + $1.miles }
 
-        // Maintenance-fund spending is already covered by the reserve, so
-        // counting it here as well would deduct it twice — the same mistake
-        // net profit made before it was fixed.
+        // Petrol, insurance and repairs are already inside the per-mile
+        // figure — the standard mileage rate covers the car's whole running
+        // cost. Deducting them here as well claims the same money twice,
+        // which is the commonest way a gig driver's return goes wrong. Only
+        // what sits *on top* of the mileage rate is counted: phone, supplies,
+        // tolls and parking.
         let deductible = expenses
-            .filter { inYear($0.date) && $0.isDeductible }
+            .filter { inYear($0.date) && $0.isDeductible && !$0.category.isCoveredByMileageRate }
             .reduce(0) { $0 + $1.amount }
 
         return TaxEstimate.build(

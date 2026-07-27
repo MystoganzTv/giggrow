@@ -41,7 +41,8 @@ struct LogExpenseView: View {
                         amountCard
                         categoryCard
                         detailsCard
-                        sourceNote
+                        deductionNote
+                sourceNote
 
                         if editing != nil { deleteButton }
                     }
@@ -187,6 +188,37 @@ struct LogExpenseView: View {
                 .padding(.vertical, 12)
             }
         }
+    }
+
+    /// Says whether this is actually deductible, where the choice is made.
+    ///
+    /// The standard mileage rate already pays for petrol, insurance and
+    /// repairs. A driver who logs a $60 fill-up and expects it off their tax
+    /// bill is going to be disappointed at best and double-claiming at worst,
+    /// and the moment to say so is while they're picking the category — not
+    /// silently, months later, by omitting it from a total.
+    private var deductionNote: some View {
+        HStack(alignment: .top, spacing: 11) {
+            Circle()
+                .fill(category.isCoveredByMileageRate ? GG.Palette.amber : GG.Palette.mint)
+                .frame(width: 7, height: 7)
+                .padding(.top, 6)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(category.deductionNote)
+                    .ggText(GG.Typo.footnote,
+                            color: category.isCoveredByMileageRate
+                                ? GG.Palette.amber.opacity(0.9) : GG.Ink.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if category.isCoveredByMileageRate {
+                    Text("Still worth logging — it's what tells you whether the mileage rate is beating your real costs.")
+                        .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(.horizontal, 6)
     }
 
     /// States plainly which pot this comes out of.

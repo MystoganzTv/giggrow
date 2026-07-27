@@ -309,6 +309,31 @@ enum ExpenseCategory: String, Codable, CaseIterable, Identifiable {
 
     /// Maintenance spending draws down the maintenance fund; the rest doesn't.
     var drawsFromMaintenanceFund: Bool { self == .maintenance }
+
+    /// Whether the standard mileage rate already pays for this.
+    ///
+    /// The per-mile figure is not just wear — it covers petrol, oil, repairs,
+    /// tyres, insurance, registration and depreciation. Claiming those *and*
+    /// the mileage deduction is deducting the same cost twice, and it is the
+    /// commonest way a gig driver's return goes wrong.
+    ///
+    /// Tolls and parking are the exception the IRS names explicitly: they sit
+    /// on top of the mileage rate. They live under `fees` here.
+    ///
+    /// Source: IRS Publication 463 and Topic 510.
+    var isCoveredByMileageRate: Bool {
+        switch self {
+        case .fuel, .maintenance, .insurance: return true
+        case .phone, .supplies, .fees, .other: return false
+        }
+    }
+
+    /// Said plainly, where the driver is deciding.
+    var deductionNote: String {
+        isCoveredByMileageRate
+            ? "Already covered by your mileage deduction — logged for your records, not deducted again."
+            : "Deductible on top of your mileage deduction."
+    }
 }
 
 @Model

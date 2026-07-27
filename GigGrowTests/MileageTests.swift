@@ -660,6 +660,64 @@ final class MileageTests: XCTestCase {
         XCTAssertGreaterThan(measured / 1_609.344, 0.3)
     }
 
+    // MARK: Not deducting the same money twice
+
+    /// The standard mileage rate covers the car's whole running cost. Taking
+    /// it *and* the fuel receipts claims the same money twice, which is the
+    /// commonest way a gig driver's return goes wrong.
+    ///
+    /// IRS Publication 463 and Topic 510: choosing the standard rate means
+    /// you may not also deduct depreciation, lease payments, maintenance,
+    /// repairs, petrol, oil, insurance or registration.
+    func testRunningCostsAreCoveredByTheMileageRate() {
+        for category in [ExpenseCategory.fuel, .maintenance, .insurance] {
+            XCTAssertTrue(category.isCoveredByMileageRate,
+                          "\(category.label) is inside the per-mile figure")
+        }
+    }
+
+    /// Tolls, parking, phone and supplies sit on top of it and must not be
+    /// suppressed — dropping a real deduction costs the driver money.
+    func testOtherCostsStillDeductOnTop() {
+        for category in [ExpenseCategory.phone, .supplies, .fees, .other] {
+            XCTAssertFalse(category.isCoveredByMileageRate,
+                           "\(category.label) is not part of the mileage rate")
+        }
+    }
+
+    /// Every category has to fall on one side. A new one added without a
+    /// decision would silently default into whichever branch it landed in.
+    func testEveryCategoryIsClassified() {
+        for category in ExpenseCategory.allCases {
+            XCTAssertFalse(category.deductionNote.isEmpty,
+                           "\(category.label) has no deduction guidance")
+        }
+    }
+
+    /// What the mistake was worth: a year of fuel and insurance deducted on
+    /// top of the miles they were already paid for.
+    func testDoubleDeductionWouldHaveBeenSubstantial() {
+        let gross = 52_000.0
+        let miles = 22_000.0
+        let rate = 0.76
+        let runningCosts = 4_800.0   // fuel and insurance for the year
+        let otherCosts = 600.0       // phone and supplies
+
+        let correct = TaxEstimate.build(
+            year: 2026, gross: gross, businessMiles: miles, mileageRate: rate,
+            deductibleExpenses: otherCosts, stateRate: 5
+        )
+        let doubleCounted = TaxEstimate.build(
+            year: 2026, gross: gross, businessMiles: miles, mileageRate: rate,
+            deductibleExpenses: otherCosts + runningCosts, stateRate: 5
+        )
+
+        XCTAssertLessThan(doubleCounted.totalTax, correct.totalTax,
+                          "the old behaviour understated the bill")
+        XCTAssertGreaterThan(correct.totalTax - doubleCounted.totalTax, 800,
+                             "and by enough to matter")
+    }
+
     // MARK: Erasing
 
     /// A wipe that misses a model is worse than no wipe: the app looks empty
