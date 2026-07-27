@@ -87,9 +87,14 @@ struct OnboardingView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            // A beat for the view to settle, or the focus is set before the
-            // field exists and the keyboard never appears.
-            try? await Task.sleep(for: .milliseconds(350))
+            // A beat for the field to exist before focusing it — set too
+            // early and the keyboard never appears at all.
+            //
+            // This was 350ms, which is long enough to read as the app being
+            // slow rather than as a transition. One run-loop turn plus a
+            // little is enough in practice; the cost of being marginally too
+            // early is a keyboard that needs a tap, not a broken screen.
+            try? await Task.sleep(for: .milliseconds(60))
             if step == 0 { focused = .name }
         }
         .onChange(of: step) { _, newStep in

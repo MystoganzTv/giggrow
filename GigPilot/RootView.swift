@@ -40,17 +40,24 @@ struct RootView: View {
 
     /// The week. Four of the five screens read this — the dashboard says
     /// "This week" in the design, and it means it.
-    private var snapshot: EarningsSnapshot? {
-        build(range: .week)
-    }
+    ///
+    /// Cached, not computed. As a computed property this ran on every single
+    /// body evaluation — every keystroke, every tab change, every frame of an
+    /// animation — and each run walks every shift, every earning and every
+    /// expense in the store. That is the app being slow: not the phone, and
+    /// not the amount of data, but recomputing all of it hundreds of times
+    /// for one screen that didn't change.
+    @State private var snapshot: EarningsSnapshot?
 
     /// Analytics gets its own, built for whatever the picker is set to.
     /// Two projections rather than one shared mutable range: the dashboard
     /// shouldn't silently switch to yearly figures because you tapped a pill
     /// on another tab.
-    private var analyticsSnapshot: EarningsSnapshot? {
-        build(range: analyticsRange)
-    }
+    ///
+    /// Only rebuilt while Analytics is on screen. It used to be computed
+    /// alongside the weekly one, so four of the five tabs paid for a second
+    /// full projection they never displayed.
+    @State private var analyticsSnapshot: EarningsSnapshot?
 
     private func build(range kind: AnalyticsRange) -> EarningsSnapshot? {
         guard let profile = profiles.first else { return nil }
@@ -81,10 +88,79 @@ struct RootView: View {
             // is safe to create before onboarding runs.
             Seed.bootstrapPlatformsIfNeeded(context)
             configureTracker()
+            rebuild()
+        }
+        // Rebuilt when the data actually changes, rather than when SwiftUI
+        // happens to re-evaluate the view. @Query publishes on every save,
+        // which is exactly the signal wanted and nothing more.
+        .onChange(of: dataFingerprint) { _, _ in rebuild() }
+        .onChange(of: analyticsRange) { _, _ in rebuildAnalytics() }
+        .onChange(of: selection) { _, tab in
+            // Analytics is the only screen that needs the second projection.
+            if tab == .analytics { rebuildAnalytics() }
         }
         .onChange(of: profiles.first?.idleThresholdMinutes) { _, _ in
             configureTracker()
         }
+    }
+
+    /// A cheap value that changes whenever anything the projection reads
+    /// changes.
+    ///
+    /// Watching the arrays themselves isn't enough: editing a shift's gross
+    /// leaves the array identical, so the dashboard would keep showing the
+    /// old figure. Hashing the values catches edits as well as insertions,
+    /// and hashing a few thousand doubles is orders of magnitude cheaper than
+    /// the bucketing, attribution and date work the projection does.
+    private var dataFingerprint: Int {
+        var hasher = Hasher()
+        hasher.combine(shifts.count)
+        hasher.combine(expenses.count)
+        hasher.combine(accounts.count)
+
+        for shift in shifts {
+            hasher.combine(shift.start)
+            hasher.combine(shift.end)
+            hasher.combine(shift.miles)
+            hasher.combine(shift.idleMinutes)
+            hasher.combine(shift.recordedHours)
+            hasher.combine(shift.earnings.count)
+            for earning in shift.earnings {
+                hasher.combine(earning.gross)
+                hasher.combine(earning.tips)
+                hasher.combine(earning.promotions)
+                hasher.combine(earning.trips)
+            }
+        }
+        for expense in expenses {
+            hasher.combine(expense.date)
+            hasher.combine(expense.amount)
+        }
+        for account in accounts {
+            hasher.combine(account.name)
+            hasher.combine(account.isActive)
+        }
+        if let profile = profiles.first {
+            hasher.combine(profile.taxRate)
+            hasher.combine(profile.maintenanceRate)
+            hasher.combine(profile.mileageRate)
+            hasher.combine(profile.maintenanceOpeningBalance)
+            hasher.combine(profile.planTierRaw)
+        }
+        if let vehicle = vehicles.first {
+            hasher.combine(vehicle.odometerBaseline)
+            hasher.combine(vehicle.fuelCostPerMile)
+        }
+        return hasher.finalize()
+    }
+
+    private func rebuild() {
+        snapshot = build(range: .week)
+        if selection == .analytics { rebuildAnalytics() }
+    }
+
+    private func rebuildAnalytics() {
+        analyticsSnapshot = build(range: analyticsRange)
     }
 
     /// Hands the tracker its context and the driver's idle threshold, then
