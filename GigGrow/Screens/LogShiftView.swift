@@ -30,6 +30,21 @@ struct LogShiftView: View {
     @State private var idleText = ""
     @State private var note = ""
 
+    /// Neither pad has a return key. This is the third screen to need it;
+    /// the two I fixed before were the two I happened to be looking at.
+    @FocusState private var isEditingField: Bool
+
+    /// True when this row covers a period rather than one sitting — an
+    /// imported weekly total. Its hours are stated, not derived from a span.
+    @State private var isAggregate = false
+    @State private var recordedHoursText = ""
+    @State private var recordedMinutesText = ""
+
+    private var recordedHours: Double {
+        Hours.decimal(hours: Int(recordedHoursText) ?? 0,
+                      minutes: Int(recordedMinutesText) ?? 0)
+    }
+
     /// Per-account entry, keyed by account name so it survives re-renders.
     @State private var rows: [String: EntryRow] = [:]
     @State private var loaded = false
@@ -64,6 +79,12 @@ struct LogShiftView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(GG.Palette.screen, for: .navigationBar)
             .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isEditingField = false }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(GG.Palette.violet300)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .foregroundStyle(GG.Ink.secondary)
@@ -94,8 +115,37 @@ struct LogShiftView: View {
                 DatePicker("End", selection: $end, in: start...)
                     .datePickerStyle(.compact)
 
+                if isAggregate {
+                    RowDivider(color: GG.Surface.dividerSoft)
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Hours worked")
+                                .ggText(GG.Typo.rowLabel)
+                            Text("This is a whole week's total, so the hours are the ones you recorded — not the span above.")
+                                .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        TextField("0", text: $recordedHoursText)
+                            .keyboardType(.numberPad)
+                            .focused($isEditingField)
+                            .multilineTextAlignment(.trailing)
+                            .ggText(.system(size: 16, weight: .semibold))
+                            .frame(width: 40)
+                        Text("h").ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                        TextField("00", text: $recordedMinutesText)
+                            .keyboardType(.numberPad)
+                            .focused($isEditingField)
+                            .multilineTextAlignment(.trailing)
+                            .ggText(.system(size: 16, weight: .semibold))
+                            .frame(width: 40)
+                        Text("m").ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                    }
+                    .padding(.vertical, 12)
+                }
+
                 HStack {
-                    Text("Duration")
+                    Text(isAggregate ? "Period" : "Duration")
                         .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
                     Spacer()
                     Text(durationLabel)
@@ -239,6 +289,7 @@ struct LogShiftView: View {
             Spacer()
             TextField("0", text: text)
                 .keyboardType(.decimalPad)
+                .focused($isEditingField)
                 .multilineTextAlignment(.trailing)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.white)
@@ -256,6 +307,7 @@ struct LogShiftView: View {
             }
             TextField(placeholder, text: text)
                 .keyboardType(.decimalPad)
+                .focused($isEditingField)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
         }
@@ -270,7 +322,13 @@ struct LogShiftView: View {
 
     // MARK: Derived
 
-    private var hours: Double { max(end.timeIntervalSince(start), 0) / 3600 }
+    /// A stated figure beats the span, the same rule `Shift.hours` follows.
+    /// Without this an imported week shows 168 hours and every rate on the
+    /// sheet is wrong by a factor of eight.
+    private var hours: Double {
+        if isAggregate && recordedHours > 0 { return recordedHours }
+        return max(end.timeIntervalSince(start), 0) / 3600
+    }
     private var idleHours: Double { min((Double(idleText) ?? 0) / 60, hours) }
     private var activeHours: Double { max(hours - idleHours, 0) }
     private var miles: Double { Double(milesText) ?? 0 }
@@ -325,6 +383,14 @@ struct LogShiftView: View {
 
         start = shift.start
         end = shift.end
+        isAggregate = shift.isAggregate
+        // A weekly import spans seven days but records the hours actually
+        // worked. Editing it as a start-to-end block would read 168 hours
+        // and, on save, throw the real figure away.
+        if let recorded = shift.recordedHours, recorded > 0 {
+            recordedHoursText = "\(Hours.split(recorded).hours)"
+            recordedMinutesText = "\(Hours.split(recorded).minutes)"
+        }
         milesText = shift.miles > 0 ? trimmed(shift.miles) : ""
         idleText = shift.idleMinutes > 0 ? trimmed(shift.idleMinutes) : ""
         note = shift.note ?? ""
@@ -348,6 +414,11 @@ struct LogShiftView: View {
         // Insert before wiring up relationships — attaching an earning to a
         // shift the context hasn't seen yet leaves the graph half-registered.
         if editing == nil { context.insert(shift) }
+        shift.isAggregate = isAggregate
+        // Written back explicitly. Saving an imported week without this left
+        // recordedHours holding a figure the sheet had just been editing
+        // around, so the row read one thing here and another everywhere else.
+        shift.recordedHours = isAggregate && recordedHours > 0 ? recordedHours : nil
 
         shift.start = start
         shift.end = end
