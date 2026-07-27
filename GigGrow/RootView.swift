@@ -8,6 +8,7 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
@@ -20,6 +21,11 @@ struct RootView: View {
     @State private var isShowingProfile = false
     @State private var isImporting = false
     @State private var isShowingMileage = false
+
+    /// Kept alive for the whole app run: UNUserNotificationCenter holds its
+    /// delegate weakly, so a local one would be deallocated and taps would
+    /// silently stop routing anywhere.
+    @State private var notificationDelegate = TripNotificationDelegate()
     /// One selection per screen. Tapping "Year" on Analytics shouldn't
     /// silently reframe the dashboard, and vice versa.
     @State private var dashboardSelection = RangeSelection(range: .week)
@@ -99,6 +105,12 @@ struct RootView: View {
             Seed.bootstrapPlatformsIfNeeded(context)
             configureTracker()
             rebuild()
+            UNUserNotificationCenter.current().delegate = notificationDelegate
+        }
+        // Tapping "Trip recorded" opens the log rather than dumping you on
+        // whatever screen you happened to leave the app on.
+        .onReceive(NotificationCenter.default.publisher(for: TripNotifier.openMileageLog)) { _ in
+            isShowingMileage = true
         }
         // Rebuilt when the data actually changes, rather than when SwiftUI
         // happens to re-evaluate the view. @Query publishes on every save,

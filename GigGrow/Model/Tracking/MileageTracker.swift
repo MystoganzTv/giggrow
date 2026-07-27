@@ -126,6 +126,7 @@ final class MileageTracker: NSObject {
             manager.requestAlwaysAuthorization()
             arm()
         case .authorizedAlways:
+            Task { await TripNotifier.requestPermissionIfNeeded() }
             arm()
         case .denied:
             status = .denied
@@ -295,7 +296,18 @@ final class MileageTracker: NSObject {
             distanceMeters: currentDistance
         )
         context.insert(record)
-        try? context.save()
+        do {
+            try context.save()
+            // Only after it's actually stored. Announcing a drive that failed
+            // to save would send you to a log that doesn't have it.
+            TripNotifier.tripEnded(
+                miles: record.miles,
+                minutes: Int(record.duration / 60),
+                deduction: record.miles * MileageRates.rate(on: record.start)
+            )
+        } catch {
+            notice = "A drive couldn't be saved: \(error.localizedDescription)"
+        }
 
         // Back to the cheap state until the next drive.
         manager.stopUpdatingLocation()
@@ -315,6 +327,7 @@ final class MileageTracker: NSObject {
             pendingManualStart = true
             manager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
+            Task { await TripNotifier.requestPermissionIfNeeded() }
             beginDrive(mode: .manual)
         case .denied:
             status = .denied

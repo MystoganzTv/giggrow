@@ -14,7 +14,21 @@ import SwiftData
 
 struct SettingsView: View {
     let snapshot: EarningsSnapshot
-    var appVersion: String = "3.2.1"
+    /// Read from the bundle, not typed in.
+    ///
+    /// It said 3.2.1 because that was the number printed in the design
+    /// mockup — an invented figure for a screenshot. A version string that
+    /// doesn't match what you shipped is worse than none: it's the first
+    /// thing anyone quotes in a bug report.
+    var appVersion: String {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        switch (short, build) {
+        case let (version?, build?): return "\(version) (\(build))"
+        case let (version?, nil):    return version
+        default:                     return "—"
+        }
+    }
 
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var context
@@ -249,7 +263,16 @@ struct SettingsView: View {
         if unsorted > 0 {
             return "\(unsorted) to sort"
         }
-        return String(format: "%.0f business mi", businessMiles)
+        // Both, because the log holds both. "0 business mi" on a log full of
+        // personal drives reads as the tracker having failed, when in fact
+        // every drive was recorded and correctly marked as not deductible.
+        let personalMiles = drives.filter { $0.purpose == .personal }
+            .reduce(0) { $0 + $1.miles }
+        if businessMiles > 0 && personalMiles > 0 {
+            return String(format: "%.0f business · %.0f personal", businessMiles, personalMiles)
+        }
+        if businessMiles > 0 { return String(format: "%.0f business mi", businessMiles) }
+        return String(format: "%.0f personal mi", personalMiles)
     }
 
     private var mileageToggle: some View {

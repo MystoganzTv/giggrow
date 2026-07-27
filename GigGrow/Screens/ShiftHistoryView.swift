@@ -21,6 +21,13 @@ struct ShiftHistoryView: View {
     @State private var isAdding = false
     @State private var editing: Shift?
     @State private var pendingDelete: Shift?
+    /// A real flag, not one derived from `pendingDelete != nil`.
+    ///
+    /// The derived binding recomputed on every pass and its setter fought the
+    /// button's own cleanup, so the sheet flickered, the row you'd just
+    /// deleted came back, and the delete only landed once you dismissed the
+    /// thing. Same class of bug as the screenshot viewer that wouldn't close.
+    @State private var isConfirmingDelete = false
 
     var body: some View {
         NavigationStack {
@@ -52,23 +59,17 @@ struct ShiftHistoryView: View {
             .sheet(isPresented: $isAdding) { LogShiftView() }
             .sheet(item: $editing) { LogShiftView(editing: $0) }
             // Deleting a shift throws away real money data, so it asks first.
-            .confirmationDialog(
-                "Delete this shift?",
-                isPresented: Binding(
-                    get: { pendingDelete != nil },
-                    set: { if !$0 { pendingDelete = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
+            .alert("Delete this shift?",
+                   isPresented: $isConfirmingDelete,
+                   presenting: pendingDelete) { shift in
+                // Cancel first, so the safe action is the default.
+                Button("Cancel", role: .cancel) { pendingDelete = nil }
                 Button("Delete", role: .destructive) {
-                    if let shift = pendingDelete { delete(shift) }
+                    delete(shift)
                     pendingDelete = nil
                 }
-                Button("Cancel", role: .cancel) { pendingDelete = nil }
-            } message: {
-                if let shift = pendingDelete {
-                    Text("\(Money.cents(shift.gross)) across \(shift.platformCount) app\(shift.platformCount == 1 ? "" : "s") will be removed from your totals.")
-                }
+            } message: { shift in
+                Text("\(Money.cents(shift.gross)) across \(shift.platformCount) app\(shift.platformCount == 1 ? "" : "s") will be removed from your totals.")
             }
         }
         .preferredColorScheme(.dark)
@@ -101,6 +102,7 @@ struct ShiftHistoryView: View {
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button(role: .destructive) {
                                     pendingDelete = shift
+                                    isConfirmingDelete = true
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
