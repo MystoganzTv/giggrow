@@ -202,17 +202,37 @@ struct OnboardingView: View {
                 subtitle: "Pick every one you use. Running two at once is normal — GigPilot is built for it."
             )
 
-            GlassCard {
-                VStack(spacing: 0) {
-                    ForEach(accounts) { account in
-                        platformRow(account)
-                        if account.id != accounts.last?.id { RowDivider() }
+            if accounts.isEmpty {
+                // The catalogue is seeded by RootView's task. If that hasn't
+                // landed, this step used to render an empty card above a
+                // permanently disabled button — a dead end with nothing on
+                // screen explaining it. Seed it here instead of waiting.
+                GlassCard {
+                    HStack(spacing: 12) {
+                        ProgressView().tint(GP.Palette.violet400)
+                        Text("Loading the app list…")
+                            .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                        Spacer(minLength: 0)
+                    }
+                }
+                .task { Seed.bootstrapPlatformsIfNeeded(context) }
+            } else {
+                GlassCard {
+                    VStack(spacing: 0) {
+                        ForEach(accounts) { account in
+                            platformRow(account)
+                            if account.id != accounts.last?.id { RowDivider() }
+                        }
                     }
                 }
             }
 
-            Text("You can change this any time.")
-                .gpText(GP.Typo.footnote, color: GP.Ink.muted)
+            Text(selectedPlatforms.isEmpty
+                 ? "Pick at least one to continue. You can change this any time."
+                 : "You can change this any time.")
+                .gpText(GP.Typo.footnote,
+                        color: selectedPlatforms.isEmpty ? GP.Palette.amber.opacity(0.85)
+                                                         : GP.Ink.muted)
                 .padding(.leading, 6)
         }
     }

@@ -77,8 +77,13 @@ struct RootView: View {
             if needsOnboarding {
                 OnboardingView()
                     .transition(.opacity)
-            } else if let snapshot {
-                main(snapshot)
+            } else if let ready = snapshot ?? build(range: .week) {
+                // Falls through to building it inline when the cache hasn't
+                // caught up. Caching the projection introduced a window right
+                // after onboarding where the profile existed but the snapshot
+                // was still nil, and the app rendered nothing at all — a black
+                // screen at the exact moment someone finishes signing up.
+                main(ready)
             }
         }
         .preferredColorScheme(.dark)
