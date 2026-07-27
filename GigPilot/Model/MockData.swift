@@ -16,6 +16,7 @@ extension EarningsSnapshot {
         maintenanceRate: 8,
 
         perHour: 38.60,
+        lifetimePerHour: 33.10,
         perMile: 2.42,
         onlineHours: 38.4,
         activeHours: 29.2,
@@ -86,6 +87,7 @@ extension EarningsSnapshot {
         maintenanceRate: 8,
 
         perHour: 0,
+        lifetimePerHour: 0,
         perMile: 0,
         onlineHours: 0,
         activeHours: 0,

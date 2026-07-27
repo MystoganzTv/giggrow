@@ -48,7 +48,7 @@ struct SettingsView: View {
     /// One case per destination, so a row can't be added without deciding
     /// where it goes.
     private enum Route: String, Identifiable {
-        case profile, taxRate, maintenanceRate, mileageRate, idleThreshold, privacy
+        case profile, taxRate, maintenanceRate, mileageRate, privacy
         var id: String { rawValue }
     }
 
@@ -217,11 +217,6 @@ struct SettingsView: View {
                 isShowingDrives = true
             }
 
-            RowDivider(color: GP.Surface.dividerSoft)
-            SettingsRow(label: "End a trip after",
-                        value: "\(profile?.idleThresholdMinutes ?? 8) min stopped") {
-                route = .idleThreshold
-            }
 
 
         }
@@ -404,18 +399,6 @@ struct SettingsView: View {
                     suffix: "/ mi",
                     value: profile.mileageRate
                 ) { profile.mileageRate = $0; save() }
-
-            case .idleThreshold:
-                // One number, two jobs, and the old copy only admitted to
-                // one of them — which is why it read as a setting with no
-                // visible effect.
-                StepperEditor(
-                    title: "End a trip after",
-                    explanation: "How long you have to be stopped before GigPilot decides the drive is over. Too short and a red light ends your trip; too long and the drive home merges into the shift. Eight minutes suits most drivers.\n\nThe same figure is the default idle time when you log a shift by hand.",
-                    unit: "minutes stopped",
-                    value: profile.idleThresholdMinutes,
-                    bounds: 1...60
-                ) { profile.idleThresholdMinutes = $0; save() }
 
             case .privacy:
                 PrivacySheet()

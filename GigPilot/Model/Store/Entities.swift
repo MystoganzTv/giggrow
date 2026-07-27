@@ -569,6 +569,14 @@ final class DriverProfile {
     /// the shift entry sheet.
     var idleThresholdMinutes: Int
 
+    /// State income tax, as a percentage, for the tax estimate.
+    ///
+    /// The driver's own figure rather than a lookup table. State tax varies
+    /// by bracket, city and filing status in ways one national table would
+    /// get wrong more often than right, and a confident wrong number is
+    /// worse here than an honest blank.
+    var stateIncomeTaxRate: Double = 0
+
     /// The rate to apply to miles driven on `date` — the driver's override
     /// if they set one, otherwise the IRS figure in force that day.
     func mileageRate(on date: Date) -> Double {

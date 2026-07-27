@@ -13,6 +13,8 @@ struct AnalyticsView: View {
     let snapshot: EarningsSnapshot
     @Binding var selection: RangeSelection
 
+    @State private var isShowingTax = false
+
     private var range: AnalyticsRange { selection.range }
     var onShowExpenses: () -> Void = {}
 
@@ -27,6 +29,8 @@ struct AnalyticsView: View {
             // The picker stays put whether or not this period has data —
             // an empty week shouldn't trap you out of checking the month.
             segmentedControl
+            ownAverageCard
+            taxRow
 
             if snapshot.hasData {
                 weeklyIncomeCard
@@ -42,6 +46,94 @@ struct AnalyticsView: View {
                 )
             }
         }
+        .sheet(isPresented: $isShowingTax) { TaxView() }
+    }
+
+    /// This period against your own history.
+    ///
+    /// Solo compares you to your city's average, which is the most motivating
+    /// number in their app and the one thing GigPilot can't copy: it needs
+    /// aggregated data from other drivers, which means a server, which would
+    /// break the promise on the privacy screen. Comparing you to yourself
+    /// needs nobody else's data and answers the more useful question anyway —
+    /// not "am I better than strangers" but "is this week better than mine
+    /// usually are".
+    @ViewBuilder
+    private var ownAverageCard: some View {
+        if snapshot.perHour > 0, snapshot.lifetimePerHour > 0 {
+            let mine = snapshot.lifetimePerHour
+            let now = snapshot.perHour
+            let ahead = now >= mine
+            let change = mine > 0 ? (now - mine) / mine * 100 : 0
+
+            GlassCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Your usual")
+                                .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                            Text("\(Money.cents(mine))/hr")
+                                .gpText(.system(size: 17, weight: .semibold), tracking: -0.3,
+                                        color: GP.Ink.tertiary)
+                        }
+                        Spacer(minLength: 12)
+                        VStack(alignment: .trailing, spacing: 3) {
+                            Text(selection.title)
+                                .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                            Text("\(Money.cents(now))/hr")
+                                .gpText(.system(size: 17, weight: .semibold), tracking: -0.3)
+                        }
+                    }
+
+                    // Where this period sits against the average, on a bar
+                    // whose midpoint is the average.
+                    GeometryReader { geo in
+                        let ratio = min(max(now / (mine * 2), 0.02), 1)
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(GP.Surface.glassFaint)
+                            Capsule()
+                                .fill(ahead ? AnyShapeStyle(GP.Palette.mint)
+                                            : AnyShapeStyle(GP.Gradients.brandMark))
+                                .frame(width: geo.size.width * ratio)
+                            // The midpoint marker *is* the average.
+                            Rectangle()
+                                .fill(Color.white.opacity(0.55))
+                                .frame(width: 2)
+                                .offset(x: geo.size.width / 2 - 1)
+                        }
+                    }
+                    .frame(height: 8)
+
+                    Text(ahead
+                         ? String(format: "%.0f%% above your average. Whatever you did here, it worked.", change)
+                         : String(format: "%.0f%% below your average — worth a look at which hours you drove.", abs(change)))
+                        .gpText(GP.Typo.footnote,
+                                color: ahead ? GP.Palette.mint : GP.Ink.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    /// The tax estimate, reachable from where the money questions are.
+    private var taxRow: some View {
+        Button { isShowingTax = true } label: {
+            GlassCard(radius: GP.Radius.tile,
+                      padding: EdgeInsets(top: 16, leading: 18, bottom: 16, trailing: 18)) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Tax estimate")
+                            .gpText(.system(size: 14.5, weight: .semibold))
+                        Text("Federal, state and self-employment, after your miles come off.")
+                            .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Chevron(size: 16, color: Color.white.opacity(0.28))
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Range picker

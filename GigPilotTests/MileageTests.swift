@@ -535,6 +535,90 @@ final class MileageTests: XCTestCase {
         XCTAssertEqual(Set(dates).count, 7, "Seven screenshots must not collapse onto fewer days")
     }
 
+    // MARK: Tax
+    //
+    // The only figures in this app that might reach a return. Worked examples
+    // checked by hand against the published 2026 tables.
+
+    /// Brackets are progressive: each slice at its own rate. Taxing the whole
+    /// amount at the top rate is the commonest misunderstanding about
+    /// brackets and would overstate the bill by thousands.
+    func testFederalTaxIsProgressiveNotFlat() {
+        let table = TaxTables.year2026
+        XCTAssertEqual(table.federalTax(on: 12_400), 1_240, accuracy: 0.01)
+        // 12,400 at 10% then the next 38,000 at 12%.
+        XCTAssertEqual(table.federalTax(on: 50_400), 5_800, accuracy: 0.01)
+        XCTAssertEqual(table.federalTax(on: 100_000), 16_712, accuracy: 0.01)
+
+        let flatAtTopRate = 100_000 * 0.22
+        XCTAssertLessThan(table.federalTax(on: 100_000), flatAtTopRate)
+    }
+
+    func testNoTaxBelowTheStandardDeduction() {
+        XCTAssertEqual(TaxTables.year2026.standardDeduction, 16_100, accuracy: 0.01)
+        XCTAssertEqual(TaxTables.year2026.federalTax(on: 0), 0, accuracy: 0.01)
+    }
+
+    /// A full-time driver, worked through by hand.
+    func testWorkedExampleForAFullTimeDriver() {
+        let estimate = TaxEstimate.build(
+            year: 2026, gross: 52_000, businessMiles: 22_000,
+            mileageRate: 0.76, deductibleExpenses: 1_200, stateRate: 5
+        )
+
+        XCTAssertEqual(estimate.mileageDeduction, 16_720, accuracy: 0.01)
+        XCTAssertEqual(estimate.netBusinessIncome, 34_080, accuracy: 0.01)
+        XCTAssertEqual(estimate.selfEmploymentTax, 4_815.35, accuracy: 0.5)
+        XCTAssertEqual(estimate.qbiDeduction, 6_334.46, accuracy: 0.5)
+        XCTAssertEqual(estimate.taxableIncome, 9_237.86, accuracy: 1)
+        XCTAssertEqual(estimate.totalTax, 7_322.75, accuracy: 1)
+    }
+
+    /// The point of the whole screen: mileage is worth real money, and the
+    /// flat 25% set-aside is usually far too much once it's counted.
+    func testMileageDeductionMovesTheBillSubstantially() {
+        func estimate(miles: Double) -> TaxEstimate {
+            TaxEstimate.build(year: 2026, gross: 50_458, businessMiles: miles,
+                              mileageRate: 0.76, deductibleExpenses: 0, stateRate: 0)
+        }
+        let without = estimate(miles: 0)
+        let with = estimate(miles: 20_000)
+
+        XCTAssertGreaterThan(without.totalTax - with.totalTax, 3_000,
+                             "20,000 logged miles should be worth thousands")
+        XCTAssertLessThan(with.effectiveRate, 0.25,
+                          "A flat 25% set-aside over-saves once miles are counted")
+    }
+
+    /// SE tax is on 92.35% of net, and half of it comes off before income
+    /// tax. Both are easy to drop and each one skews the total.
+    func testSelfEmploymentTaxUsesTheScheduleSEBase() {
+        let estimate = TaxEstimate.build(
+            year: 2026, gross: 10_000, businessMiles: 0,
+            mileageRate: 0.76, deductibleExpenses: 0, stateRate: 0
+        )
+        XCTAssertEqual(estimate.selfEmploymentTax, 10_000 * 0.9235 * 0.153, accuracy: 0.01)
+    }
+
+    /// A loss must not render as a negative bill.
+    func testDeductionsBiggerThanIncomeDontProduceNegativeTax() {
+        let estimate = TaxEstimate.build(
+            year: 2026, gross: 5_000, businessMiles: 20_000,
+            mileageRate: 0.76, deductibleExpenses: 0, stateRate: 5
+        )
+        XCTAssertEqual(estimate.netBusinessIncome, 0, accuracy: 0.01)
+        XCTAssertEqual(estimate.totalTax, 0, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(estimate.netAfterTax, 0)
+    }
+
+    /// Each year keeps its own table, so a prior-year total isn't recomputed
+    /// with this year's brackets.
+    func testEachYearUsesItsOwnTable() {
+        XCTAssertNotEqual(TaxTables.table(for: 2025).standardDeduction,
+                          TaxTables.table(for: 2026).standardDeduction)
+        XCTAssertEqual(TaxTables.table(for: 2025).year, 2025)
+    }
+
     // MARK: Erasing
 
     /// A wipe that misses a model is worse than no wipe: the app looks empty

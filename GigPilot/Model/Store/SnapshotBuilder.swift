@@ -179,6 +179,8 @@ extension EarningsSnapshot {
         // MARK: Rollups
 
         let allTimeGross = shifts.reduce(0) { $0 + $1.gross }
+        let allTimeHours = shifts.reduce(0) { $0 + $1.hours }
+        let lifetimePerHour = allTimeHours > 0 ? allTimeGross / allTimeHours : 0
         let maintenanceSpent = expenses
             .filter { $0.category.drawsFromMaintenanceFund }
             .reduce(0) { $0 + $1.amount }
@@ -246,6 +248,8 @@ extension EarningsSnapshot {
             maintenanceRate: profile.maintenanceRate,
 
             perHour: onlineHours > 0 ? gross / onlineHours : 0,
+
+            lifetimePerHour: lifetimePerHour,
             perMile: miles > 0 ? gross / miles : 0,
             onlineHours: onlineHours,
             activeHours: activeHours,
