@@ -110,6 +110,16 @@ struct AnalyticsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+        } else if snapshot.perHour > 0 {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Your baseline starts here")
+                        .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
+                    Text("\(selection.title) is your first period of data at \(Money.cents(snapshot.perHour))/hr. After another period, GigGrow can compare it with your real history.")
+                        .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
@@ -159,26 +169,29 @@ struct AnalyticsView: View {
                         .ggText(.system(size: 15, weight: .semibold))
                 }
 
-                // A brand-new account has no month-over-month history, so the
-                // design's smooth curve stands in until there are two months
-                // worth of shifts to draw a real one from.
-                Group {
-                    if snapshot.series.hasMonthlyHistory {
-                        Sparkline(points: snapshot.series.monthly
-                                    .chartPoints(box: ChartData.monthlyCurveBox),
-                                  box: ChartData.monthlyCurveBox,
-                                  color: GG.Palette.sky300,
-                                  height: 104,
-                                  lineWidth: 2.4,
-                                  filled: true)
-                    } else {
-                        MonthlyCurveChart()
-                    }
-                }
-                .padding(.top, 16)
+                if snapshot.series.hasMonthlyHistory {
+                    Sparkline(points: snapshot.series.monthly
+                                .chartPoints(box: ChartData.monthlyCurveBox),
+                              box: ChartData.monthlyCurveBox,
+                              color: GG.Palette.sky300,
+                              height: 104,
+                              lineWidth: 2.4,
+                              filled: true)
+                        .padding(.top, 16)
 
-                AxisLabels(labels: monthLabels)
-                    .padding(.top, 6)
+                    AxisLabels(labels: monthLabels)
+                        .padding(.top, 6)
+                } else {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Not enough history yet")
+                            .ggText(.system(size: 14, weight: .semibold),
+                                    color: GG.Ink.secondary)
+                        Text("The month-to-month chart appears after two months with earnings.")
+                            .ggText(GG.Typo.footnote, color: GG.Ink.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 18)
+                }
             }
         }
     }
@@ -224,29 +237,35 @@ struct AnalyticsView: View {
     /// earnings. This is the visible audit trail: the driver can see exactly
     /// which app contributed money on each day after the import sheet closes.
     private var dailyByAppCard: some View {
-        GlassCard {
+        let sharedPeak = max(
+            snapshot.platforms
+                .flatMap(\.daily)
+                .max() ?? 0,
+            1
+        )
+
+        return GlassCard {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Daily earnings by app")
                         .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
-                    Text("Weekly screenshot totals stay exact; each day's amount is estimated from its chart.")
+                    Text("Weekly totals are exact. Daily bars and whole-dollar amounts are estimates read from each app's chart.")
                         .ggText(GG.Typo.footnote, color: GG.Ink.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 ForEach(Array(snapshot.platforms.enumerated()), id: \.element.id) { index, platform in
                     if index > 0 { RowDivider(color: GG.Surface.dividerSoft) }
-                    dailyPlatform(platform)
+                    dailyPlatform(platform, sharedPeak: sharedPeak)
                 }
             }
         }
     }
 
-    private func dailyPlatform(_ platform: Platform) -> some View {
+    private func dailyPlatform(_ platform: Platform, sharedPeak: Double) -> some View {
         let values = platform.daily.count == 7
             ? platform.daily
             : Array(repeating: 0, count: 7)
-        let peak = max(values.max() ?? 0, 1)
         let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -277,13 +296,13 @@ struct AnalyticsView: View {
                             if values[day] > 0 {
                                 Capsule()
                                     .fill(platform.barGradient)
-                                    .frame(width: max(geo.size.width * values[day] / peak, 4))
+                                    .frame(width: max(geo.size.width * values[day] / sharedPeak, 4))
                             }
                         }
                     }
                     .frame(height: 6)
 
-                    Text(values[day] > 0 ? Money.cents(values[day]) : "—")
+                    Text(values[day] > 0 ? "~\(Money.whole(values[day]))" : "—")
                         .ggText(.system(size: 11.5, weight: .semibold),
                                 color: values[day] > 0 ? GG.Ink.secondary : GG.Ink.muted)
                         .frame(width: 62, alignment: .trailing)

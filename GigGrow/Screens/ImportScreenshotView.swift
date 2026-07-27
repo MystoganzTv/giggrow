@@ -872,7 +872,9 @@ struct ImportScreenshotView: View {
                                                       geo.size.width))
                             }
                             .frame(height: 6)
-                            Text(share > 0.001 ? Money.cents(value.gross * share) : "—")
+                            Text(share > 0.001
+                                 ? "~\(Money.whole(value.gross * share))"
+                                 : "—")
                                 .ggText(.system(size: 12.5, weight: .medium),
                                         color: share > 0.001 ? GG.Ink.secondary : GG.Ink.muted)
                                 .frame(width: 70, alignment: .trailing)

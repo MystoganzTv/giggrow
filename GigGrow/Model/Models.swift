@@ -358,9 +358,10 @@ struct EarningsSnapshot {
 
     // Weekly performance
     let perHour: Double
-    /// Every hour ever logged, at every rate. The yardstick the current
-    /// period is measured against — your own history rather than a city
-    /// average, which would need other drivers' data and therefore a server.
+    /// Historical hourly rate excluding the selected period. The yardstick
+    /// is the driver's prior data rather than a city average, which would
+    /// require collecting other drivers' private earnings on a server.
+    /// Zero means this is the first period with usable data.
     let lifetimePerHour: Double
     let perMile: Double
     let onlineHours: Double

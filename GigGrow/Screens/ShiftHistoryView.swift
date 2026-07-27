@@ -29,7 +29,7 @@ struct ShiftHistoryView: View {
 
                 if shifts.isEmpty { emptyState } else { list }
             }
-            .navigationTitle("Shifts")
+            .navigationTitle("Earnings history")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(GG.Palette.screen, for: .navigationBar)
             .toolbar {
@@ -66,29 +66,37 @@ struct ShiftHistoryView: View {
                                               bottom: 8, trailing: GG.Layout.screenInset))
             }
 
-            ForEach(weeks, id: \.key) { week in
+            ForEach(weeks) { week in
                 Section {
-                    ForEach(week.items) { shift in
-                        row(shift)
-                            .listRowBackground(GG.Surface.glass)
-                            .listRowSeparatorTint(GG.Surface.dividerSoft)
-                            .listRowInsets(EdgeInsets(top: 0, leading: GG.Layout.screenInset,
-                                                      bottom: 0, trailing: GG.Layout.screenInset))
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    delete(shift)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                    ForEach(week.days) { day in
+                        dayHeader(day)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 12, leading: GG.Layout.screenInset,
+                                                      bottom: 5, trailing: GG.Layout.screenInset))
+
+                        ForEach(day.items) { shift in
+                            row(shift)
+                                .listRowBackground(GG.Surface.glass)
+                                .listRowSeparatorTint(GG.Surface.dividerSoft)
+                                .listRowInsets(EdgeInsets(top: 0, leading: GG.Layout.screenInset,
+                                                          bottom: 0, trailing: GG.Layout.screenInset))
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        delete(shift)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
-                            }
-                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                Button {
-                                    editing = shift
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    Button {
+                                        editing = shift
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                    }
+                                    .tint(GG.Palette.violet500)
                                 }
-                                .tint(GG.Palette.violet500)
-                            }
+                        }
                     }
                 } header: {
                     weekHeader(week)
@@ -110,7 +118,7 @@ struct ShiftHistoryView: View {
                 }
 
                 HStack(spacing: 24) {
-                    stat("Shifts", "\(shifts.count)")
+                    stat("Days", "\(earningDayCount)")
                     stat("Time", Hours.clock(totalHours))
                     stat("Miles", Num.grouped(Int(totalMiles.rounded())))
                     if totalHours > 0 {
@@ -131,7 +139,7 @@ struct ShiftHistoryView: View {
         }
     }
 
-    private func weekHeader(_ week: (key: String, items: [Shift])) -> some View {
+    private func weekHeader(_ week: HistoryWeek) -> some View {
         HStack {
             Text(week.key.uppercased())
                 .ggText(GG.Typo.groupLabel,
@@ -143,43 +151,55 @@ struct ShiftHistoryView: View {
         }
     }
 
+    private func dayHeader(_ day: HistoryDay) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(dayLabel(day.date))
+                .ggText(GG.Typo.rowLabel)
+            Spacer(minLength: 8)
+            Text(day.isEstimated
+                 ? "~\(Money.whole(day.gross))"
+                 : Money.cents(day.gross))
+                .ggText(.system(size: 16, weight: .semibold), tracking: -0.3)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(dayLabel(day.date)), \(day.isEstimated ? "approximately " : "")\(Money.cents(day.gross))"
+        )
+    }
+
     private func row(_ shift: Shift) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(dayLabel(shift.start))
-                    .ggText(GG.Typo.rowLabel)
+            HStack(spacing: 9) {
+                ForEach(Array(shift.earnings.enumerated()), id: \.element.id) { _, earning in
+                    if let account = earning.account {
+                        Text(account.initial)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 20, height: 20)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color(hex: account.gradientStart),
+                                             Color(hex: account.gradientEnd)],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                ),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                    }
+                }
+                Text(platformNames(shift))
+                    .ggText(.system(size: 14, weight: .semibold))
                 Spacer(minLength: 8)
-                Text(Money.cents(shift.gross))
-                    .ggText(.system(size: 16, weight: .semibold), tracking: -0.3)
+                Text(isWeeklyEstimate(shift)
+                     ? "~\(Money.whole(shift.gross))"
+                     : Money.cents(shift.gross))
+                    .ggText(.system(size: 14, weight: .semibold),
+                            color: GG.Ink.secondary)
             }
 
             HStack(spacing: 10) {
                 Text(detailLine(shift))
                     .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
                 Spacer(minLength: 0)
-            }
-
-            // Which apps ran, as the same brand dots used everywhere else.
-            if !shift.earnings.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(Array(shift.earnings.enumerated()), id: \.element.id) { _, earning in
-                        if let account = earning.account {
-                            Text(account.initial)
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 18, height: 18)
-                                .background(
-                                    LinearGradient(
-                                        colors: [Color(hex: account.gradientStart),
-                                                 Color(hex: account.gradientEnd)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
-                                    ),
-                                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                )
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
             }
         }
         .padding(.vertical, 14)
@@ -190,7 +210,7 @@ struct ShiftHistoryView: View {
         .onTapGesture { editing = shift }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("\(dayLabel(shift.start)), \(Money.cents(shift.gross)), \(detailLine(shift))")
+        .accessibilityLabel("\(platformNames(shift)), \(Money.cents(shift.gross)), \(detailLine(shift))")
         .accessibilityHint("Double tap to edit this shift")
     }
 
@@ -202,8 +222,11 @@ struct ShiftHistoryView: View {
 
     private func detailLine(_ shift: Shift) -> String {
         var parts: [String]
-        if shift.note?.hasPrefix("From a weekly screenshot") == true {
-            parts = ["Approx. \(Hours.clock(shift.hours)) from weekly total"]
+        if isWeeklyEstimate(shift) {
+            // The report confirms weekly hours and rides, not daily ones.
+            // Their internal allocation conserves the weekly totals and rate,
+            // but exposing it here would make a calculation look observed.
+            parts = ["Estimated from weekly chart"]
         } else if shift.isAggregate {
             parts = ["Weekly total", Hours.clock(shift.hours)]
         } else {
@@ -215,8 +238,19 @@ struct ShiftHistoryView: View {
             ]
         }
         if shift.miles > 0 { parts.append("\(Int(shift.miles.rounded())) mi") }
-        if let work = workLabel(for: shift) { parts.append(work) }
+        if !isWeeklyEstimate(shift), let work = workLabel(for: shift) {
+            parts.append(work)
+        }
         return parts.joined(separator: " · ")
+    }
+
+    private func isWeeklyEstimate(_ shift: Shift) -> Bool {
+        shift.note?.hasPrefix("From a weekly screenshot") == true
+    }
+
+    private func platformNames(_ shift: Shift) -> String {
+        let names = shift.earnings.compactMap { $0.account?.name }
+        return names.isEmpty ? "Manual entry" : names.joined(separator: " + ")
     }
 
     /// Use each platform's own vocabulary. Lyft reports rides; Uber reports
@@ -259,8 +293,8 @@ struct ShiftHistoryView: View {
     private var emptyState: some View {
         ScrollView {
             EmptyStateCard(
-                title: "No shifts logged",
-                message: "Every shift you log shows up here, so you can come back and fix a number rather than living with it.",
+                title: "No earnings logged",
+                message: "Imported reports and shifts you log appear here, so you can always trace or correct a number.",
                 actionTitle: "Log your first shift",
                 action: { isAdding = true },
                 showsLogo: true
@@ -275,22 +309,31 @@ struct ShiftHistoryView: View {
     private var totalGross: Double { shifts.reduce(0) { $0 + $1.gross } }
     private var totalHours: Double { shifts.reduce(0) { $0 + $1.hours } }
     private var totalMiles: Double { shifts.reduce(0) { $0 + $1.miles } }
+    private var earningDayCount: Int {
+        Set(shifts.map { Calendar.gigGrow.startOfDay(for: $0.start) }).count
+    }
 
     /// Newest week first. Labelled by the Monday that starts it.
-    private var weeks: [(key: String, items: [Shift])] {
+    private var weeks: [HistoryWeek] {
         let cal = Calendar.gigGrow
         let f = DateFormatter()
         f.dateFormat = "d MMM yyyy"
 
-        var order: [String] = []
-        var buckets: [String: [Shift]] = [:]
+        var order: [Date] = []
+        var buckets: [Date: [Shift]] = [:]
         for shift in shifts {
             let start = cal.startOfWeek(for: shift.start)
-            let key = "Week of \(f.string(from: start))"
-            if buckets[key] == nil { order.append(key) }
-            buckets[key, default: []].append(shift)
+            if buckets[start] == nil { order.append(start) }
+            buckets[start, default: []].append(shift)
         }
-        return order.map { ($0, buckets[$0] ?? []) }
+        return order.map { start in
+            HistoryWeek(
+                start: start,
+                key: "Week of \(f.string(from: start))",
+                items: buckets[start] ?? [],
+                calendar: cal
+            )
+        }
     }
 
     /// Removes the shift and its earnings. The relationship is cascade-delete,
@@ -302,6 +345,41 @@ struct ShiftHistoryView: View {
         for earning in earnings { context.delete(earning) }
         context.delete(shift)
         try? context.save()
+    }
+}
+
+private struct HistoryWeek: Identifiable {
+    let start: Date
+    let key: String
+    let items: [Shift]
+    let days: [HistoryDay]
+
+    var id: Date { start }
+
+    init(start: Date, key: String, items: [Shift], calendar: Calendar) {
+        self.start = start
+        self.key = key
+        self.items = items
+
+        let grouped = Dictionary(grouping: items) {
+            calendar.startOfDay(for: $0.start)
+        }
+        self.days = grouped.keys.sorted(by: >).map {
+            HistoryDay(date: $0, items: grouped[$0] ?? [])
+        }
+    }
+}
+
+private struct HistoryDay: Identifiable {
+    let date: Date
+    let items: [Shift]
+
+    var id: Date { date }
+    var gross: Double { items.reduce(0) { $0 + $1.gross } }
+    var isEstimated: Bool {
+        !items.isEmpty && items.allSatisfy {
+            $0.note?.hasPrefix("From a weekly screenshot") == true
+        }
     }
 }
 

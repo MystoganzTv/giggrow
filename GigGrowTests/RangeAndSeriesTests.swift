@@ -140,6 +140,37 @@ final class RangeAndSeriesTests: XCTestCase {
         XCTAssertMoneyEqual(snapshot.series.cumulative.last ?? 0, 350)
     }
 
+    func testHourlyBaselineExcludesSelectedPeriod() throws {
+        let context = try TestStore.makeContext()
+        let profile = Fixture.profile(context)
+        let account = Fixture.account(context, name: "Uber")
+        let previousWeek = Calendar.gigGrow.date(
+            byAdding: .weekOfYear, value: -1, to: Date.now
+        )!
+
+        Fixture.shift(
+            context, from: 9, to: 19,
+            splits: [(account, 100, 5)],
+            weekOf: previousWeek
+        )
+        Fixture.shift(
+            context, from: 9, to: 14,
+            splits: [(account, 200, 8)]
+        )
+
+        let snapshot = EarningsSnapshot.build(
+            shifts: try context.fetch(FetchDescriptor<Shift>()),
+            expenses: [],
+            accounts: [account],
+            profile: profile,
+            vehicle: nil
+        )
+
+        XCTAssertEqual(snapshot.perHour, 40, accuracy: 0.001)
+        XCTAssertEqual(snapshot.lifetimePerHour, 10, accuracy: 0.001,
+                       "the current week must not be included in its own baseline")
+    }
+
     // MARK: Hourly spread
 
     /// A shift's gross is spread across the buckets it actually spans, and

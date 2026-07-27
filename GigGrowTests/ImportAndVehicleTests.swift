@@ -198,6 +198,28 @@ final class ImportAndVehicleTests: XCTestCase {
         XCTAssertEqual(days.reduce(0) { $0 + $1.combinedShare }, 1, accuracy: 0.001)
     }
 
+    func testWeeklyDayRoundingConservesExactMoneyAndUnits() {
+        let days = WeeklySplitAllocator.allocate([
+            WeeklyPlatformSplit(
+                platform: "Uber",
+                gross: 245.34,
+                tips: 27.00,
+                promotions: 8.40,
+                trips: 12,
+                dailyShares: [0.157, 0, 0, 0, 0.263, 0.461, 0.119]
+            )
+        ])
+
+        let earnings = days.flatMap(\.earnings)
+        XCTAssertEqual(earnings.reduce(0) { $0 + $1.gross }, 245.34, accuracy: 0.0001)
+        XCTAssertEqual(earnings.reduce(0) { $0 + $1.tips }, 27.00, accuracy: 0.0001)
+        XCTAssertEqual(earnings.reduce(0) { $0 + $1.promotions }, 8.40, accuracy: 0.0001)
+        XCTAssertEqual(earnings.reduce(0) { $0 + $1.trips }, 12)
+        XCTAssertTrue(earnings.allSatisfy {
+            abs($0.gross * 100 - ($0.gross * 100).rounded()) < 0.0001
+        })
+    }
+
     func testAnalyticsExposesEachPlatformsDailyBreakdown() throws {
         let context = try TestStore.makeContext()
         let profile = Fixture.profile(context)

@@ -188,9 +188,17 @@ extension EarningsSnapshot {
 
         // MARK: Rollups
 
+        // The comparison baseline must exclude the period being compared.
+        // Including the selected first week in "your usual" compared the
+        // week to itself and produced the meaningless message "0% above".
+        let historicalShifts = shifts.filter { !range.contains($0.start) }
+        let historicalGross = historicalShifts.reduce(0) { $0 + $1.gross }
+        let historicalHours = historicalShifts.reduce(0) { $0 + $1.hours }
+        let lifetimePerHour = historicalHours > 0
+            ? historicalGross / historicalHours
+            : 0
+
         let allTimeGross = shifts.reduce(0) { $0 + $1.gross }
-        let allTimeHours = shifts.reduce(0) { $0 + $1.hours }
-        let lifetimePerHour = allTimeHours > 0 ? allTimeGross / allTimeHours : 0
         let maintenanceSpent = expenses
             .filter { $0.category.drawsFromMaintenanceFund }
             .reduce(0) { $0 + $1.amount }
