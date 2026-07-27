@@ -19,7 +19,10 @@ struct RootView: View {
     @State private var isShowingHistory = false
     @State private var isShowingProfile = false
     @State private var isImporting = false
-    @State private var analyticsRange: AnalyticsRange = .week
+    /// One selection per screen. Tapping "Year" on Analytics shouldn't
+    /// silently reframe the dashboard, and vice versa.
+    @State private var dashboardSelection = RangeSelection(range: .week)
+    @State private var analyticsSelection = RangeSelection(range: .week)
 
     /// One tracker for the whole app. It owns a CLLocationManager, so a second
     /// instance would mean a second set of permission prompts and duplicate
@@ -59,7 +62,7 @@ struct RootView: View {
     /// full projection they never displayed.
     @State private var analyticsSnapshot: EarningsSnapshot?
 
-    private func build(range kind: AnalyticsRange) -> EarningsSnapshot? {
+    private func build(_ selection: RangeSelection) -> EarningsSnapshot? {
         guard let profile = profiles.first else { return nil }
         return EarningsSnapshot.build(
             shifts: shifts,
@@ -67,8 +70,9 @@ struct RootView: View {
             accounts: accounts.filter(\.isActive),
             profile: profile,
             vehicle: vehicles.first,
-            range: kind.window(containing: .now),
-            rangeKind: kind
+            // The window the driver is pointing at, not always the present.
+            range: selection.window,
+            rangeKind: selection.range
         )
     }
 
@@ -77,7 +81,7 @@ struct RootView: View {
             if needsOnboarding {
                 OnboardingView()
                     .transition(.opacity)
-            } else if let ready = snapshot ?? build(range: .week) {
+            } else if let ready = snapshot ?? build(dashboardSelection) {
                 // Falls through to building it inline when the cache hasn't
                 // caught up. Caching the projection introduced a window right
                 // after onboarding where the profile existed but the snapshot
@@ -99,7 +103,8 @@ struct RootView: View {
         // happens to re-evaluate the view. @Query publishes on every save,
         // which is exactly the signal wanted and nothing more.
         .onChange(of: dataFingerprint) { _, _ in rebuild() }
-        .onChange(of: analyticsRange) { _, _ in rebuildAnalytics() }
+        .onChange(of: analyticsSelection) { _, _ in rebuildAnalytics() }
+        .onChange(of: dashboardSelection) { _, _ in rebuild() }
         .onChange(of: selection) { _, tab in
             // Analytics is the only screen that needs the second projection.
             if tab == .analytics { rebuildAnalytics() }
@@ -160,12 +165,12 @@ struct RootView: View {
     }
 
     private func rebuild() {
-        snapshot = build(range: .week)
+        snapshot = build(dashboardSelection)
         if selection == .analytics { rebuildAnalytics() }
     }
 
     private func rebuildAnalytics() {
-        analyticsSnapshot = build(range: analyticsRange)
+        analyticsSnapshot = build(analyticsSelection)
     }
 
     /// Hands the tracker its context and the driver's idle threshold, then
@@ -209,6 +214,7 @@ struct RootView: View {
     private func screen(_ snapshot: EarningsSnapshot) -> some View {
         switch selection {
         case .dashboard: DashboardView(snapshot: snapshot,
+                                       selection: $dashboardSelection,
                                        onLogShift: { isLoggingShift = true },
                                        onShowHistory: { isShowingHistory = true },
                                        onShowProfile: { isShowingProfile = true },
@@ -216,7 +222,7 @@ struct RootView: View {
         case .apps:      AppsView(snapshot: snapshot,
                                   onLogShift: { isImporting = true })
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
-                                       range: $analyticsRange,
+                                       selection: $analyticsSelection,
                                        onShowExpenses: { isShowingExpenses = true })
         case .vehicle:   VehicleView(snapshot: snapshot)
         case .settings:  SettingsView(snapshot: snapshot, tracker: tracker)

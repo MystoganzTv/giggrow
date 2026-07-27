@@ -9,6 +9,9 @@ import SwiftUI
 
 struct DashboardView: View {
     let snapshot: EarningsSnapshot
+    /// The dashboard was hard-wired to the current week. Nothing about "at a
+    /// glance" requires that it can only ever be *this* glance.
+    @Binding var selection: RangeSelection
     var onLogShift: () -> Void = {}
     var onShowHistory: () -> Void = {}
     var onShowProfile: () -> Void = {}
@@ -18,6 +21,7 @@ struct DashboardView: View {
         ScreenScaffold {
             GP.Gradients.dashboardWash()
         } content: {
+            RangeBar(selection: $selection)
             header
 
             if snapshot.hasData {
@@ -355,11 +359,11 @@ struct DashboardView: View {
 }
 
 #Preview("Dashboard") {
-    DashboardView(snapshot: .mock)
+    DashboardView(snapshot: .mock, selection: .constant(RangeSelection()))
         .preferredColorScheme(.dark)
 }
 
 #Preview("Dashboard — empty") {
-    DashboardView(snapshot: .empty)
+    DashboardView(snapshot: .empty, selection: .constant(RangeSelection()))
         .preferredColorScheme(.dark)
 }

@@ -11,10 +11,11 @@ struct AnalyticsView: View {
     /// Built for whatever `range` is set to, so every figure on this screen
     /// belongs to the selected period rather than always to the week.
     let snapshot: EarningsSnapshot
-    @Binding var range: AnalyticsRange
+    @Binding var selection: RangeSelection
+
+    private var range: AnalyticsRange { selection.range }
     var onShowExpenses: () -> Void = {}
 
-    @Namespace private var segmentNamespace
 
     var body: some View {
         ScreenScaffold {
@@ -46,33 +47,9 @@ struct AnalyticsView: View {
     // MARK: Range picker
 
     private var segmentedControl: some View {
-        HStack(spacing: 7) {
-            ForEach(AnalyticsRange.allCases) { option in
-                let isSelected = option == range
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                        range = option
-                    }
-                } label: {
-                    Text(option.rawValue)
-                        .font(.system(size: 13.5, weight: isSelected ? .semibold : .medium))
-                        .foregroundStyle(isSelected ? .white : Color.white.opacity(0.5))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background {
-                            if isSelected {
-                                Capsule()
-                                    .fill(GP.Gradients.segment)
-                                    .matchedGeometryEffect(id: "segment", in: segmentNamespace)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(4)
-        .background(Color.white.opacity(0.06), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+        // Size and which-one in one control. The picker alone could only ever
+        // mean "the current week", which is why importing June showed nothing.
+        RangeBar(selection: $selection)
     }
 
     // MARK: Weekly income
@@ -297,11 +274,11 @@ struct AnalyticsView: View {
 }
 
 #Preview("Analytics") {
-    AnalyticsView(snapshot: .mock, range: .constant(.week))
+    AnalyticsView(snapshot: .mock, selection: .constant(RangeSelection()))
         .preferredColorScheme(.dark)
 }
 
 #Preview("Analytics — empty") {
-    AnalyticsView(snapshot: .empty, range: .constant(.week))
+    AnalyticsView(snapshot: .empty, selection: .constant(RangeSelection()))
         .preferredColorScheme(.dark)
 }

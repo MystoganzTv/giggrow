@@ -162,6 +162,51 @@ final class MileageTests: XCTestCase {
         XCTAssertFalse(profile.autoMileageTracking)
     }
 
+    // MARK: Looking at a period that isn't the present
+
+    /// Every hour of the day must land in one of the six blocks. An index
+    /// past the end would crash the chart rather than draw it wrong.
+    func testEveryHourFallsInABucket() {
+        let calendar = Calendar.gigPilot
+        let start = day(2026, 6, 3, hour: 0)
+        for hour in 0..<24 {
+            let moment = calendar.date(byAdding: .hour, value: hour, to: start)!
+            let index = AnalyticsRange.day.bucketIndex(for: moment, windowStart: start)
+            XCTAssertNotNil(index, "hour \(hour) fell outside the day's buckets")
+            XCTAssertTrue((0..<AnalyticsRange.day.bucketCount).contains(index ?? -1))
+        }
+    }
+
+    func testEveryRangeHasALabelPerBucket() {
+        for range in AnalyticsRange.allCases {
+            XCTAssertEqual(range.labels.count, range.bucketCount,
+                           "\(range.rawValue) draws \(range.bucketCount) bars for \(range.labels.count) labels")
+        }
+    }
+
+    /// Stepping back a month from the 31st must not skip February.
+    func testSteppingMonthsDoesNotSkip() {
+        var selection = RangeSelection(range: .month, anchor: day(2026, 3, 31))
+        selection.step(-1)
+        XCTAssertEqual(Calendar.gigPilot.component(.month, from: selection.anchor), 2)
+    }
+
+    /// The whole point: point the app at June and get June.
+    func testAnchorSelectsThePeriodNotThePresent() {
+        let june = RangeSelection(range: .week, anchor: day(2026, 6, 3))
+        XCTAssertTrue(june.window.contains(day(2026, 6, 1)))
+        XCTAssertFalse(june.window.contains(day(2026, 7, 26)))
+        XCTAssertFalse(june.isCurrent)
+    }
+
+    /// Changing size keeps you where you were looking.
+    func testChangingRangeKeepsTheAnchor() {
+        var selection = RangeSelection(range: .week, anchor: day(2026, 6, 3))
+        selection.use(.month)
+        XCTAssertEqual(Calendar.gigPilot.component(.month, from: selection.anchor), 6)
+        XCTAssertTrue(selection.window.contains(day(2026, 6, 20)))
+    }
+
     // MARK: Hours on screen
     //
     // Decimal inside, clock outside. The conversion lives in one place so the

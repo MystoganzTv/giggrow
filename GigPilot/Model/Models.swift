@@ -114,7 +114,68 @@ struct Driver: Hashable {
 /// the window of time it covers, how that window is cut into bars, and what
 /// prior period a delta compares against. Keeping them on one type is what
 /// stops a month view from quietly comparing itself to last week.
+/// A range and which period of it is being looked at.
+///
+/// The range alone can only ever mean "the current one", which is why a
+/// dashboard headed "This week" showed nothing after importing June. The
+/// anchor is what makes it possible to look at *a* week rather than *this*
+/// week.
+struct RangeSelection: Equatable {
+    var range: AnalyticsRange = .week
+    var anchor: Date = .now
+
+    var window: Range<Date> { range.window(containing: anchor) }
+
+    /// True when the anchor sits in the period containing today.
+    var isCurrent: Bool {
+        range.window(containing: .now) == window
+    }
+
+    /// Steps whole periods, so stepping months from the 31st doesn't skip
+    /// February.
+    mutating func step(_ delta: Int, calendar: Calendar = .gigPilot) {
+        let unit = range.comparisonUnit
+        if let moved = calendar.date(byAdding: unit, value: delta, to: anchor) {
+            anchor = moved
+        }
+    }
+
+    /// Moving to a different range keeps the period you were looking at,
+    /// rather than jumping back to today and losing your place.
+    mutating func use(_ newRange: AnalyticsRange) {
+        range = newRange
+    }
+
+    /// What the period is called — "This week", "Jun 1–7", "June", "2026".
+    var title: String {
+        if isCurrent { return range.possessive }
+
+        let f = DateFormatter()
+        switch range {
+        case .day:
+            f.dateFormat = "EEEE d MMM"
+            return f.string(from: anchor)
+        case .week:
+            let start = window.lowerBound
+            let end = Calendar.gigPilot.date(byAdding: .day, value: -1, to: window.upperBound)
+                ?? window.upperBound
+            f.dateFormat = "MMM d"
+            let from = f.string(from: start)
+            f.dateFormat = Calendar.gigPilot.component(.month, from: start)
+                == Calendar.gigPilot.component(.month, from: end) ? "d" : "MMM d"
+            return "\(from)–\(f.string(from: end))"
+        case .month:
+            f.dateFormat = "MMMM yyyy"
+            return f.string(from: anchor)
+        case .year:
+            f.dateFormat = "yyyy"
+            return f.string(from: anchor)
+        }
+    }
+}
+
 enum AnalyticsRange: String, CaseIterable, Identifiable {
+    case day = "Day"
     case week = "Week"
     case month = "Month"
     case year = "Year"
@@ -124,15 +185,20 @@ enum AnalyticsRange: String, CaseIterable, Identifiable {
     /// Noun used in card titles — "This week's income".
     var possessive: String {
         switch self {
+        case .day:   return "Today"
         case .week:  return "This week"
         case .month: return "This month"
         case .year:  return "This year"
         }
     }
 
+    /// Singular noun for the stepper — "Previous day".
+    var noun: String { rawValue.lowercased() }
+
     /// Unit stepped back by one to find the comparison period.
     var comparisonUnit: Calendar.Component {
         switch self {
+        case .day:   return .day
         case .week:  return .weekOfYear
         case .month: return .month
         case .year:  return .year
@@ -145,6 +211,10 @@ enum AnalyticsRange: String, CaseIterable, Identifiable {
     /// unreadable, and a driver thinks about their month in weeks anyway.
     var bucketCount: Int {
         switch self {
+        // A day is cut into four-hour blocks: 24 bars don't fit, and six
+        // blocks is how a driver actually thinks about a shift — morning,
+        // lunch, afternoon, evening rush, night, small hours.
+        case .day:   return 6
         case .week:  return 7
         case .month: return 5
         case .year:  return 12
@@ -154,6 +224,7 @@ enum AnalyticsRange: String, CaseIterable, Identifiable {
     /// Which calendar unit one bar spans.
     var bucketUnit: Calendar.Component {
         switch self {
+        case .day:   return .hour
         case .week:  return .day
         case .month: return .weekOfYear
         case .year:  return .month
@@ -162,6 +233,7 @@ enum AnalyticsRange: String, CaseIterable, Identifiable {
 
     var labels: [String] {
         switch self {
+        case .day:   return ["12a", "4a", "8a", "12p", "4p", "8p"]
         case .week:  return ["M", "T", "W", "T", "F", "S", "S"]
         case .month: return (1...5).map { "W\($0)" }
         case .year:  return ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
@@ -171,6 +243,7 @@ enum AnalyticsRange: String, CaseIterable, Identifiable {
     /// The window this range covers, containing `date`.
     func window(containing date: Date, calendar: Calendar = .gigPilot) -> Range<Date> {
         switch self {
+        case .day:   return DateRange.day(containing: date, calendar: calendar)
         case .week:  return DateRange.week(containing: date, calendar: calendar)
         case .month: return DateRange.month(containing: date, calendar: calendar)
         case .year:  return DateRange.year(containing: date, calendar: calendar)
@@ -181,6 +254,9 @@ enum AnalyticsRange: String, CaseIterable, Identifiable {
     func bucketIndex(for date: Date, windowStart: Date, calendar: Calendar = .gigPilot) -> Int? {
         let index: Int
         switch self {
+        case .day:
+            // Four-hour blocks from midnight, so the six labels line up.
+            index = calendar.component(.hour, from: date) / 4
         case .week:
             index = calendar.dateComponents([.day], from: windowStart, to: date).day ?? -1
         case .month:

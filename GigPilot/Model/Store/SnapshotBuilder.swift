@@ -15,6 +15,12 @@ import SwiftUI   // Platform carries its brand gradient as Color values
 
 enum DateRange {
     /// Monday-based week containing `date`, matching the design's Mon…Sun axis.
+    static func day(containing date: Date, calendar: Calendar = .gigPilot) -> Range<Date> {
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        return start..<end
+    }
+
     static func week(containing date: Date, calendar: Calendar = .gigPilot) -> Range<Date> {
         let start = calendar.startOfWeek(for: date)
         let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start

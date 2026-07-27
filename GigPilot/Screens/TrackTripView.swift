@@ -216,15 +216,34 @@ struct TrackTripView: View {
 private struct RouteIllustration: View {
     var isActive: Bool
 
+    /// How much of the route is drawn, 0…1.
+    @State private var progress: CGFloat = 0
+    @State private var pulse = false
+
     var body: some View {
         ZStack {
             GridPaper()
                 .stroke(Color.white.opacity(0.06), lineWidth: 1)
 
+            // The full route, faint — so the road ahead is visible and the
+            // drawn part reads as progress along it rather than as a line
+            // growing into nothing.
             RoutePath()
                 .stroke(style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                .foregroundStyle(Color.white.opacity(0.07))
+
+            RoutePath()
+                .trim(from: 0, to: progress)
+                .stroke(style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                 .foregroundStyle(GP.Gradients.brandMark)
-                .opacity(isActive ? 1 : 0.75)
+
+            // The car, riding the head of the drawn line.
+            RoutePath()
+                .trim(from: max(progress - 0.001, 0), to: progress)
+                .stroke(style: StrokeStyle(lineWidth: 11, lineCap: .round))
+                .foregroundStyle(GP.Palette.mint)
+                .shadow(color: GP.Palette.mint.opacity(0.7), radius: 8)
+                .opacity(progress > 0.01 && progress < 0.99 ? 1 : 0)
 
             Pin(color: GP.Palette.violet500)
                 .frame(width: 30, height: 38)
@@ -233,8 +252,38 @@ private struct RouteIllustration: View {
             Pin(color: GP.Palette.mint)
                 .frame(width: 30, height: 38)
                 .position(x: 196, y: 128)
+                // The destination lands when the route reaches it.
+                .scaleEffect(progress > 0.95 ? 1 : 0.82)
+                .opacity(progress > 0.95 ? 1 : 0.45)
+                .animation(.spring(response: 0.35, dampingFraction: 0.55), value: progress > 0.95)
+
+            if isActive {
+                // Only while recording — a halo that breathes on an idle
+                // screen is decoration; here it means "this is running".
+                Circle()
+                    .stroke(GP.Palette.mint.opacity(pulse ? 0 : 0.5), lineWidth: 2)
+                    .frame(width: 44, height: 44)
+                    .scaleEffect(pulse ? 1.9 : 1)
+                    .position(x: 196, y: 128)
+            }
         }
         .frame(width: 240, height: 190)
+        .onAppear { start() }
+        .onChange(of: isActive) { _, _ in start() }
+    }
+
+    private func start() {
+        progress = 0
+        // Slower once recording: the animation is then reporting something
+        // real and shouldn't race ahead of a car in traffic.
+        let duration = isActive ? 3.4 : 2.2
+        withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: false)) {
+            progress = 1
+        }
+        guard isActive, !pulse else { return }
+        withAnimation(.easeOut(duration: 1.3).repeatForever(autoreverses: false)) {
+            pulse = true
+        }
     }
 }
 
