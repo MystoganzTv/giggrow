@@ -284,6 +284,28 @@ final class MileageTests: XCTestCase {
         XCTAssertFalse(parsed.amounts.contains { $0.value == 0.50 })
     }
 
+    /// Fare is editable but not stored: reading it is gross minus the parts,
+    /// writing it moves the gross. Four independent boxes could contradict
+    /// each other; three plus a derived one cannot.
+    func testEditingFareMovesTheTotalAndTheIdentityHolds() {
+        var gross = 114.29
+        let tips = 7.00
+        let promotions = 5.11
+
+        func fare() -> Double { max(gross - tips - promotions, 0) }
+        func setFare(_ value: Double) { gross = value + tips + promotions }
+
+        XCTAssertEqual(fare(), 102.18, accuracy: 0.001)
+
+        // Correcting the fare pulls the total with it.
+        setFare(120.00)
+        XCTAssertEqual(gross, 132.11, accuracy: 0.001)
+        XCTAssertEqual(fare(), 120.00, accuracy: 0.001)
+
+        // And the four still add up, which is the whole point.
+        XCTAssertEqual(fare() + promotions + tips, gross, accuracy: 0.001)
+    }
+
     func testBreakdownIsPickedOutByItsLabel() {
         let parsed = mondayScreen()
         XCTAssertEqual(parsed.netFare ?? 0, 102.18, accuracy: 0.001)

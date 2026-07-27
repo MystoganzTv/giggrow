@@ -399,6 +399,14 @@ struct ImportScreenshotView: View {
                               })
                     // The breakdown was on the screen and being thrown away.
                     // It's what answers "was this a good day or a good quest".
+                    // Fare is editable too, and writes back through the
+                    // total. Four independent boxes could disagree; a fare
+                    // that adjusts the gross cannot.
+                    RowDivider()
+                    figureRow("Fare", text: fareBinding(source), prefix: "$",
+                              alternatives: value.parsed.amounts.map {
+                                  (String(format: "%.2f", $0.value), context(of: $0.source))
+                              })
                     RowDivider()
                     figureRow("of which tips", text: source.tipsText, prefix: "$",
                               alternatives: value.parsed.amounts.map {
@@ -498,6 +506,27 @@ struct ImportScreenshotView: View {
         }
     }
 
+    /// Fare, as an editable value over the three that are stored.
+    ///
+    /// Reading it is `gross - tips - promotions`. Writing it moves the total
+    /// instead: set the fare to $102.18 with $5.11 of promos and a $7.00 tip
+    /// and the gross becomes $114.29. That keeps one stored truth, so the
+    /// four figures can never contradict each other — which they would the
+    /// moment fare became a fourth independent box.
+    private func fareBinding(_ source: Binding<ImportedSource>) -> Binding<String> {
+        Binding(
+            get: {
+                let fare = source.wrappedValue.baseFare
+                return fare > 0 ? String(format: "%.2f", fare) : ""
+            },
+            set: { newValue in
+                guard let fare = Double(newValue) else { return }
+                let parts = source.wrappedValue.tips + source.wrappedValue.promotions
+                source.wrappedValue.amountText = String(format: "%.2f", fare + parts)
+            }
+        )
+    }
+
     /// Shows the three parts against the total. If they don't add up, one
     /// was misread — and that is worth catching here rather than in April.
     @ViewBuilder
@@ -528,6 +557,14 @@ struct ImportScreenshotView: View {
 
             if !balances {
                 Text("Tips and promotions come to more than the total — one of these was read wrong.")
+                    .gpText(.system(size: 11.5, weight: .regular),
+                            color: GP.Palette.amber.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let readFare = value.parsed.netFare,
+                      abs(readFare - value.baseFare) > 0.02 {
+                // The screenshot printed a fare and the fields imply another.
+                // Say which is which rather than silently preferring one.
+                Text("The screenshot says the fare was \(Money.cents(readFare)); these figures work out to \(Money.cents(value.baseFare)). Check the total and the tip.")
                     .gpText(.system(size: 11.5, weight: .regular),
                             color: GP.Palette.amber.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
