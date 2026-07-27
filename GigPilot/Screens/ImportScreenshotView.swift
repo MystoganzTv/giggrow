@@ -63,6 +63,10 @@ private struct ImportedSource: Identifiable {
     var isDuplicate: Bool = false
     /// Excluded from the save. Duplicates start excluded.
     var isSkipped: Bool = false
+    /// Ticked off by hand. With a week of near-identical cards on screen,
+    /// there is otherwise no way to remember which ones you've already been
+    /// through — you check the same three twice and miss the fourth.
+    var isReviewed: Bool = false
 
     var gross: Double { Double(amountText) ?? 0 }
     var tips: Double { Double(tipsText) ?? 0 }
@@ -145,8 +149,14 @@ struct ImportScreenshotView: View {
                         } else {
                             thumbnails
                             if let overlapWarning { overlapCard(overlapWarning) }
-                            ForEach($sources) { $source in
-                                sourceCard($source)
+                            // Checked and skipped ones sink, so what still
+                            // needs you is always what's in front of you.
+                            // Ordered by id and indexed back into the binding:
+                            // a Binding<Array> can't be sorted directly.
+                            ForEach(displayOrder, id: \.self) { id in
+                                if let index = sources.firstIndex(where: { $0.id == id }) {
+                                    sourceCard($sources[index])
+                                }
                             }
                             addMore
                             summaryCard
@@ -523,7 +533,10 @@ struct ImportScreenshotView: View {
                     }
                     Button {
                         isEditingField = false
-                        withAnimation(.easeOut(duration: 0.2)) { expanded = nil }
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            source.wrappedValue.isReviewed = true
+                            expanded = nil
+                        }
                     } label: {
                         Text("Done")
                             .font(.system(size: 14, weight: .semibold))
@@ -552,12 +565,36 @@ struct ImportScreenshotView: View {
                                 .gpText(.system(size: 12, weight: .medium), color: GP.Palette.amber)
                         }
                         Spacer(minLength: 0)
-                        Text("Tap to edit")
-                            .gpText(.system(size: 12, weight: .medium), color: GP.Ink.muted)
+                        if value.isReviewed {
+                            HStack(spacing: 4) {
+                                CheckGlyph()
+                                    .stroke(GP.Palette.mint,
+                                            style: StrokeStyle(lineWidth: 2.2, lineCap: .round,
+                                                               lineJoin: .round))
+                                    .frame(width: 9, height: 9)
+                                Text("Checked")
+                                    .gpText(.system(size: 12, weight: .semibold),
+                                            color: GP.Palette.mint)
+                            }
+                        } else {
+                            Text("Tap to edit")
+                                .gpText(.system(size: 12, weight: .medium), color: GP.Ink.muted)
+                        }
                     }
                 }
             }
-            .opacity(value.isSkipped ? 0.45 : 1)
+            .opacity(value.isSkipped ? 0.4 : 1)
+            .overlay(alignment: .leading) {
+                // A stripe down the edge rather than a tinted card: the
+                // amounts have to stay legible, and colouring the whole
+                // surface fights the figures for attention.
+                Capsule()
+                    .fill(statusColour(value))
+                    .frame(width: 3)
+                    .padding(.vertical, 14)
+                    .offset(x: -9)
+                    .opacity(value.isSkipped ? 0 : 1)
+            }
             // The whole card is the target while collapsed. A tap strip the
             // width of the header is a hit area you have to aim for.
             .contentShape(Rectangle())
@@ -722,6 +759,14 @@ struct ImportScreenshotView: View {
                     in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
+    /// Where this card stands: needs something, been checked, or untouched.
+    private func statusColour(_ value: ImportedSource) -> Color {
+        if value.needsDate || value.platform.isEmpty || value.hours <= 0 {
+            return GP.Palette.amber
+        }
+        return value.isReviewed ? GP.Palette.mint : Color.clear
+    }
+
     private func miniStat(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 12, weight: .medium))
@@ -855,6 +900,7 @@ struct ImportScreenshotView: View {
                     summaryStat("Per mile",
                                 totalMiles > 0 ? Money.cents(totalGross / totalMiles) : "—")
                     summaryStat(blockCount == 1 ? "Shift" : "Shifts", "\(blockCount)")
+                    summaryStat("Checked", "\(reviewedCount)/\(included.count)")
                 }
             }
         }
@@ -967,6 +1013,21 @@ struct ImportScreenshotView: View {
             .values
             .reduce(0) { $0 + ($1.map(\.miles).max() ?? 0) }
     }
+
+    /// Unchecked first, then checked, then skipped — stable within each
+    /// group so cards don't shuffle while you're reading them.
+    private var displayOrder: [UUID] {
+        sources.enumerated()
+            .sorted { a, b in
+                let x = a.element, y = b.element
+                if x.isSkipped != y.isSkipped { return !x.isSkipped }
+                if x.isReviewed != y.isReviewed { return !x.isReviewed }
+                return a.offset < b.offset
+            }
+            .map(\.element.id)
+    }
+
+    private var reviewedCount: Int { included.filter(\.isReviewed).count }
 
     private var blockCount: Int {
         Set(included.map { $0.groupKey(Calendar.gigPilot) }).count
