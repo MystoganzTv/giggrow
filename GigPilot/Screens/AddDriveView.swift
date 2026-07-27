@@ -22,7 +22,11 @@ struct AddDriveView: View {
     @State private var milesText = ""
     @State private var minutesText = ""
     @State private var purpose: DrivePurpose = .business
-    @FocusState private var isMilesFocused: Bool
+    /// One focus state, not two. Two `.focused` modifiers on the same field
+    /// fight each other and neither wins reliably.
+    @FocusState private var focus: Field?
+
+    private enum Field { case miles, minutes }
 
     private var miles: Double { Double(milesText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
     private var minutes: Int { Int(minutesText) ?? 0 }
@@ -54,6 +58,13 @@ struct AddDriveView: View {
                     Button("Cancel") { dismiss() }
                         .foregroundStyle(GP.Ink.secondary)
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    // Neither pad has a return key.
+                    Button("Done") { focus = nil }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(GP.Palette.violet300)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
                         .foregroundStyle(canSave ? GP.Palette.violet300 : GP.Ink.muted)
@@ -62,7 +73,7 @@ struct AddDriveView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { isMilesFocused = true }
+        .onAppear { focus = .miles }
     }
 
     // MARK: Cards
@@ -76,8 +87,8 @@ struct AddDriveView: View {
                     Spacer(minLength: 12)
                     TextField("0.0", text: $milesText)
                         .keyboardType(.decimalPad)
+                        .focused($focus, equals: .miles)
                         .multilineTextAlignment(.trailing)
-                        .focused($isMilesFocused)
                         .gpText(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: 120)
                 }
@@ -103,6 +114,7 @@ struct AddDriveView: View {
                     Spacer(minLength: 12)
                     TextField("0", text: $minutesText)
                         .keyboardType(.numberPad)
+                        .focused($focus, equals: .minutes)
                         .multilineTextAlignment(.trailing)
                         .gpText(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: 80)

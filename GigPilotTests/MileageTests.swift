@@ -162,6 +162,72 @@ final class MileageTests: XCTestCase {
         XCTAssertFalse(profile.autoMileageTracking)
     }
 
+    // MARK: Which day a screenshot shows
+
+    /// The number under the bar is the date, written on the screen. Nothing
+    /// else needs to be inferred, and it must win over the other two signals.
+    func testDayNumberBeatsColumnPosition() {
+        let weekStart = day(2026, 6, 1)   // Monday
+        // Column 0, but the bar is labelled 3 — a dropped label shifted the
+        // index. The printed number is the one to believe.
+        let reading = ChartDayDetector.Reading.day(index: 0, weekday: "wed", dayOfMonth: 3)
+        let resolved = ChartDayDetector.date(for: reading, weekStart: weekStart)
+
+        XCTAssertEqual(Calendar.gigPilot.component(.day, from: resolved ?? .distantPast), 3)
+    }
+
+    /// A week can straddle a month, so the day number is searched for inside
+    /// the week rather than pinned to the week's own month.
+    func testDayNumberResolvesAcrossAMonthBoundary() {
+        let weekStart = day(2026, 6, 29)  // Monday, week runs into July
+        let reading = ChartDayDetector.Reading.day(index: 4, weekday: "fri", dayOfMonth: 3)
+        let resolved = ChartDayDetector.date(for: reading, weekStart: weekStart)
+
+        let calendar = Calendar.gigPilot
+        XCTAssertEqual(calendar.component(.month, from: resolved ?? .distantPast), 7)
+        XCTAssertEqual(calendar.component(.day, from: resolved ?? .distantPast), 3)
+    }
+
+    /// Without the number, the weekday name still places it — and it must
+    /// beat the column index for the same reason.
+    func testWeekdayNameUsedWhenNoNumberWasRead() {
+        let weekStart = day(2026, 6, 1)
+        let reading = ChartDayDetector.Reading.day(index: 0, weekday: "thu", dayOfMonth: nil)
+        let resolved = ChartDayDetector.date(for: reading, weekStart: weekStart)
+
+        XCTAssertEqual(Calendar.gigPilot.component(.day, from: resolved ?? .distantPast), 4)
+    }
+
+    /// Position is the last resort, not the first.
+    func testColumnIndexIsTheFallback() {
+        let weekStart = day(2026, 6, 1)
+        let reading = ChartDayDetector.Reading.day(index: 5, weekday: nil, dayOfMonth: nil)
+        let resolved = ChartDayDetector.date(for: reading, weekStart: weekStart)
+
+        XCTAssertEqual(Calendar.gigPilot.component(.day, from: resolved ?? .distantPast), 6)
+    }
+
+    /// A weekly total has no single day, and must not be given one.
+    func testAggregateAndInconclusiveResolveToNothing() {
+        let weekStart = day(2026, 6, 1)
+        XCTAssertNil(ChartDayDetector.date(for: .aggregate, weekStart: weekStart))
+        XCTAssertNil(ChartDayDetector.date(for: .inconclusive, weekStart: weekStart))
+    }
+
+    /// Every day of the week the user sent must land on its own date — the
+    /// whole point of reading the chart.
+    func testAWeekOfDailiesLandsOnSevenDistinctDates() {
+        let weekStart = day(2026, 6, 1)
+        let dates = (1...7).compactMap { number in
+            ChartDayDetector.date(
+                for: .day(index: number - 1, weekday: nil, dayOfMonth: number),
+                weekStart: weekStart
+            )
+        }
+        XCTAssertEqual(dates.count, 7)
+        XCTAssertEqual(Set(dates).count, 7, "Seven screenshots must not collapse onto fewer days")
+    }
+
     // MARK: Erasing
 
     /// A wipe that misses a model is worse than no wipe: the app looks empty

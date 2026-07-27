@@ -79,6 +79,10 @@ struct ImportScreenshotView: View {
     /// every field of every screenshot at once is unreadable.
     @State private var expanded: UUID?
 
+    /// The decimal pad has no return key, so without this there is no way
+    /// off the keyboard at all — you can open Gross and never get back.
+    @FocusState private var isEditingField: Bool
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -129,6 +133,15 @@ struct ImportScreenshotView: View {
                             .foregroundStyle(canSave ? GP.Palette.violet400 : GP.Ink.muted)
                             .disabled(!canSave)
                     }
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isEditingField = false }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(GP.Palette.violet400)
                 }
             }
             .onChange(of: pickerItems) { _, items in
@@ -291,13 +304,6 @@ struct ImportScreenshotView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        expanded = isOpen ? nil : value.id
-                    }
-                }
-
                 if let note = value.detectedNote {
                     Text(note)
                         .gpText(.system(size: 11.5, weight: .regular), color: GP.Ink.muted)
@@ -343,6 +349,18 @@ struct ImportScreenshotView: View {
                         .datePickerStyle(.compact)
                         .tint(GP.Palette.violet400)
                         .padding(.vertical, 6)
+                    Button {
+                        isEditingField = false
+                        withAnimation(.easeOut(duration: 0.2)) { expanded = nil }
+                    } label: {
+                        Text("Done")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(GP.Palette.violet400)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(GP.Surface.glassFaint, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 } else {
                     HStack(spacing: 14) {
                         miniStat(value.period == .day ? "Day" : "Week")
@@ -358,6 +376,13 @@ struct ImportScreenshotView: View {
                     }
                 }
             }
+            // The whole card is the target while collapsed. A tap strip the
+            // width of the header is a hit area you have to aim for.
+            .contentShape(Rectangle())
+        }
+        .onTapGesture {
+            guard !isOpen else { return }
+            withAnimation(.easeOut(duration: 0.2)) { expanded = value.id }
         }
     }
 
@@ -516,6 +541,7 @@ struct ImportScreenshotView: View {
                 }
                 TextField("—", text: text)
                     .keyboardType(.decimalPad)
+                    .focused($isEditingField)
                     .multilineTextAlignment(.trailing)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
@@ -634,13 +660,17 @@ struct ImportScreenshotView: View {
             var note: String?
 
             switch reading {
-            case .day:
+            case .day(_, _, let dayOfMonth):
                 period = .day
                 if let day = ChartDayDetector.date(for: reading, weekStart: weekStart) {
                     resolved = day
                     let f = DateFormatter()
-                    f.dateFormat = "EEEE"
-                    note = "Read as \(f.string(from: day)) from the highlighted bar. Change it if that's wrong."
+                    f.dateFormat = "EEEE, MMMM d"
+                    // Says where the date came from. "Read as Wednesday" left
+                    // the driver to work out which Wednesday.
+                    note = dayOfMonth != nil
+                        ? "\(f.string(from: day)) — the highlighted bar is labelled \(dayOfMonth!)."
+                        : "\(f.string(from: day)) — read from the highlighted bar. Change it if that's wrong."
                 }
             case .aggregate:
                 period = .week

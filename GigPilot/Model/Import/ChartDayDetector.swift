@@ -29,7 +29,9 @@ enum ChartDayDetector {
     /// What the chart turned out to be.
     enum Reading: Equatable {
         /// One column stands out: index into the labels, left to right.
-        case day(index: Int, weekday: String?)
+        /// `dayOfMonth` is the number printed under the bar, when it was
+        /// readable — the strongest signal of the three.
+        case day(index: Int, weekday: String?, dayOfMonth: Int?)
         /// Everything is highlighted — a total, not a single day.
         case aggregate
         /// No chart found, or nothing conclusive. The caller falls back to
@@ -69,17 +71,34 @@ enum ChartDayDetector {
         if nearPeak > max(labels.count / 2, 1) { return .aggregate }
         guard nearPeak == 1, let index = scores.firstIndex(of: peak) else { return .inconclusive }
 
-        return .day(index: index, weekday: labels[index].weekday)
+        return .day(index: index,
+                    weekday: labels[index].weekday,
+                    dayOfMonth: labels[index].dayOfMonth)
     }
 
     /// Resolves a reading against the week the screenshot covers.
     ///
-    /// Prefers the weekday name over the column position: OCR can drop a
-    /// label and shift every index by one, but "Wed" is unambiguous.
+    /// Three signals, in order of how much they can be trusted:
+    ///
+    /// 1. The day of the month printed under the bar. Uber writes "3 Wed",
+    ///    so the date is on the screen — there is nothing to infer.
+    /// 2. The weekday name, mapped onto the week.
+    /// 3. The column's position, which is the weakest: OCR dropping one
+    ///    label shifts every index after it by one.
     static func date(for reading: Reading,
                      weekStart: Date,
                      calendar: Calendar = .gigPilot) -> Date? {
-        guard case .day(let index, let weekday) = reading else { return nil }
+        guard case .day(let index, let weekday, let dayOfMonth) = reading else { return nil }
+
+        // The week can straddle a month — "Jun 29 - Jul 5" — so this looks
+        // for the day number inside the week rather than assuming the month.
+        if let dayOfMonth {
+            for offset in 0..<7 {
+                guard let candidate = calendar.date(byAdding: .day, value: offset, to: weekStart)
+                else { continue }
+                if calendar.component(.day, from: candidate) == dayOfMonth { return candidate }
+            }
+        }
 
         if let weekday, let offset = weekdayNames.firstIndex(of: weekday.lowercased()) {
             // weekStart is a Monday in GigPilot's calendar, and the names are
@@ -95,6 +114,7 @@ enum ChartDayDetector {
         let xRange: ClosedRange<CGFloat>
         let top: CGFloat
         let weekday: String?
+        let dayOfMonth: Int?
     }
 
     /// Finds the horizontal strip of day labels.
@@ -128,12 +148,51 @@ enum ChartDayDetector {
                 // label, and clipping it loses the colour that matters.
                 let box = candidate.line.box
                 let pad = box.width * 0.3
+                let xRange = max(box.minX - pad, 0)...min(box.maxX + pad, 1)
                 return Label(
-                    xRange: max(box.minX - pad, 0)...min(box.maxX + pad, 1),
+                    xRange: xRange,
                     top: candidate.line.topDownY,
-                    weekday: candidate.name
+                    weekday: candidate.name,
+                    dayOfMonth: dayNumber(for: candidate.line, xRange: xRange, in: lines)
                 )
             }
+    }
+
+    /// The day of the month sitting with this label.
+    ///
+    /// Vision sometimes returns "3 Wed" as one line and sometimes splits it
+    /// into "3" and "Wed", so both are handled: read the digits out of the
+    /// label itself, and failing that look for a bare number in the same
+    /// column just above or below.
+    private static func dayNumber(for line: RecognisedLine,
+                                  xRange: ClosedRange<CGFloat>,
+                                  in lines: [RecognisedLine]) -> Int? {
+        if let inline = firstDayNumber(in: line.text) { return inline }
+
+        let nearby = lines.filter { other in
+            guard other.text != line.text else { return false }
+            // Same column, within a couple of label-heights vertically.
+            let centre = other.box.midX
+            guard xRange.contains(centre) else { return false }
+            return abs(other.topDownY - line.topDownY) < max(line.box.height * 2.5, 0.03)
+        }
+        return nearby
+            .sorted { abs($0.topDownY - line.topDownY) < abs($1.topDownY - line.topDownY) }
+            .compactMap { firstDayNumber(in: $0.text) }
+            .first
+    }
+
+    /// A standalone 1–31. Rejects anything with other characters attached, so
+    /// a battery percentage or a dollar figure can't be mistaken for a date.
+    private static func firstDayNumber(in text: String) -> Int? {
+        let tokens = text.split { !$0.isNumber }
+        for token in tokens {
+            guard token.count <= 2, let value = Int(token), (1...31).contains(value) else {
+                continue
+            }
+            return value
+        }
+        return nil
     }
 
     // MARK: Pixels
