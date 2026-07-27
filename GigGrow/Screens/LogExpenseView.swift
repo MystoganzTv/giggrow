@@ -12,6 +12,7 @@
 
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 struct LogExpenseView: View {
 
@@ -30,6 +31,15 @@ struct LogExpenseView: View {
     @State private var isDeductible = true
     @State private var loaded = false
 
+    // Receipt scanning. Same on-device Vision pass as the earnings importer:
+    // the photo never leaves the phone, and nothing is filled in without the
+    // driver seeing it first.
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var receiptImage: UIImage?
+    @State private var receipt: ParsedReceipt?
+    @State private var isReading = false
+    @State private var readError: String?
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -38,11 +48,12 @@ struct LogExpenseView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                        if editing == nil { receiptCard }
                         amountCard
                         categoryCard
                         detailsCard
                         deductionNote
-                sourceNote
+                        sourceNote
 
                         if editing != nil { deleteButton }
                     }
@@ -55,6 +66,22 @@ struct LogExpenseView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(GG.Palette.screen, for: .navigationBar)
             .keyboardDoneBar($isEditingField)
+            .onChange(of: pickerItem) { _, item in
+                guard let item else { return }
+                Task { await read(item) }
+            }
+            .overlay {
+                if isReading {
+                    ZStack {
+                        GG.Palette.screen.opacity(0.75).ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            ProgressView().tint(GG.Palette.violet400)
+                            Text("Reading the receipt…")
+                                .ggText(GG.Typo.captionMuted, color: GG.Ink.secondary)
+                        }
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -187,6 +214,129 @@ struct LogExpenseView: View {
                 .tint(GG.Palette.violet500)
                 .padding(.vertical, 12)
             }
+        }
+    }
+
+    // MARK: Receipt
+
+    /// Photograph the till receipt instead of typing it.
+    ///
+    /// Not a shortcut so much as the thing that makes logging happen at all:
+    /// a receipt entered at the pump takes ten seconds, and one entered from
+    /// a glovebox full of paper in April never gets entered.
+    private var receiptCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                if let receiptImage {
+                    HStack(spacing: 12) {
+                        Image(uiImage: receiptImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 46, height: 62)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(GG.Surface.stroke, lineWidth: 1))
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(receipt?.merchant ?? "Receipt")
+                                .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
+                            // Reading a receipt is guesswork, and the figure
+                            // ends up in a tax total, so it says so.
+                            Text("Check every figure against the paper.")
+                                .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                        }
+                        Spacer(minLength: 0)
+                        Button {
+                            receiptImage = nil
+                            receipt = nil
+                        } label: {
+                            Text("Remove")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Color(hex: 0xFB7185))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if let alternatives = receipt?.amounts, alternatives.count > 1 {
+                        Text("Other amounts on this receipt")
+                            .ggText(.system(size: 11.5, weight: .medium), color: GG.Ink.muted)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 7) {
+                                ForEach(Array(alternatives.prefix(5).enumerated()),
+                                        id: \.offset) { _, candidate in
+                                    let text = String(format: "%.2f", candidate.value)
+                                    Button { amountText = text } label: {
+                                        Text(Money.cents(candidate.value))
+                                            .font(.system(size: 12.5, weight: .semibold))
+                                            .foregroundStyle(amountText == text
+                                                             ? GG.Palette.violet300
+                                                             : GG.Ink.secondary)
+                                            .padding(.horizontal, 11)
+                                            .padding(.vertical, 7)
+                                            .background(GG.Surface.glassFaint, in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    PhotosPicker(selection: $pickerItem, matching: .images,
+                                 photoLibrary: .shared()) {
+                        HStack(spacing: 9) {
+                            Image(systemName: "doc.viewfinder")
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("Scan a receipt")
+                                .font(.system(size: 15, weight: .semibold))
+                            Spacer(minLength: 0)
+                            Chevron(size: 14, color: Color.white.opacity(0.3))
+                        }
+                        .foregroundStyle(GG.Palette.violet300)
+                    }
+
+                    Text("Reads the amount, date and shop off the photo, on this phone. Faster than typing, and the paper can go in the bin.")
+                        .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let readError {
+                    Text(readError)
+                        .ggText(GG.Typo.footnote, color: GG.Palette.amber)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func read(_ item: PhotosPickerItem) async {
+        isReading = true
+        readError = nil
+        defer { isReading = false; pickerItem = nil }
+
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data),
+              let cgImage = image.cgImage else {
+            readError = "That image couldn't be opened."
+            return
+        }
+
+        do {
+            let parsed = ReceiptParser.parse(try TextRecognizer.recognise(in: cgImage))
+            receiptImage = image
+            receipt = parsed
+
+            // Filled in, never decided. Anything the parser missed is left
+            // for the driver rather than guessed at.
+            if let total = parsed.total { amountText = String(format: "%.2f", total) }
+            if let found = parsed.date { date = found }
+            if let suggested = parsed.suggestedCategory { category = suggested }
+            if note.isEmpty, let merchant = parsed.merchant { note = merchant }
+
+            if !parsed.foundAnything {
+                readError = "Nothing readable on that one — fill it in by hand, or try a straighter photo."
+            }
+        } catch {
+            readError = "That receipt couldn't be read: \(error.localizedDescription)"
         }
     }
 

@@ -660,6 +660,73 @@ final class MileageTests: XCTestCase {
         XCTAssertGreaterThan(measured / 1_609.344, 0.3)
     }
 
+    // MARK: Reading a receipt
+
+    private func receiptLine(_ text: String, y: Double, height: Double = 0.02) -> RecognisedLine {
+        RecognisedLine(text: text, confidence: 0.9,
+                       box: CGRect(x: 0.1, y: 1 - y - height, width: 0.6, height: height))
+    }
+
+    /// A fuel receipt, laid out the way a forecourt till prints one.
+    ///
+    /// The trap is the mirror of the earnings one. There the biggest figure
+    /// was the customer's fare and not the driver's; here CASH $50.00 and
+    /// CHANGE $6.46 sit directly under the total and look just like it.
+    private var fuelReceipt: [RecognisedLine] {
+        [
+            receiptLine("SHELL", y: 0.05, height: 0.05),
+            receiptLine("1234 SUNSET HILLS RD", y: 0.12),
+            receiptLine("UNLEADED", y: 0.40),
+            receiptLine("GALLONS   12.443", y: 0.45),
+            receiptLine("PRICE/GAL  $3.499", y: 0.50),
+            receiptLine("SUBTOTAL  $43.54", y: 0.62),
+            receiptLine("TAX  $0.00", y: 0.66),
+            receiptLine("TOTAL  $43.54", y: 0.72, height: 0.03),
+            receiptLine("CASH  $50.00", y: 0.78),
+            receiptLine("CHANGE  $6.46", y: 0.82)
+        ]
+    }
+
+    func testReceiptTakesTheTotalNotTheCashTendered() {
+        let parsed = ReceiptParser.parse(fuelReceipt)
+        XCTAssertEqual(parsed.total ?? 0, 43.54, accuracy: 0.001,
+                       "$50.00 cash and $6.46 change must not win")
+    }
+
+    /// "Subtotal" contains "total", so it has to be excluded before the cue
+    /// is applied rather than after.
+    func testSubtotalAndTaxAreNotOfferedAsTheAmount() {
+        let parsed = ReceiptParser.parse(fuelReceipt)
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 50.00 })
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 6.46 })
+    }
+
+    /// A forecourt prints the fuel type in the body and the brand at the top;
+    /// either should be enough to pick the category.
+    func testFuelReceiptSuggestsFuel() {
+        XCTAssertEqual(ReceiptParser.parse(fuelReceipt).suggestedCategory, .fuel)
+    }
+
+    func testServiceReceiptSuggestsMaintenance() {
+        let lines = [
+            receiptLine("JIFFY LUBE", y: 0.06, height: 0.05),
+            receiptLine("SIGNATURE SERVICE OIL CHANGE", y: 0.30),
+            receiptLine("SUBTOTAL  $89.99", y: 0.60),
+            receiptLine("TAX  $5.40", y: 0.64),
+            receiptLine("AMOUNT DUE  $95.39", y: 0.70, height: 0.03)
+        ]
+        let parsed = ReceiptParser.parse(lines)
+        XCTAssertEqual(parsed.suggestedCategory, .maintenance)
+        XCTAssertEqual(parsed.total ?? 0, 95.39, accuracy: 0.001)
+    }
+
+    /// Both suggestions land on categories the mileage rate already covers,
+    /// so the sheet will say so rather than implying a deduction.
+    func testSuggestedFuelAndMaintenanceAreFlaggedAsCovered() {
+        XCTAssertTrue(ExpenseCategory.fuel.isCoveredByMileageRate)
+        XCTAssertTrue(ExpenseCategory.maintenance.isCoveredByMileageRate)
+    }
+
     // MARK: Not deducting the same money twice
 
     /// The standard mileage rate covers the car's whole running cost. Taking
