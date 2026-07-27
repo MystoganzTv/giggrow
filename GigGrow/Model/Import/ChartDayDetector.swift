@@ -76,6 +76,34 @@ enum ChartDayDetector {
                     dayOfMonth: labels[index].dayOfMonth)
     }
 
+    /// How much of the week each day earned, as fractions summing to 1.
+    ///
+    /// The weekly screen carries a bar per day and their heights are the
+    /// split. Without this a whole week imports as one undifferentiated
+    /// block: the total is right, but nothing shows which days paid and the
+    /// peak-hours chart has nothing to work with.
+    ///
+    /// This is an estimate and the caller must say so. The *total* comes from
+    /// the text and is exact; the split is measured off a bar chart perhaps
+    /// eighty pixels tall, so a day is good to a few dollars, not to the cent.
+    static func dailyShares(image: CGImage, lines: [RecognisedLine]) -> [Double]? {
+        guard let labels = dayLabels(in: lines), labels.count >= 5 else { return nil }
+        guard let sampler = Sampler(image: image) else { return nil }
+
+        let labelTop = labels.map(\.top).min() ?? 0
+        let bandTop = max(labelTop - 0.34, 0.06)
+        let bandBottom = max(labelTop - 0.005, bandTop + 0.01)
+
+        let heights = labels.map { label in
+            sampler.filledHeight(xRange: label.xRange, yRange: bandTop...bandBottom)
+        }
+
+        let total = heights.reduce(0, +)
+        // A chart where nothing registered is a chart we didn't find.
+        guard total > 0.02 else { return nil }
+        return heights.map { $0 / total }
+    }
+
     /// Resolves a reading against the week the screenshot covers.
     ///
     /// Three signals, in order of how much they can be trusted:
@@ -280,6 +308,57 @@ enum ChartDayDetector {
             samples.sort(by: >)
             let decile = max(samples.count / 10, 1)
             return samples.prefix(decile).reduce(0, +) / Double(decile)
+        }
+
+        /// The share of a column's vertical span that is bar rather than
+        /// background — which is proportional to the bar's height, and so to
+        /// what that day earned.
+        ///
+        /// Counts coloured rows rather than measuring an edge: a bar with a
+        /// rounded top, a gridline through it, or a label sitting on top
+        /// defeats edge-finding and barely moves a row count.
+        func filledHeight(xRange: ClosedRange<CGFloat>,
+                          yRange: ClosedRange<CGFloat>) -> Double {
+            let x0 = clamp(Int(xRange.lowerBound * CGFloat(width)), 0, width - 1)
+            let x1 = clamp(Int(xRange.upperBound * CGFloat(width)), 0, width - 1)
+            let y0 = clamp(Int(yRange.lowerBound * CGFloat(height)), 0, height - 1)
+            let y1 = clamp(Int(yRange.upperBound * CGFloat(height)), 0, height - 1)
+            guard x1 > x0, y1 > y0 else { return 0 }
+
+            let xStep = max((x1 - x0) / 12, 1)
+            var filledRows = 0
+            var totalRows = 0
+
+            var y = y0
+            while y <= y1 {
+                var colouredInRow = 0
+                var samplesInRow = 0
+                var x = x0
+                while x <= x1 {
+                    let offset = y * bytesPerRow + x * 4
+                    guard offset + 2 < data.count else { break }
+                    let r = Double(data[offset]) / 255
+                    let g = Double(data[offset + 1]) / 255
+                    let b = Double(data[offset + 2]) / 255
+                    let high = max(r, g, b), low = min(r, g, b)
+                    let saturation = high <= 0.001 ? 0 : (high - low) / high
+                    // Any bar counts, pale or solid — an unselected day is
+                    // washed out but still has a height, and its earnings
+                    // are what we're after.
+                    if saturation > 0.12 { colouredInRow += 1 }
+                    samplesInRow += 1
+                    x += xStep
+                }
+                // A row belongs to the bar when most of the column is filled,
+                // which ignores a stray gridline crossing it.
+                if samplesInRow > 0 && Double(colouredInRow) / Double(samplesInRow) > 0.5 {
+                    filledRows += 1
+                }
+                totalRows += 1
+                y += 1
+            }
+            guard totalRows > 0 else { return 0 }
+            return Double(filledRows) / Double(totalRows)
         }
 
         private func clamp(_ value: Int, _ low: Int, _ high: Int) -> Int {
