@@ -89,7 +89,11 @@ struct ImportScreenshotView: View {
     /// The screenshot being looked at full size. Checking a figure against
     /// the source shouldn't mean leaving the app for Photos and losing every
     /// edit made so far.
-    @State private var viewing: UIImage?
+    ///
+    /// Holds the wrapper, not the image. Deriving the wrapper in the binding
+    /// minted a fresh UUID on every render, so `fullScreenCover(item:)` saw a
+    /// different item each pass and the cover would not close.
+    @State private var viewing: ViewedImage?
 
     var body: some View {
         NavigationStack {
@@ -158,15 +162,16 @@ struct ImportScreenshotView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .fullScreenCover(item: Binding(
-            get: { viewing.map(ViewedImage.init) },
-            set: { viewing = $0?.image }
-        )) { viewed in
-            ScreenshotViewer(image: viewed.image)
+        .fullScreenCover(item: $viewing) { viewed in
+            // Closing is handed over explicitly rather than left to
+            // `@Environment(\.dismiss)`, so there is exactly one way out and
+            // it can't be defeated by presentation state.
+            ScreenshotViewer(image: viewed.image) { viewing = nil }
         }
     }
 
     /// `fullScreenCover(item:)` needs identity, and UIImage has none.
+    /// Created once, when the driver taps — never re-derived.
     private struct ViewedImage: Identifiable {
         let id = UUID()
         let image: UIImage
@@ -268,7 +273,7 @@ struct ImportScreenshotView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 ForEach(sources) { source in
-                    Button { viewing = source.image } label: {
+                    Button { viewing = ViewedImage(image: source.image) } label: {
                         Image(uiImage: source.image)
                             .resizable()
                             .scaledToFill()
@@ -295,7 +300,7 @@ struct ImportScreenshotView: View {
                 // screen, a card that doesn't say which one it is can't be
                 // edited or removed with any confidence.
                 HStack(spacing: 12) {
-                    Button { viewing = value.image } label: {
+                    Button { viewing = ViewedImage(image: value.image) } label: {
                         Image(uiImage: value.image)
                             .resizable()
                             .scaledToFill()
