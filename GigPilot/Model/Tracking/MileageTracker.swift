@@ -173,10 +173,49 @@ final class MileageTracker: NSObject {
         lastLocation = nil
         lastMovementAt = .now
 
-        manager.allowsBackgroundLocationUpdates =
-            manager.authorizationStatus == .authorizedAlways
+        enableBackgroundUpdatesIfPermitted()
         manager.startUpdatingLocation()
         if mode == .automatic { startIdleTimer() }
+    }
+
+    /// Turns on background updates only when iOS will actually allow it.
+    ///
+    /// `allowsBackgroundLocationUpdates = true` is not a request — it is an
+    /// assertion that the app is entitled to it, and Core Location aborts the
+    /// process if it isn't:
+    ///
+    ///     *** Assertion failure in -[CLLocationManager
+    ///     setAllowsBackgroundLocationUpdates:]
+    ///     Invalid parameter not satisfying: !stayUp ||
+    ///     CLClientIsBackgroundable(internal->fClient)
+    ///
+    /// Two things have to be true: the bundle declares the `location`
+    /// background mode, and the driver granted "Always". Checking
+    /// authorisation alone wasn't enough — the build settings were writing
+    /// UIBackgroundModes in a shape iOS didn't read, so the entitlement was
+    /// missing at runtime and tapping Start killed the app.
+    ///
+    /// Reading the bundle rather than trusting the build means a future
+    /// project-file mistake degrades to "no background tracking" instead of
+    /// a crash on the one button this screen has.
+    private func enableBackgroundUpdatesIfPermitted() {
+        guard canRunInBackground, manager.authorizationStatus == .authorizedAlways else {
+            manager.allowsBackgroundLocationUpdates = false
+            return
+        }
+        manager.allowsBackgroundLocationUpdates = true
+    }
+
+    /// Whether Info.plist actually declares background location.
+    private var canRunInBackground: Bool {
+        guard let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") else {
+            return false
+        }
+        // Written as an array normally, but a misconfigured build setting can
+        // produce a bare string. Both are handled rather than trusted.
+        if let list = modes as? [String] { return list.contains("location") }
+        if let single = modes as? String { return single == "location" }
+        return false
     }
 
     private func noteStillness() {
