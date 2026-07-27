@@ -6,35 +6,169 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct DashboardView: View {
     let snapshot: EarningsSnapshot
     /// The dashboard was hard-wired to the current week. Nothing about "at a
     /// glance" requires that it can only ever be *this* glance.
-    @Binding var selection: RangeSelection
     var onLogShift: () -> Void = {}
     var onShowHistory: () -> Void = {}
     var onShowProfile: () -> Void = {}
     var onImport: () -> Void = {}
+    var onShowMileage: () -> Void = {}
+
+    @Query private var drives: [DriveRecord]
+    @Query(sort: \Shift.start, order: .reverse) private var allShifts: [Shift]
+    @Query private var profiles: [DriverProfile]
 
     var body: some View {
         ScreenScaffold {
             GP.Gradients.dashboardWash()
         } content: {
-            RangeBar(selection: $selection)
+            // No RangeBar. It was the same control Analytics opens with, so
+            // the two screens began identically and the dashboard read as a
+            // worse Analytics. Analytics is for "what happened over time";
+            // this is for "how am I doing and what needs me", and that is
+            // always about now.
             header
 
             if snapshot.hasData {
                 heroCard
+                keepCard
+                if !attention.isEmpty { attentionCard }
                 setAsideTiles
                 earningsByApp
                 rateTiles
                 hoursCard
-                trendTiles
             } else {
                 emptyState
             }
         }
+    }
+
+    // MARK: What's actually yours
+
+    /// The number nobody else shows: what's left after both set-asides.
+    ///
+    /// It was spread across three tiles the driver had to subtract in their
+    /// head — gross here, tax there, maintenance somewhere else. "I made
+    /// \(Money.whole(snapshot.weeklyTotal))" is the number that gets spent;
+    /// this is the one that's safe to.
+    private var keepCard: some View {
+        GlassCard {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Eyebrow(text: "Yours to keep")
+                    Text(Money.cents(keepable))
+                        .gpText(.system(size: 30, weight: .bold), tracking: -1,
+                                color: GP.Palette.mint)
+                    Text("After \(Int(snapshot.taxRate))% tax and \(Int(snapshot.maintenanceRate))% maintenance")
+                        .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var keepable: Double {
+        let held = (snapshot.taxRate + snapshot.maintenanceRate) / 100
+        return max(snapshot.weeklyTotal * (1 - held), 0)
+    }
+
+    // MARK: What needs you
+
+    /// Work waiting on a decision, not figures.
+    ///
+    /// This is the difference between a dashboard and a report. A report says
+    /// what happened; a dashboard says what to do about it. Unclassified
+    /// drives are worth nothing until sorted, and nothing else in the app was
+    /// going to tell you they were sitting there.
+    private var attentionCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Needs you")
+                    .gpText(GP.Typo.cardTitle, tracking: GP.Typo.cardTitleTracking)
+                    .padding(.bottom, 4)
+
+                ForEach(Array(attention.enumerated()), id: \.offset) { index, item in
+                    Button(action: item.action) {
+                        HStack(alignment: .top, spacing: 11) {
+                            Circle().fill(item.tint)
+                                .frame(width: 6, height: 6).padding(.top, 7)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title)
+                                    .gpText(.system(size: 14, weight: .semibold))
+                                Text(item.detail)
+                                    .gpText(GP.Typo.footnote, color: GP.Ink.tertiary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 8)
+                            Chevron(size: 14, color: Color.white.opacity(0.25))
+                        }
+                        .padding(.vertical, 13)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if index < attention.count - 1 {
+                        RowDivider(color: GP.Surface.dividerSoft)
+                    }
+                }
+            }
+        }
+    }
+
+    private var unsortedDrives: Int {
+        drives.filter { $0.purpose == .unclassified }.count
+    }
+
+    /// What sorting them would actually be worth. "12 drives to sort" is a
+    /// chore; "$47 in deductions" is a reason.
+    private var unsortedValue: Double {
+        let override = profiles.first?.mileageRate ?? 0
+        return drives
+            .filter { $0.purpose == .unclassified }
+            .reduce(0) { total, drive in
+                let rate = override > 0 ? override : MileageRates.rate(on: drive.start)
+                return total + drive.miles * rate
+            }
+    }
+
+    /// A shift with no hours is invisible to every rate in the app.
+    private var shiftsMissingHours: Int {
+        allShifts.filter { $0.hours <= 0 && $0.gross > 0 }.count
+    }
+
+    private struct AttentionItem {
+        let title: String
+        let detail: String
+        let tint: Color
+        let action: () -> Void
+    }
+
+    private var attention: [AttentionItem] {
+        var items: [AttentionItem] = []
+
+        if unsortedDrives > 0 {
+            items.append(AttentionItem(
+                title: "\(unsortedDrives) drive\(unsortedDrives == 1 ? "" : "s") to sort",
+                detail: "Worth \(Money.cents(unsortedValue)) in deductions once you say which were for work.",
+                tint: GP.Palette.amber,
+                action: onShowMileage
+            ))
+        }
+
+        if shiftsMissingHours > 0 {
+            items.append(AttentionItem(
+                title: "\(shiftsMissingHours) shift\(shiftsMissingHours == 1 ? "" : "s") without hours",
+                detail: "Your hourly rate leaves these out until they have a time.",
+                tint: GP.Palette.amber,
+                action: onShowHistory
+            ))
+        }
+
+        return items
     }
 
     // MARK: Empty
@@ -377,11 +511,11 @@ struct DashboardView: View {
 }
 
 #Preview("Dashboard") {
-    DashboardView(snapshot: .mock, selection: .constant(RangeSelection()))
+    DashboardView(snapshot: .mock)
         .preferredColorScheme(.dark)
 }
 
 #Preview("Dashboard — empty") {
-    DashboardView(snapshot: .empty, selection: .constant(RangeSelection()))
+    DashboardView(snapshot: .empty)
         .preferredColorScheme(.dark)
 }

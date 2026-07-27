@@ -19,6 +19,7 @@ struct RootView: View {
     @State private var isShowingHistory = false
     @State private var isShowingProfile = false
     @State private var isImporting = false
+    @State private var isShowingMileage = false
     /// One selection per screen. Tapping "Year" on Analytics shouldn't
     /// silently reframe the dashboard, and vice versa.
     @State private var dashboardSelection = RangeSelection(range: .week)
@@ -203,6 +204,7 @@ struct RootView: View {
         .sheet(isPresented: $isShowingExpenses) { ExpensesView() }
         .sheet(isPresented: $isShowingHistory) { ShiftHistoryView() }
         .sheet(isPresented: $isImporting) { ImportScreenshotView() }
+        .sheet(isPresented: $isShowingMileage) { MileageView(tracker: tracker) }
         .sheet(isPresented: $isShowingProfile) {
             if let profile = profiles.first {
                 ProfileEditor(profile: profile)
@@ -214,11 +216,11 @@ struct RootView: View {
     private func screen(_ snapshot: EarningsSnapshot) -> some View {
         switch selection {
         case .dashboard: DashboardView(snapshot: snapshot,
-                                       selection: $dashboardSelection,
                                        onLogShift: { isLoggingShift = true },
                                        onShowHistory: { isShowingHistory = true },
                                        onShowProfile: { isShowingProfile = true },
-                                       onImport: { isImporting = true })
+                                       onImport: { isImporting = true },
+                                       onShowMileage: { isShowingMileage = true })
         case .taxes:     TaxView(embedded: true)
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
                                        selection: $analyticsSelection,
