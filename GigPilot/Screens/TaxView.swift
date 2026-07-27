@@ -310,12 +310,21 @@ struct TaxView: View {
             year: year,
             gross: gross,
             businessMiles: businessMiles,
-            mileageRate: profile?.mileageRate ?? 0 > 0
-                ? profile!.mileageRate
-                : MileageRates.rate(on: midYear),
+            mileageRate: rateToApply,
             deductibleExpenses: deductible,
             stateRate: profile?.stateIncomeTaxRate ?? 0
         )
+    }
+
+    /// The driver's own rate when they set one, otherwise the IRS figure for
+    /// mid-year.
+    ///
+    /// Written out rather than inline: `profile?.mileageRate ?? 0 > 0` parses
+    /// as `profile?.mileageRate ?? (0 > 0)` — `??` binds looser than `>` — so
+    /// it was comparing a Double against a Bool and would not compile.
+    private var rateToApply: Double {
+        let override = profile?.mileageRate ?? 0
+        return override > 0 ? override : MileageRates.rate(on: midYear)
     }
 
     /// Mid-year, so a year spanning a rate change lands between the two
