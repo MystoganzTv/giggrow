@@ -31,6 +31,7 @@ struct SettingsView: View {
     @State private var isUpgrading = false
     @State private var isShowingDrives = false
     @State private var isPickingState = false
+    @State private var isConfirmingErase = false
     @State private var route: Route?
 
     /// Bound to the profile so the picker writes straight through.
@@ -76,6 +77,16 @@ struct SettingsView: View {
         }
         .sheet(item: $route) { destination in
             editor(for: destination)
+        }
+        .confirmationDialog("Erase all data?",
+                            isPresented: $isConfirmingErase,
+                            titleVisibility: .visible) {
+            Button("Erase everything", role: .destructive) {
+                Seed.wipe(context)
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Every shift, imported screenshot, weekly total, recorded drive, expense and vehicle record is deleted from this phone. Export first if you want to keep any of it — this can't be undone.")
         }
         .sheet(isPresented: $isShowingDrives) {
             MileageView(tracker: tracker)
@@ -317,7 +328,29 @@ struct SettingsView: View {
             RowDivider(color: GP.Surface.dividerSoft)
 
             SettingsRow(label: "Privacy", value: "") { route = .privacy }
+
+            RowDivider(color: GP.Surface.dividerSoft)
+
+            // Not a debug affordance. The privacy sheet says this data is
+            // yours and lives on your phone; that only means something if
+            // you can delete it without deleting the app.
+            SettingsRow(label: "Erase all data",
+                        value: storedSummary,
+                        showsChevron: false,
+                        destructive: true) {
+                isConfirmingErase = true
+            }
         }
+    }
+
+    /// Says what is about to go, in the driver's own numbers. "Erase all
+    /// data" is abstract; "126 shifts, 340 drives" is not.
+    private var storedSummary: String {
+        var parts: [String] = []
+        if !shifts.isEmpty   { parts.append("\(shifts.count) shift\(shifts.count == 1 ? "" : "s")") }
+        if !drives.isEmpty   { parts.append("\(drives.count) drive\(drives.count == 1 ? "" : "s")") }
+        if !expenses.isEmpty { parts.append("\(expenses.count) expense\(expenses.count == 1 ? "" : "s")") }
+        return parts.isEmpty ? "Nothing stored" : parts.joined(separator: " · ")
     }
 
     private func shareRowLabel(_ label: String, value: String) -> some View {
@@ -423,11 +456,6 @@ struct SettingsView: View {
                     ? PlanTier.free.rawValue
                     : PlanTier.pro.rawValue
                 save()
-            }
-            RowDivider(color: GP.Surface.dividerSoft)
-            SettingsRow(label: "Erase everything", value: "",
-                        showsChevron: false, destructive: true) {
-                Seed.wipe(context)
             }
         }
     }

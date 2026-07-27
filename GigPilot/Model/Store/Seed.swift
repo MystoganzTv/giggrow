@@ -144,6 +144,73 @@ enum Seed {
                           intervalMonths: 12)
         ]
     }
+
+    // MARK: Erasing
+
+    /// Erases everything, returning the app to a genuine first-run state.
+    ///
+    /// Not behind `#if DEBUG`. The privacy sheet tells drivers their data is
+    /// theirs and lives on their phone; an app that says that and then offers
+    /// no way to delete it is making a promise it doesn't keep. This is the
+    /// way.
+    static func wipe(_ context: ModelContext) {
+        eraseEverything(context)
+    }
+
+    /// Deletes every object, children before parents.
+    ///
+    /// `context.delete(model:)` looks like the obvious way to do this and is
+    /// the wrong tool. It compiles to a Core Data batch delete, which runs
+    /// straight against the store and never loads the object graph — so it
+    /// can't apply a cascade rule or nullify an inverse, and SwiftData's
+    /// generated model marks those inverses mandatory. The result was a
+    /// console full of:
+    ///
+    ///     Batch delete failed due to mandatory OTO nullify inverse
+    ///     on PlatformEarning/account
+    ///
+    /// and a wipe that half-worked: some rows gone, some orphaned, the store
+    /// left in a state the next launch had to make sense of.
+    ///
+    /// Fetching and deleting one at a time is slower and correct. A wipe
+    /// touches a few thousand rows at most and happens by explicit choice, so
+    /// the speed was never worth the corruption.
+    private static func eraseEverything(_ context: ModelContext) {
+        // Order matters: anything owned is deleted before its owner, so no
+        // deletion ever has to nullify a relationship still being read.
+        deleteAll(PlatformEarning.self, in: context)
+        deleteAll(DriveRecord.self, in: context)
+        deleteAll(Shift.self, in: context)
+        deleteAll(Expense.self, in: context)
+        deleteAll(ServiceRecord.self, in: context)
+        deleteAll(VehicleRecord.self, in: context)
+        deleteAll(DriverProfile.self, in: context)
+        deleteAll(PlatformAccount.self, in: context)
+
+        // A wipe that misses a model is worse than no wipe: the app looks
+        // empty and isn't. Adding an entity to the schema without adding it
+        // here now fails on the spot instead of shipping.
+        assert(erasedTypeCount == GigPilotSchema.all.count,
+               "Seed.eraseEverything covers \(erasedTypeCount) of \(GigPilotSchema.all.count) models")
+
+        do {
+            try context.save()
+        } catch {
+            // A failed wipe leaves the store inconsistent, which is worth
+            // knowing about rather than swallowing into a `try?`.
+            assertionFailure("Wipe failed: \(error)")
+            context.rollback()
+        }
+    }
+
+    /// How many model types `eraseEverything` deletes, checked against the
+    /// schema so the two can't drift apart silently.
+    static let erasedTypeCount = 8
+
+    private static func deleteAll<T: PersistentModel>(_ type: T.Type, in context: ModelContext) {
+        guard let objects = try? context.fetch(FetchDescriptor<T>()) else { return }
+        for object in objects { context.delete(object) }
+    }
 }
 
 // MARK: - Demo data
@@ -198,55 +265,6 @@ extension Seed {
         try? context.save()
     }
 
-    /// Erases everything, returning the app to a genuine first-run state.
-    static func wipe(_ context: ModelContext) {
-        eraseEverything(context)
-    }
-
-    /// Deletes every object, children before parents.
-    ///
-    /// `context.delete(model:)` looks like the obvious way to do this and is
-    /// the wrong tool. It compiles to a Core Data batch delete, which runs
-    /// straight against the store and never loads the object graph — so it
-    /// can't apply a cascade rule or nullify an inverse, and SwiftData's
-    /// generated model marks those inverses mandatory. The result was a
-    /// console full of:
-    ///
-    ///     Batch delete failed due to mandatory OTO nullify inverse
-    ///     on PlatformEarning/account
-    ///
-    /// and a wipe that half-worked: some rows gone, some orphaned, the store
-    /// left in a state the next launch had to make sense of.
-    ///
-    /// Fetching and deleting one at a time is slower and correct. A wipe
-    /// touches a few thousand rows at most and happens by explicit choice, so
-    /// the speed was never worth the corruption.
-    private static func eraseEverything(_ context: ModelContext) {
-        // Order matters: anything owned is deleted before its owner, so no
-        // deletion ever has to nullify a relationship still being read.
-        deleteAll(PlatformEarning.self, in: context)
-        deleteAll(DriveRecord.self, in: context)
-        deleteAll(Shift.self, in: context)
-        deleteAll(Expense.self, in: context)
-        deleteAll(ServiceRecord.self, in: context)
-        deleteAll(VehicleRecord.self, in: context)
-        deleteAll(DriverProfile.self, in: context)
-        deleteAll(PlatformAccount.self, in: context)
-
-        do {
-            try context.save()
-        } catch {
-            // A failed wipe leaves the store inconsistent, which is worth
-            // knowing about rather than swallowing into a `try?`.
-            assertionFailure("Wipe failed: \(error)")
-            context.rollback()
-        }
-    }
-
-    private static func deleteAll<T: PersistentModel>(_ type: T.Type, in context: ModelContext) {
-        guard let objects = try? context.fetch(FetchDescriptor<T>()) else { return }
-        for object in objects { context.delete(object) }
-    }
 
     /// The design's exact mix of statuses: one scheduled, one overdue, two healthy.
     static func demoService(baseOdometer: Int) -> [ServiceRecord] {

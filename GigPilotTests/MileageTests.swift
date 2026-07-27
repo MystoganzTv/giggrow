@@ -162,6 +162,17 @@ final class MileageTests: XCTestCase {
         XCTAssertFalse(profile.autoMileageTracking)
     }
 
+    // MARK: Erasing
+
+    /// A wipe that misses a model is worse than no wipe: the app looks empty
+    /// and isn't, and the next launch reads figures the driver believes they
+    /// deleted. This fails the moment an entity joins the schema without
+    /// joining the erase list.
+    func testWipeCoversEveryModelInTheSchema() {
+        XCTAssertEqual(Seed.erasedTypeCount, GigPilotSchema.all.count,
+                       "Seed.eraseEverything must delete every model in GigPilotSchema.all")
+    }
+
     // MARK: The Mileage screen's arithmetic
     //
     // These mirror what MileageView computes. The headline is a tax figure, so
