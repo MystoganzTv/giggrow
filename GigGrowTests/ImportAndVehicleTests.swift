@@ -198,6 +198,36 @@ final class ImportAndVehicleTests: XCTestCase {
         XCTAssertEqual(days.reduce(0) { $0 + $1.combinedShare }, 1, accuracy: 0.001)
     }
 
+    func testAnalyticsExposesEachPlatformsDailyBreakdown() throws {
+        let context = try TestStore.makeContext()
+        let profile = Fixture.profile(context)
+        let lyft = Fixture.account(context, name: "Lyft", unitNoun: "rides")
+        let uber = Fixture.account(context, name: "Uber", sortIndex: 1)
+
+        Fixture.shift(context, day: 0, splits: [(lyft, 5, 1)])
+        Fixture.shift(context, day: 1, splits: [(lyft, 142, 9), (uber, 30, 2)])
+        Fixture.shift(context, day: 2, splits: [(lyft, 300, 18)])
+
+        let snapshot = EarningsSnapshot.build(
+            shifts: try context.fetch(FetchDescriptor<Shift>()),
+            expenses: [],
+            accounts: [lyft, uber],
+            profile: profile,
+            vehicle: nil,
+            range: AnalyticsRange.week.window(containing: .now),
+            rangeKind: .week
+        )
+
+        let lyftDaily = try XCTUnwrap(
+            snapshot.platforms.first(where: { $0.name == "Lyft" })?.daily
+        )
+        let uberDaily = try XCTUnwrap(
+            snapshot.platforms.first(where: { $0.name == "Uber" })?.daily
+        )
+        XCTAssertEqual(lyftDaily, [5, 142, 300, 0, 0, 0, 0])
+        XCTAssertEqual(uberDaily, [0, 30, 0, 0, 0, 0, 0])
+    }
+
     func testZeroSundayShareCreatesNoLyftSundayEarning() throws {
         let days = WeeklySplitAllocator.allocate([
             WeeklyPlatformSplit(

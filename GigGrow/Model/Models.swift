@@ -29,6 +29,9 @@ struct Platform: Identifiable, Hashable {
     let meta: String
     /// Week-over-week change, pre-formatted.
     let delta: String
+    /// Gross by weekday for the selected week, Monday first. Empty outside
+    /// the weekly Analytics view.
+    let daily: [Double]
     /// Brand gradient for the badge and the share bar.
     let gradient: [Color]
 

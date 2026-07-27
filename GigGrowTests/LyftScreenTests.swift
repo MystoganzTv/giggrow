@@ -137,6 +137,29 @@ final class LyftScreenTests: XCTestCase {
         XCTAssertEqual(shares[6], 0, accuracy: 0.01)
     }
 
+    func testLyftLayoutFallbackWorksWithoutAnyWeekdayOCR() throws {
+        var lines = weeklySummary
+        lines += [
+            line("$5", x: 0.073, width: 0.047, y: 0.452),
+            line("$142", x: 0.192, width: 0.082, y: 0.423),
+            line("$300", x: 0.319, width: 0.088, y: 0.379),
+            line("$123", x: 0.460, width: 0.080, y: 0.430),
+            line("$273", x: 0.590, width: 0.086, y: 0.385)
+        ]
+        let values = [5.0, 142, 300, 123, 273, 154, 0]
+        let total = 998.31
+        let image = try XCTUnwrap(chartImage(values: values))
+
+        let shares = try XCTUnwrap(
+            ChartDayDetector.lyftDailyShares(image: image, lines: lines, total: total)
+        )
+
+        XCTAssertEqual(shares.count, 7)
+        XCTAssertEqual(shares[0] * total, 5, accuracy: 0.01)
+        XCTAssertEqual(shares[5] * total, 155.31, accuracy: 0.02)
+        XCTAssertEqual(shares[6], 0, accuracy: 0.001)
+    }
+
     func testPrintedLyftAmountsBeatTheMinimumHeightDot() throws {
         var lines = [
             line("M", x: 0.076, width: 0.044, y: 0.500),

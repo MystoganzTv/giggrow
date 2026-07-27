@@ -37,26 +37,32 @@ extension EarningsSnapshot {
         platforms: [
             Platform(name: "Uber", short: "Uber", initial: "U", share: 0.29,
                      hourly: "$41.20", meta: "58 trips · 128 mi", delta: "+9%",
+                     daily: [84, 0, 118, 62, 140, 94, 76],
                      gradient: [Color(hex: 0xA78BFA), Color(hex: 0x7C5CF6)]),
 
             Platform(name: "Lyft", short: "Lyft", initial: "L", share: 0.21,
                      hourly: "$36.80", meta: "41 trips · 96 mi", delta: "+14%",
+                     daily: [5, 142, 300, 123, 273, 154, 0],
                      gradient: [Color(hex: 0xC084FC), Color(hex: 0x8B5CF6)]),
 
             Platform(name: "DoorDash", short: "DoorDash", initial: "D", share: 0.18,
                      hourly: "$34.10", meta: "47 orders · 104 mi", delta: "+6%",
+                     daily: [60, 45, 82, 50, 74, 32, 0],
                      gradient: [Color(hex: 0x818CF8), Color(hex: 0x4F76F6)]),
 
             Platform(name: "Instacart", short: "Instacart", initial: "I", share: 0.14,
                      hourly: "$32.40", meta: "22 batches · 88 mi", delta: "+3%",
+                     daily: [36, 28, 58, 42, 65, 20, 0],
                      gradient: [Color(hex: 0x60A5FA), Color(hex: 0x3B82F6)]),
 
             Platform(name: "Amazon Flex", short: "Flex", initial: "F", share: 0.11,
                      hourly: "$30.90", meta: "6 blocks · 132 mi", delta: "+11%",
+                     daily: [0, 62, 0, 74, 0, 70, 0],
                      gradient: [Color(hex: 0x7DD3FC), Color(hex: 0x38BDF8)]),
 
             Platform(name: "Walmart Spark", short: "Spark", initial: "S", share: 0.07,
                      hourly: "$28.50", meta: "19 trips · 64 mi", delta: "+5%",
+                     daily: [20, 0, 38, 0, 42, 30, 0],
                      gradient: [Color(hex: 0x93C5FD), Color(hex: 0x60A5FA)])
         ],
 

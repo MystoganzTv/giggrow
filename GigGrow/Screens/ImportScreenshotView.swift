@@ -1357,11 +1357,13 @@ struct ImportScreenshotView: View {
                 period = .week
                 // A week's bars are the only record of its shape. Read them
                 // now so the driver can choose to keep it.
-                shares = ChartDayDetector.dailyShares(
-                    image: cgImage,
-                    lines: lines,
-                    total: best.amount
-                )
+                shares = parsed.platformName == "Lyft"
+                    ? ChartDayDetector.lyftDailyShares(
+                        image: cgImage, lines: lines, total: best.amount
+                    )
+                    : ChartDayDetector.dailyShares(
+                        image: cgImage, lines: lines, total: best.amount
+                    )
                 note = headerWeek != nil
                     ? "This appears to be the weekly earnings chart."
                     : "This appears to be a weekly chart, but the date header couldn't be read."
@@ -1372,7 +1374,7 @@ struct ImportScreenshotView: View {
                 // weekday row and printed daily dollar labels still provide
                 // a usable earnings distribution.
                 if parsed.platformName == "Lyft" {
-                    shares = ChartDayDetector.dailyShares(
+                    shares = ChartDayDetector.lyftDailyShares(
                         image: cgImage,
                         lines: lines,
                         total: best.amount

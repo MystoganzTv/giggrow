@@ -34,6 +34,7 @@ struct AnalyticsView: View {
                 weeklyIncomeCard
                 monthlyIncomeCard
                 comparisonCard
+                if range == .week { dailyByAppCard }
                 hourlyCard
                 tiles
                 setAsideCard
@@ -212,6 +213,80 @@ struct AnalyticsView: View {
                     Text("Only \(only.name) has earnings in \(selection.title). Choose Month or Year to compare apps imported in different weeks.")
                         .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    // MARK: Daily earnings by app
+
+    /// The weekly import turns Lyft and Uber chart columns into dated
+    /// earnings. This is the visible audit trail: the driver can see exactly
+    /// which app contributed money on each day after the import sheet closes.
+    private var dailyByAppCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Daily earnings by app")
+                        .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
+                    Text("Weekly screenshot totals stay exact; each day's amount is estimated from its chart.")
+                        .ggText(GG.Typo.footnote, color: GG.Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                ForEach(Array(snapshot.platforms.enumerated()), id: \.element.id) { index, platform in
+                    if index > 0 { RowDivider(color: GG.Surface.dividerSoft) }
+                    dailyPlatform(platform)
+                }
+            }
+        }
+    }
+
+    private func dailyPlatform(_ platform: Platform) -> some View {
+        let values = platform.daily.count == 7
+            ? platform.daily
+            : Array(repeating: 0, count: 7)
+        let peak = max(values.max() ?? 0, 1)
+        let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(platform.brandGradient)
+                        .frame(width: 8, height: 8)
+                    Text(platform.name)
+                        .ggText(.system(size: 14, weight: .semibold))
+                }
+                Spacer()
+                Text(Money.cents(values.reduce(0, +)))
+                    .ggText(.system(size: 13.5, weight: .semibold),
+                            color: GG.Ink.secondary)
+            }
+
+            ForEach(values.indices, id: \.self) { day in
+                HStack(spacing: 10) {
+                    Text(labels[day])
+                        .ggText(.system(size: 11.5, weight: .medium),
+                                color: GG.Ink.tertiary)
+                        .frame(width: 30, alignment: .leading)
+
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(GG.Surface.glassFaint)
+                            if values[day] > 0 {
+                                Capsule()
+                                    .fill(platform.barGradient)
+                                    .frame(width: max(geo.size.width * values[day] / peak, 4))
+                            }
+                        }
+                    }
+                    .frame(height: 6)
+
+                    Text(values[day] > 0 ? Money.cents(values[day]) : "—")
+                        .ggText(.system(size: 11.5, weight: .semibold),
+                                color: values[day] > 0 ? GG.Ink.secondary : GG.Ink.muted)
+                        .frame(width: 62, alignment: .trailing)
                 }
             }
         }

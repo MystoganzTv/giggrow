@@ -142,6 +142,7 @@ extension EarningsSnapshot {
         var platforms: [Platform] = []
         for account in accounts.sorted(by: { $0.sortIndex < $1.sortIndex }) {
             var accGross = 0.0, accHours = 0.0, accMiles = 0.0, accTrips = 0
+            var accDaily = Array(repeating: 0.0, count: 7)
 
             for shift in inRange {
                 for earning in shift.earnings where earning.account?.name == account.name {
@@ -149,6 +150,14 @@ extension EarningsSnapshot {
                     accHours += ShiftAttribution.hours(of: earning, in: shift)
                     accMiles += ShiftAttribution.miles(of: earning, in: shift)
                     accTrips += earning.trips
+                    if rangeKind == .week {
+                        let day = calendar.dateComponents(
+                            [.day], from: range.lowerBound, to: shift.start
+                        ).day ?? -1
+                        if accDaily.indices.contains(day) {
+                            accDaily[day] += earning.gross
+                        }
+                    }
                 }
             }
 
@@ -170,6 +179,7 @@ extension EarningsSnapshot {
                     hourly: accHours > 0 ? Money.cents(accGross / accHours) : "—",
                     meta: "\(accTrips) \(account.unitNoun) · \(Int(accMiles.rounded())) mi",
                     delta: percentChange(from: prevGross, to: accGross),
+                    daily: rangeKind == .week ? accDaily : [],
                     gradient: [Color(hex: account.gradientStart), Color(hex: account.gradientEnd)]
                 )
             )

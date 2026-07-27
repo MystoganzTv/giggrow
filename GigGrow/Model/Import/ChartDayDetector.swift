@@ -117,6 +117,72 @@ enum ChartDayDetector {
         return heights.map { $0 / total }
     }
 
+    /// Lyft's weekly dashboard always lays out seven evenly spaced columns,
+    /// but on a physical phone Vision can omit or merge the tiny `M T W...`
+    /// row completely. The large surrounding labels and the chart itself are
+    /// still present. This fallback anchors to "See weekly breakdown" and
+    /// samples those seven real chart positions, so a missing OCR label no
+    /// longer throws away an otherwise readable distribution.
+    ///
+    /// Call only after the earnings parser has positively identified Lyft.
+    static func lyftDailyShares(image: CGImage, lines: [RecognisedLine],
+                                total exactTotal: Double? = nil) -> [Double]? {
+        if let ordinary = dailyShares(image: image, lines: lines, total: exactTotal) {
+            return ordinary
+        }
+
+        let breakdown = lines.first {
+            let text = $0.text.lowercased()
+            return text.contains("weekly") && text.contains("breakdown")
+        }
+        let stats = lines.first {
+            $0.text.lowercased().contains("weekly stats")
+        }
+        // These large labels make this specifically the Lyft weekly screen,
+        // rather than an arbitrary seven-column chart.
+        guard breakdown != nil || stats != nil,
+              let sampler = Sampler(image: image) else { return nil }
+
+        let labelTop: CGFloat
+        if let breakdown {
+            labelTop = breakdown.topDownY - 0.048
+        } else if let stats {
+            labelTop = stats.topDownY - 0.108
+        } else {
+            return nil
+        }
+
+        let left: CGFloat = 0.098
+        let right: CGFloat = 0.899
+        let spacing = (right - left) / 6
+        let labels = weekdayNames.enumerated().map { index, weekday in
+            let centre = left + CGFloat(index) * spacing
+            return Label(
+                xRange: (centre - 0.022)...(centre + 0.022),
+                top: labelTop,
+                weekday: weekday,
+                dayOfMonth: nil
+            )
+        }
+
+        let bandTop = max(labelTop - 0.34, 0.06)
+        let bandBottom = max(labelTop - 0.005, bandTop + 0.01)
+        let heights = labels.map {
+            sampler.filledHeight(xRange: $0.xRange, yRange: bandTop...bandBottom)
+        }
+
+        if let exactTotal,
+           let labelled = labelledDailyShares(
+               total: exactTotal, labels: labels, heights: heights, lines: lines
+           ) {
+            return labelled
+        }
+
+        let measured = heights.reduce(0, +)
+        guard measured > 0.02 else { return nil }
+        return heights.map { $0 / measured }
+    }
+
     private static func labelledDailyShares(total: Double,
                                             labels: [Label],
                                             heights: [Double],
