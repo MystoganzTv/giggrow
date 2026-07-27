@@ -78,13 +78,12 @@ struct SettingsView: View {
         .sheet(item: $route) { destination in
             editor(for: destination)
         }
-        .confirmationDialog("Erase all data?",
-                            isPresented: $isConfirmingErase,
-                            titleVisibility: .visible) {
+        .alert("Erase all data?", isPresented: $isConfirmingErase) {
+            // Cancel first, so the default action is the safe one.
+            Button("Cancel", role: .cancel) { }
             Button("Erase everything", role: .destructive) {
                 Seed.wipe(context)
             }
-            Button("Cancel", role: .cancel) { }
         } message: {
             Text("Every shift, imported screenshot, weekly total, recorded drive, expense and vehicle record is deleted from this phone. Export first if you want to keep any of it — this can't be undone.")
         }

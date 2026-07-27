@@ -298,15 +298,21 @@ struct DashboardView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 9) {
-                    SplitBar(activeShare: snapshot.activeShare)
-                    HStack {
-                        Text("Active \(Hours.clock(snapshot.activeHours))")
-                            .gpText(.system(size: 13, weight: .medium),
-                                    color: GP.Palette.violet300.opacity(0.9))
-                        Spacer()
-                        Text("Idle \(Hours.clock(snapshot.idleHours))")
-                            .gpText(.system(size: 13, weight: .medium), color: GP.Ink.tertiary)
+                    // The bar only means something when idle time is actually
+                    // known. With no split it sits permanently full, which
+                    // looks like a measurement of "100% productive".
+                    if snapshot.idleHours > 0 {
+                        SplitBar(activeShare: snapshot.activeShare)
                     }
+                    // Was "Active 4h 22m · Idle 0m". No gig app publishes the
+                    // split — Uber gives online time and nothing else — so idle
+                    // was zero on every imported shift and the pair read as a
+                    // measurement rather than as an empty field. Online time is
+                    // the right denominator anyway: waiting for a ping is part
+                    // of the job, and dividing by "booked" hours only would
+                    // flatter the rate.
+                    Text("Time online, waiting included")
+                        .gpText(.system(size: 12.5, weight: .regular), color: GP.Ink.muted)
                 }
             }
         }
