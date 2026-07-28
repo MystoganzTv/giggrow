@@ -267,6 +267,96 @@ final class ImportAndVehicleTests: XCTestCase {
                      "the dark Sunday dot in Lyft is zero, not a worked shift")
     }
 
+    func testWeeklyReportOverlapsADailyReportForTheSameAppAndWeek() {
+        let week = Fixture.weekStart()
+        let thursday = Calendar.gigGrow.date(
+            byAdding: .day, value: 3, to: week
+        )!
+
+        XCTAssertTrue(
+            ImportOverlapDetector.overlaps(
+                ImportCoverage(platform: "Lyft", period: .week, date: week),
+                ImportCoverage(platform: "Lyft", period: .day, date: thursday)
+            ),
+            "a Lyft week already contains that Lyft day"
+        )
+        XCTAssertTrue(
+            ImportOverlapDetector.overlaps(
+                ImportCoverage(platform: "Lyft", period: .day, date: thursday),
+                ImportCoverage(platform: "Lyft", period: .week, date: week)
+            ),
+            "the check must work regardless of which report was imported first"
+        )
+    }
+
+    func testWeeklyReportDoesNotOverlapAnotherAppsDailyReport() {
+        let week = Fixture.weekStart()
+        let thursday = Calendar.gigGrow.date(
+            byAdding: .day, value: 3, to: week
+        )!
+
+        XCTAssertFalse(
+            ImportOverlapDetector.overlaps(
+                ImportCoverage(platform: "Uber", period: .week, date: week),
+                ImportCoverage(platform: "Lyft", period: .day, date: thursday)
+            ),
+            "Uber's weekly report does not contain Lyft's earnings"
+        )
+    }
+
+    func testSplitWeeklyDayStillBlocksTheMatchingDailyImport() {
+        let monday = Fixture.weekStart()
+        let sunday = Calendar.gigGrow.date(
+            byAdding: .day, value: 6, to: monday
+        )!
+        let splitDay = Shift(
+            start: monday,
+            end: monday.addingTimeInterval(2 * 3_600),
+            note: "From a weekly screenshot — day split read off the chart"
+        )
+        splitDay.isAggregate = true
+
+        let stored = ImportOverlapDetector.coverage(
+            of: splitDay,
+            platform: "Uber"
+        )
+        XCTAssertEqual(stored.period, .week)
+        XCTAssertTrue(
+            ImportOverlapDetector.overlaps(
+                ImportCoverage(platform: "Uber", period: .day, date: sunday),
+                stored
+            ),
+            "the weekly source covers Sunday even when its chart stored no Sunday row"
+        )
+    }
+
+    func testWholeWeeklyAggregateBlocksAnyMatchingDailyImport() {
+        let monday = Fixture.weekStart()
+        let sunday = Calendar.gigGrow.date(
+            byAdding: .day, value: 6, to: monday
+        )!
+        let wholeWeek = Shift(
+            start: monday,
+            end: Calendar.gigGrow.date(
+                byAdding: .day, value: 7, to: monday
+            )!,
+            note: "Imported from a weekly summary"
+        )
+        wholeWeek.isAggregate = true
+
+        let stored = ImportOverlapDetector.coverage(
+            of: wholeWeek,
+            platform: "Uber"
+        )
+        XCTAssertEqual(stored.period, .week)
+        XCTAssertTrue(
+            ImportOverlapDetector.overlaps(
+                ImportCoverage(platform: "Uber", period: .day, date: sunday),
+                stored
+            )
+        )
+    }
+
     // MARK: Fuel type
 
     func testElectricVehiclesDoNotReportMPG() {

@@ -23,14 +23,6 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 
-/// What a screenshot covers. Gig apps show both, and they aren't
-/// interchangeable — a week imported as a day piles seven days onto one bar.
-enum ImportPeriod: String, CaseIterable, Identifiable {
-    case day, week
-    var id: String { rawValue }
-    var label: String { self == .day ? "One day" : "A week" }
-}
-
 /// One screenshot and what was read from it.
 ///
 /// Time lives here rather than on the screen as a whole. Two screenshots of
@@ -227,9 +219,11 @@ struct ImportScreenshotView: View {
                         .foregroundStyle(GG.Palette.violet400)
                 }
             }
-            .onChange(of: sources.map { "\($0.platform)-\($0.date.timeIntervalSince1970)" }) { _, _ in
-            // Picking the app or fixing the date is what makes a duplicate
-            // visible, so the check has to run again after either.
+            .onChange(of: sources.map {
+                "\($0.platform)-\($0.period.rawValue)-\($0.date.timeIntervalSince1970)"
+            }) { _, _ in
+            // App, period and date all define coverage. Changing any one can
+            // turn a report into an overlap with something already stored.
             markDuplicates()
         }
         .onChange(of: pickerItems) { _, items in
@@ -1229,10 +1223,25 @@ struct ImportScreenshotView: View {
 
         for week in weeks {
             let start = calendar.startOfWeek(for: week.date)
-            guard let end = calendar.date(byAdding: .day, value: 7, to: start) else { continue }
-            let inside = included.filter { $0.period == .day && $0.date >= start && $0.date < end }
+            let weekCoverage = ImportCoverage(
+                platform: week.platform,
+                period: .week,
+                date: start
+            )
+            let inside = included.filter { source in
+                guard source.period == .day else { return false }
+                return ImportOverlapDetector.overlaps(
+                    weekCoverage,
+                    ImportCoverage(
+                        platform: source.platform,
+                        period: .day,
+                        date: source.date
+                    ),
+                    calendar: calendar
+                )
+            }
             guard !inside.isEmpty else { continue }
-            return "The weekly total for \(f.string(from: start)) already includes \(inside.count) of the daily screenshots below. Saving both counts that money twice — remove the week, or remove the days."
+            return "The \(week.platform) weekly total for \(f.string(from: start)) already includes \(inside.count) of the \(week.platform) daily screenshots below. Saving both counts that money twice — remove the week, or remove the days."
         }
         return nil
     }
@@ -1241,11 +1250,13 @@ struct ImportScreenshotView: View {
 
     private var canSave: Bool {
         !included.isEmpty
+            && overlapWarning == nil
             && included.allSatisfy(isReady)
     }
 
     private var saveBlockingMessage: String? {
         guard !canSave else { return nil }
+        if let overlapWarning { return overlapWarning }
         if included.isEmpty, !sources.isEmpty {
             return "Nothing is included. These reports were already imported, so GigGrow excluded them to prevent double-counting. Open each card and tap “Include this corrected import”, or delete the previous import first."
         }
@@ -1270,17 +1281,25 @@ struct ImportScreenshotView: View {
     private func alreadyStored(_ source: ImportedSource) -> Bool {
         guard !source.platform.isEmpty else { return false }
         let calendar = Calendar.gigGrow
-        let anchor = source.period == .week
-            ? calendar.startOfWeek(for: source.date)
-            : calendar.startOfDay(for: source.date)
+        let incoming = ImportCoverage(
+            platform: source.platform,
+            period: source.period,
+            date: source.date
+        )
 
         return existingShifts.contains { shift in
-            guard shift.isAggregate == (source.period == .week) else { return false }
-            let shiftAnchor = source.period == .week
-                ? calendar.startOfWeek(for: shift.start)
-                : calendar.startOfDay(for: shift.start)
-            guard shiftAnchor == anchor else { return false }
-            return shift.earnings.contains { $0.account?.name == source.platform }
+            shift.earnings.contains { earning in
+                guard let platform = earning.account?.name else { return false }
+                return ImportOverlapDetector.overlaps(
+                    incoming,
+                    ImportOverlapDetector.coverage(
+                        of: shift,
+                        platform: platform,
+                        calendar: calendar
+                    ),
+                    calendar: calendar
+                )
+            }
         }
     }
 
@@ -1436,6 +1455,12 @@ struct ImportScreenshotView: View {
             sources[index].isDuplicate = duplicate
             if duplicate && !sources[index].duplicateOverride {
                 sources[index].isSkipped = true
+            } else if !duplicate {
+                // A corrected date/period/app may no longer overlap anything.
+                // Do not leave it silently excluded because its previous
+                // interpretation happened to be a duplicate.
+                sources[index].isSkipped = false
+                sources[index].duplicateOverride = false
             }
         }
     }

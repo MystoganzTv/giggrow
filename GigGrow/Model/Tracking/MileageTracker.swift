@@ -69,6 +69,13 @@ final class MileageTracker: NSObject {
 
     private var lastLocation: CLLocation?
     private var lastMovementAt: Date?
+    /// When motion last reported the phone as stationary, cleared the moment
+    /// anything moves. This is what ends a trip — not GPS going quiet.
+    private var stationarySince: Date?
+    /// Any location callback at all, usable or not. A phone still reporting
+    /// positions is a phone still in a moving car, even when the readings are
+    /// too rough to measure with.
+    private var lastFixAttemptAt: Date?
     private var idleTimer: Timer?
 
     /// Set when the driver tapped Start before iOS had asked about location,
@@ -81,13 +88,25 @@ final class MileageTracker: NSObject {
     /// traffic light ends the trip; longer and a shift's worth of drives
     /// merge into one.
     private var idleTimeout: TimeInterval = 5 * 60
-    /// Manual trips close faster — see `timeoutForCurrentMode`.
-    private let manualIdleTimeout: TimeInterval = 3 * 60
+    /// Manual trips close faster than automatic ones, but not by much.
+    ///
+    /// Three minutes was too short and that was my reading of the request,
+    /// not the request. Waiting at a pickup, sitting in an airport queue or
+    /// stopping to eat are all normal parts of a shift and all longer than
+    /// three minutes. Eight is long enough to survive those and short enough
+    /// that forgetting Stop costs a few minutes, not the evening.
+    private let manualIdleTimeout: TimeInterval = 8 * 60
 
     /// Ignore jitter. A parked phone drifts by a few metres and would
     /// otherwise accumulate miles overnight.
     private let minimumStep: CLLocationDistance = 20
-    private let worstAcceptableAccuracy: CLLocationAccuracy = 50
+    /// 50 m was too strict. A phone in a cupholder between tall buildings
+    /// reports 60–100 m for minutes at a time, and every one of those was
+    /// thrown away — taking the distance *and*, until the fix above, the
+    /// evidence the car was moving. 100 m still rejects a wild fix while
+    /// keeping a merely mediocre one, and over a 20 m step the error mostly
+    /// cancels rather than accumulating.
+    private let worstAcceptableAccuracy: CLLocationAccuracy = 100
 
     // MARK: Setup
 
@@ -158,8 +177,10 @@ final class MileageTracker: NSObject {
             motion.startActivityUpdates(to: .main) { [weak self] activity in
                 guard let self, let activity else { return }
                 if activity.automotive && activity.confidence != .low {
+                    // Driving, whoever started the trip — so it is not stopped.
+                    self.noteMovement()
                     // Automatic detection must not hijack a trip the driver
-                    // started; stillness still applies to both.
+                    // started; the movement note above still applies to both.
                     guard self.mode != .manual || self.status != .recording else { return }
                     self.beginDrive()
                 } else if activity.stationary && activity.confidence == .high {
@@ -187,6 +208,8 @@ final class MileageTracker: NSObject {
         currentStart = .now
         currentDistance = 0
         hasFix = false
+        stationarySince = nil
+        lastFixAttemptAt = .now
         lastLocation = nil
         lastMovementAt = .now
 
@@ -243,7 +266,14 @@ final class MileageTracker: NSObject {
 
     private func noteStillness() {
         guard status == .recording else { return }
-        lastMovementAt = lastMovementAt ?? .now
+        // Starts the clock; movement clears it. Only an unbroken run counts.
+        stationarySince = stationarySince ?? .now
+    }
+
+    /// Anything that proves the car is moving cancels a pending stop.
+    private func noteMovement() {
+        stationarySince = nil
+        lastMovementAt = .now
     }
 
     private func startIdleTimer() {
@@ -253,11 +283,41 @@ final class MileageTracker: NSObject {
         }
     }
 
+    /// Ends a trip only when there is evidence the car actually stopped.
+    ///
+    /// The previous version ended it when `lastMovementAt` went stale, and
+    /// that clock only advanced on a *usable* fix. A car park, a downtown
+    /// street or a phone in a pocket pushes horizontal accuracy past 50m for
+    /// minutes at a time; every one of those readings was discarded, the
+    /// clock froze, and the timeout fired. A five-hour shift recorded ten
+    /// minutes. GPS going quiet is not the same as the car stopping.
+    ///
+    /// So stillness has to be asserted, by Core Motion, and sustained. The
+    /// GPS-silence path stays only as a far longer backstop for a phone that
+    /// has genuinely stopped reporting — otherwise a trip could run all night.
     private func checkIdle() {
-        guard status == .recording, let last = lastMovementAt else { return }
-        guard Date.now.timeIntervalSince(last) >= timeoutForCurrentMode else { return }
-        finishDrive()
+        guard status == .recording else { return }
+        let now = Date.now
+
+        // Confirmed stationary, for long enough that it isn't a red light.
+        if let stationarySince, now.timeIntervalSince(stationarySince) >= timeoutForCurrentMode {
+            finishDrive()
+            return
+        }
+
+        // Nothing heard from location services at all. Not "moved less than
+        // twenty metres" — nothing.
+        if let lastFixAttemptAt, now.timeIntervalSince(lastFixAttemptAt) >= silenceBackstop {
+            finishDrive()
+        }
     }
+
+    /// How long with no location callback whatsoever before giving up.
+    ///
+    /// Long, deliberately. Ending early loses miles the driver earned and
+    /// cannot get back; ending late costs a few stationary minutes on a trip
+    /// they can edit. The failure modes are not symmetrical.
+    private let silenceBackstop: TimeInterval = 25 * 60
 
     /// How long stopped before this trip is considered over.
     ///
@@ -451,6 +511,10 @@ extension MileageTracker: CLLocationManagerDelegate {
     }
 
     private func accumulate(_ location: CLLocation) {
+        // Heard from, whatever the quality. Recorded before the accuracy gate
+        // precisely so a run of rough fixes can't look like silence.
+        lastFixAttemptAt = .now
+
         // A significant-change wake while merely waiting is the cue to check
         // whether this is a drive, not to start measuring.
         guard status == .recording else { return }
@@ -480,6 +544,7 @@ extension MileageTracker: CLLocationManagerDelegate {
 
         currentDistance += step
         lastLocation = location
-        lastMovementAt = location.timestamp
+        // Real distance covered is the strongest possible evidence of motion.
+        noteMovement()
     }
 }
