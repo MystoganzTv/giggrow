@@ -359,35 +359,47 @@ private struct Pin: View {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
-            ZStack {
-                PinShape()
+            let head = w                       // the round part is as wide as the pin
+            let headCentre = head / 2
+
+            ZStack(alignment: .topLeading) {
+                // Composed from two shapes rather than one hand-built path.
+                // The path version used addArc with a sweep direction that is
+                // easy to get backwards in SwiftUI's flipped coordinates — and
+                // was: it drew the bottom half of the circle, so both pins
+                // rendered as open Vs. A circle cannot be half a circle.
+                PinTail()
                     .fill(color)
-                    .shadow(color: color.opacity(0.45), radius: 10, y: 4)
+                    .frame(width: head * 0.62, height: h - headCentre + 1)
+                    .offset(x: (w - head * 0.62) / 2, y: headCentre - 1)
+
+                Circle()
+                    .fill(color)
+                    .frame(width: head, height: head)
+
                 Circle()
                     .fill(GG.Palette.screen)
-                    .frame(width: w * 0.34, height: w * 0.34)
-                    .position(x: w / 2, y: h * 0.36)
+                    .frame(width: head * 0.34, height: head * 0.34)
+                    .offset(x: headCentre - head * 0.17, y: headCentre - head * 0.17)
             }
+            .compositingGroup()
+            .shadow(color: color.opacity(0.45), radius: 10, y: 4)
         }
     }
 }
 
-private struct PinShape: Shape {
+/// The tapered point below the head.
+private struct PinTail: Shape {
     func path(in rect: CGRect) -> Path {
-        let w = rect.width
-        let h = rect.height
-        let radius = w / 2
-        let centre = CGPoint(x: rect.midX, y: rect.minY + radius)
-
         var path = Path()
-        path.addArc(center: centre, radius: radius,
-                    startAngle: .degrees(160), endAngle: .degrees(20),
-                    clockwise: true)
-        path.addLine(to: CGPoint(x: rect.midX, y: rect.minY + h))
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
         path.closeSubpath()
         return path
     }
 }
+
 
 /// A dot that breathes, so a recording screen left face-up still reads as
 /// live from across the cab.
