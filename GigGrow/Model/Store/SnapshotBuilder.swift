@@ -143,11 +143,14 @@ extension EarningsSnapshot {
         for account in accounts.sorted(by: { $0.sortIndex < $1.sortIndex }) {
             var accGross = 0.0, accHours = 0.0, accMiles = 0.0, accTrips = 0
             var accDaily = Array(repeating: 0.0, count: 7)
+            var sharedHours = 0.0
 
             for shift in inRange {
                 for earning in shift.earnings where earning.account?.name == account.name {
                     accGross += earning.gross
-                    accHours += ShiftAttribution.hours(of: earning, in: shift)
+                    let earnedHours = ShiftAttribution.hours(of: earning, in: shift)
+                    if shift.earnings.count > 1 { sharedHours += earnedHours }
+                    accHours += earnedHours
                     accMiles += ShiftAttribution.miles(of: earning, in: shift)
                     accTrips += earning.trips
                     if rangeKind == .week {
@@ -180,7 +183,10 @@ extension EarningsSnapshot {
                     meta: "\(accTrips) \(account.unitNoun) · \(Int(accMiles.rounded())) mi",
                     delta: percentChange(from: prevGross, to: accGross),
                     daily: rangeKind == .week ? accDaily : [],
-                    gradient: [Color(hex: account.gradientStart), Color(hex: account.gradientEnd)]
+                    gradient: [Color(hex: account.gradientStart), Color(hex: account.gradientEnd)],
+                    // Half is the point at which the rate stops describing
+                    // this app and starts describing the shift.
+                    rateIsShared: accHours > 0 && sharedHours / accHours > 0.5
                 )
             )
         }

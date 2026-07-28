@@ -198,28 +198,83 @@ struct AnalyticsView: View {
 
     // MARK: App comparison
 
+    /// Where the money came from, and what each app paid for the time.
+    ///
+    /// This card used to draw a bar sized by each app's share of the money
+    /// and print an hourly rate at the end of it. Two different measures in
+    /// one row: the app with the longest bar showed the lower number, which
+    /// reads as a bug even though both figures were right. A driver earning
+    /// most of their money on Lyft at a slightly worse rate than Uber saw a
+    /// full bar next to $32.86 and a stub next to $34.72.
+    ///
+    /// So the two questions are now asked separately. The ring answers
+    /// "where did the week's money come from" — a share, drawn as a share.
+    /// The rate sits under the amount, labelled, where it can't be mistaken
+    /// for what the ring is measuring.
     private var comparisonCard: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("App comparison")
-                    .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Where the money came from")
+                        .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
+                    Text("The ring is each app's share of \(selection.title). The rate underneath is what that app paid per hour you had it on.")
+                        .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-                ForEach(snapshot.platforms) { platform in
-                    HStack(spacing: 12) {
-                        Text(platform.short)
-                            .ggText(.system(size: 12.5, weight: .medium), color: GG.Ink.secondary)
-                            .frame(width: 64, alignment: .leading)
-
-                        ProgressBar(
-                            progress: snapshot.normalisedShare(for: platform),
-                            height: 9,
-                            fill: platform.barGradient
+                if snapshot.platforms.count > 1 {
+                    HStack {
+                        Spacer(minLength: 0)
+                        ShareRing(
+                            slices: snapshot.platforms.map {
+                                (share: $0.share, colour: $0.gradient.first ?? GG.Palette.violet300)
+                            },
+                            centreTop: Money.whole(snapshot.weeklyTotal),
+                            centreBottom: "\(snapshot.platforms.count) apps"
                         )
-
-                        Text(platform.hourly)
-                            .ggText(.system(size: 12.5, weight: .semibold))
-                            .frame(width: 58, alignment: .trailing)
+                        .frame(width: 132, height: 132)
+                        Spacer(minLength: 0)
                     }
+                    .padding(.vertical, 2)
+                }
+
+                VStack(spacing: 12) {
+                    ForEach(snapshot.platforms) { platform in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Circle()
+                                .fill(platform.gradient.first ?? GG.Palette.violet300)
+                                .frame(width: 8, height: 8)
+                                .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(platform.name)
+                                    .ggText(.system(size: 13, weight: .medium))
+                                Text(rateLabel(for: platform))
+                                    .ggText(.system(size: 11.5, weight: .regular),
+                                            color: GG.Ink.muted)
+                            }
+
+                            Spacer(minLength: 8)
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(Money.cents(snapshot.amount(for: platform)))
+                                    .ggText(.system(size: 13, weight: .semibold))
+                                Text(percentLabel(platform.share))
+                                    .ggText(.system(size: 11.5, weight: .regular),
+                                            color: GG.Ink.muted)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(
+                            "\(platform.name), \(Money.cents(snapshot.amount(for: platform))), \(percentLabel(platform.share)) of the total, \(platform.hourly) per hour"
+                        )
+                    }
+                }
+
+                if snapshot.platforms.contains(where: \.rateIsShared) {
+                    Text("“Time shared” means you had these apps on at once. One hour is one hour, so it's split between them by what each paid — which makes their rates match by definition. To compare apps properly, log a shift with only one running.")
+                        .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if snapshot.platforms.count == 1, let only = snapshot.platforms.first {
@@ -229,6 +284,20 @@ struct AnalyticsView: View {
                 }
             }
         }
+    }
+
+    private func rateLabel(for platform: Platform) -> String {
+        if platform.hourly == "—" { return "hours not recorded" }
+        if platform.rateIsShared { return "\(platform.hourly)/h · time shared" }
+        return "\(platform.hourly) per hour"
+    }
+
+    /// Whole percents, except when rounding would print a share that earned
+    /// money as 0%.
+    private func percentLabel(_ share: Double) -> String {
+        let pct = share * 100
+        if pct > 0 && pct < 0.5 { return "<1%" }
+        return "\(Int(pct.rounded()))%"
     }
 
     // MARK: Daily earnings by app
@@ -302,7 +371,7 @@ struct AnalyticsView: View {
                     }
                     .frame(height: 6)
 
-                    Text(values[day] > 0 ? "~\(Money.whole(values[day]))" : "—")
+                    Text(values[day] > 0 ? "≈\(Money.whole(values[day]))" : "—")
                         .ggText(.system(size: 11.5, weight: .semibold),
                                 color: values[day] > 0 ? GG.Ink.secondary : GG.Ink.muted)
                         .frame(width: 62, alignment: .trailing)

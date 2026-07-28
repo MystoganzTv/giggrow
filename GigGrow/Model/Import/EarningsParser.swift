@@ -57,6 +57,7 @@ struct ParsedEarnings {
     func amount(labelled cues: [String]) -> Double? {
         amounts.first { candidate in
             let line = candidate.source.lowercased()
+            guard !PayoutCues.matches(line) else { return false }
             return cues.contains { line.contains($0) }
         }?.value
     }
@@ -92,6 +93,28 @@ struct ParsedEarnings {
 
     var foundAnything: Bool {
         !amounts.isEmpty || !units.isEmpty || !hours.isEmpty || !miles.isEmpty
+    }
+}
+
+/// Money on the screen that is not money earned in this period.
+///
+/// Lyft's summary ends with the balance still sitting in the account —
+/// earnings already counted further up, waiting to be paid out. It is a
+/// dollar figure with a short label in the same type as the breakdown rows,
+/// so every structural signal the parser uses says "this is a line item",
+/// and it was landing in tips or promotions and inflating the week.
+///
+/// The distinction isn't whose money it is — it is the driver's — but
+/// *when* it was earned. Counting a balance would add the same dollars a
+/// second time.
+enum PayoutCues {
+    static let all = ["balance", "payout", "paid out", "pending", "cash out",
+                      "cashout", "instant pay", "express pay", "transfer",
+                      "deposit", "available", "withdraw", "lifetime",
+                      "all time", "to date"]
+
+    static func matches(_ lowercasedLine: String) -> Bool {
+        all.contains { lowercasedLine.contains($0) }
     }
 }
 
@@ -428,6 +451,8 @@ enum EarningsParser {
         // disqualified rather than merely ranked lower, because it is
         // plausible enough to survive a glance in the review sheet.
         if notYoursCues.contains(where: { context.contains($0) }) { value *= 0.25 }
+        // Same treatment for a pending balance: right money, wrong period.
+        if PayoutCues.matches(context) { value *= 0.25 }
         return min(value, 1)
     }
 
@@ -543,6 +568,9 @@ enum EarningsParser {
             guard cues.contains(where: { lower.contains($0) }) else { continue }
             // A row that is its own total isn't a breakdown line.
             guard !lower.contains("total") else { continue }
+            // Nor is the balance waiting to be paid out — that money was
+            // already earned and counted somewhere above.
+            guard !PayoutCues.matches(lower) else { continue }
 
             // Written together — "Tip $7.00".
             if let inline = currencyAmounts(in: label.text).first { return inline }

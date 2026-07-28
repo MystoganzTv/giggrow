@@ -35,6 +35,20 @@ struct Platform: Identifiable, Hashable {
     /// Brand gradient for the badge and the share bar.
     let gradient: [Color]
 
+    /// Whether any of this app's hours came from a shift it shared with
+    /// another app.
+    ///
+    /// This matters because of how shared time is attributed. An hour with
+    /// Uber and Lyft both on is one hour, and it gets split between them in
+    /// proportion to what each earned — which is the only defensible split,
+    /// but it means the two apps come out at *exactly* the same rate by
+    /// construction. Comparing them is then comparing a number to itself.
+    ///
+    /// A rate computed that way isn't wrong, it just can't answer the
+    /// question the driver is asking it. So it says so instead of sitting
+    /// there looking like a measurement.
+    var rateIsShared: Bool = false
+
     var brandGradient: LinearGradient {
         LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
     }

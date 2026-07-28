@@ -36,6 +36,7 @@ struct SettingsView: View {
     @Query(sort: \Shift.start) private var shifts: [Shift]
     @Query(sort: \Expense.date) private var expenses: [Expense]
     @Query private var drives: [DriveRecord]
+    @Query(sort: \PlatformAccount.sortIndex) private var accounts: [PlatformAccount]
 
     /// Injected from the root so the switch reflects the live tracker rather
     /// than a stored flag that could disagree with reality.
@@ -199,8 +200,17 @@ struct SettingsView: View {
 
     /// What's in the log, in the terms it matters in: miles you can claim,
     /// and how many still need a decision.
+    /// How many apps the driver has switched on — not how many earned money
+    /// this week.
+    ///
+    /// This read `snapshot.platforms`, which is the projection's list of
+    /// apps with earnings *in the current range*. Four apps selected and a
+    /// quiet week gave "None picked", which reads as the setting having been
+    /// lost. Same shape of mistake as the mileage screen reporting "0
+    /// business miles": a summary sourced from activity rather than from the
+    /// setting it claims to summarise.
     private var activePlatformSummary: String {
-        let active = snapshot.platforms.count
+        let active = accounts.filter(\.isActive).count
         return active == 0 ? "None picked" : "\(active) active"
     }
 

@@ -15,6 +15,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 private struct KeyboardDoneBar: ViewModifier {
     var focus: FocusState<Bool>.Binding
@@ -24,6 +25,26 @@ private struct KeyboardDoneBar: ViewModifier {
             // Swiping the content is the gesture people try first, so it
             // works too rather than only the button.
             .scrollDismissesKeyboard(.interactively)
+            // Tapping a figure to correct it put the caret wherever the tap
+            // landed — usually before the first digit, so clearing "1091.87"
+            // meant six taps of a delete key that was deleting backwards
+            // from the wrong end. Selecting the number on focus makes the
+            // common case (replace it) one gesture, and the rare case
+            // (amend it) one tap to deselect.
+            //
+            // Restricted to number pads on purpose: doing this to a name
+            // field would wipe the name of anyone who tapped in to add a
+            // surname.
+            .onReceive(NotificationCenter.default.publisher(
+                for: UITextField.textDidBeginEditingNotification
+            )) { note in
+                guard let field = note.object as? UITextField,
+                      field.keyboardType == .decimalPad || field.keyboardType == .numberPad
+                else { return }
+                // A frame later: UIKit places the caret after this fires,
+                // and would undo the selection.
+                DispatchQueue.main.async { field.selectAll(nil) }
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()

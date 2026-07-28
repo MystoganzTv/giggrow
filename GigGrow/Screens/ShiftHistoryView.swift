@@ -157,7 +157,7 @@ struct ShiftHistoryView: View {
                 .ggText(GG.Typo.rowLabel)
             Spacer(minLength: 8)
             Text(day.isEstimated
-                 ? "~\(Money.whole(day.gross))"
+                 ? "≈\(Money.whole(day.gross))"
                  : Money.cents(day.gross))
                 .ggText(.system(size: 16, weight: .semibold), tracking: -0.3)
         }
@@ -190,7 +190,7 @@ struct ShiftHistoryView: View {
                     .ggText(.system(size: 14, weight: .semibold))
                 Spacer(minLength: 8)
                 Text(isWeeklyEstimate(shift)
-                     ? "~\(Money.whole(shift.gross))"
+                     ? "≈\(Money.whole(shift.gross))"
                      : Money.cents(shift.gross))
                     .ggText(.system(size: 14, weight: .semibold),
                             color: GG.Ink.secondary)
