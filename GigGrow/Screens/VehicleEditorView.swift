@@ -20,6 +20,13 @@ struct VehicleEditorView: View {
     /// Existing car, or nil to add one.
     var editing: VehicleRecord?
 
+    /// Which text field has the keyboard. Needed so the Done bar has
+    /// something to clear — the year field uses a number pad, which has no
+    /// return key, so without this the keyboard could not be dismissed at
+    /// all and the only way out of this screen was to force-quit.
+    private enum Field: Hashable { case make, model, year, plate, odometer, efficiency }
+    @FocusState private var focus: Field?
+
     @State private var make = ""
     @State private var model = ""
     @State private var customMake = ""
@@ -98,6 +105,7 @@ struct VehicleEditorView: View {
 
             if editing != nil { deleteButton }
         }
+        .keyboardDoneBar($focus)
         .onAppear(perform: loadIfNeeded)
         .onChange(of: make) { oldValue, newValue in
             handleMakeChange(oldValue, newValue)
@@ -264,25 +272,43 @@ struct VehicleEditorView: View {
             : "\(value) miles/kWh looks off for an EV — most sit between 2 and 5."
     }
 
+    /// A labelled number row.
+    ///
+    /// The label used to be free to grow and the field was pinned at 90pt, so
+    /// "Energy efficiency" — the electric wording, much longer than "MPG" —
+    /// pushed the row wider than the phone, wrapped, and spilled below the
+    /// card. Now the label takes what's left after the field and shrinks a
+    /// little rather than wrapping, and the suffix keeps its full width
+    /// because "mi/kWh" truncated to "mi/k" would be a different unit.
     private func numberField(_ label: String, text: Binding<String>, suffix: String,
                              decimal: Bool, prefix: String = "",
-                             placeholder: String = "0") -> some View {
-        HStack {
+                             placeholder: String = "0",
+                             field: Field = .efficiency) -> some View {
+        HStack(spacing: 8) {
             Text(label)
                 .ggText(GG.Typo.rowLabel)
-            Spacer(minLength: 12)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             if !prefix.isEmpty {
                 Text(prefix)
                     .ggText(.system(size: 15, weight: .medium), color: GG.Ink.muted)
+                    .layoutPriority(1)
             }
             TextField(placeholder, text: text)
                 .keyboardType(decimal ? .decimalPad : .numberPad)
+                .focused($focus, equals: field)
                 .multilineTextAlignment(.trailing)
                 .font(.system(size: 15.5, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(maxWidth: 90)
+                .frame(width: 76)
+                .layoutPriority(1)
             Text(suffix)
                 .ggText(GG.Typo.footnote, color: GG.Ink.muted)
+                .lineLimit(1)
+                .fixedSize()
+                .layoutPriority(1)
         }
         .padding(.vertical, 15)
     }

@@ -204,7 +204,11 @@ struct MileageView: View {
                 }
                 .buttonStyle(.plain)
             } else if !visible.isEmpty {
-                Text("\(visible.count) drive\(visible.count == 1 ? "" : "s") · \(String(format: "%.0f mi", visibleMiles))")
+                // Counts and distances in the same line, each with its noun,
+                // so neither can be read as the other. One decimal because a
+                // filtered list can total under a mile and "0 mi" beside two
+                // real drives looks broken.
+                Text("\(visible.count) drive\(visible.count == 1 ? "" : "s") · \(String(format: "%.1f mi", visibleMiles))")
                     .ggText(GG.Typo.captionMuted, color: GG.Ink.muted)
             }
         }

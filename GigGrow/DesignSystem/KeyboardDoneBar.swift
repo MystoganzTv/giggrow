@@ -18,7 +18,15 @@ import SwiftUI
 import UIKit
 
 private struct KeyboardDoneBar: ViewModifier {
-    var focus: FocusState<Bool>.Binding
+    /// Clears whatever the screen focuses with.
+    ///
+    /// Taking a closure rather than a `FocusState<Bool>.Binding` is the whole
+    /// point of this revision. The first version only accepted `Bool`, so
+    /// the four screens that focus with an enum — the ones with more than one
+    /// field — couldn't use it and kept the trap. A helper that doesn't fit
+    /// the harder half of the cases doesn't remove a bug class, it just
+    /// documents it.
+    var clear: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -48,7 +56,7 @@ private struct KeyboardDoneBar: ViewModifier {
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done") { focus.wrappedValue = false }
+                    Button("Done", action: clear)
                         .fontWeight(.semibold)
                         .foregroundStyle(GG.Palette.violet300)
                 }
@@ -63,6 +71,13 @@ extension View {
     /// Pair it with `.focused($focus)` on every numeric field — the button
     /// clears that focus, so a field it doesn't know about stays stuck.
     func keyboardDoneBar(_ focus: FocusState<Bool>.Binding) -> some View {
-        modifier(KeyboardDoneBar(focus: focus))
+        modifier(KeyboardDoneBar(clear: { focus.wrappedValue = false }))
+    }
+
+    /// The same, for screens that track *which* field is focused.
+    func keyboardDoneBar<Field: Hashable>(
+        _ focus: FocusState<Field?>.Binding
+    ) -> some View {
+        modifier(KeyboardDoneBar(clear: { focus.wrappedValue = nil }))
     }
 }

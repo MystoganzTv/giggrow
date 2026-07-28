@@ -613,10 +613,13 @@ final class MileageTests: XCTestCase {
 
     /// Each year keeps its own table, so a prior-year total isn't recomputed
     /// with this year's brackets.
-    func testEachYearUsesItsOwnTable() {
-        XCTAssertNotEqual(TaxTables.table(for: 2025).standardDeduction,
-                          TaxTables.table(for: 2026).standardDeduction)
-        XCTAssertEqual(TaxTables.table(for: 2025).year, 2025)
+    func testEachYearUsesItsOwnTable() throws {
+        let year2025 = try XCTUnwrap(TaxTables.table(for: 2025))
+        let year2026 = try XCTUnwrap(TaxTables.table(for: 2026))
+
+        XCTAssertNotEqual(year2025.standardDeduction, year2026.standardDeduction)
+        XCTAssertEqual(year2025.year, 2025)
+        XCTAssertNil(TaxTables.table(for: 2024))
     }
 
     // MARK: Accumulating a real drive

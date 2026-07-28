@@ -27,7 +27,6 @@ struct LogShiftView: View {
         bySettingHour: 15, minute: 0, second: 0, of: .now
     ) ?? .now
     @State private var milesText = ""
-    @State private var idleText = ""
     @State private var note = ""
 
     /// Neither pad has a return key. This is the third screen to need it;
@@ -98,6 +97,7 @@ struct LogShiftView: View {
             }
             .onAppear(perform: loadIfNeeded)
         }
+        .keyboardDoneBar($isEditingField)
         .preferredColorScheme(.dark)
     }
 
@@ -162,14 +162,21 @@ struct LogShiftView: View {
     private var distanceCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Distance & downtime")
+                Text("Distance")
                     .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
 
                 numberField("Miles driven", text: $milesText, suffix: "mi")
-                RowDivider()
-                numberField("Time waiting", text: $idleText, suffix: "min")
 
-                Text("Waiting time is subtracted from the block to work out your active hours.")
+                // "Time waiting" was here, asking the driver to split their
+                // block into active and idle. Nobody knows that number
+                // without stopwatching their own shift, so it was either
+                // left blank or guessed — and a guess fed the hourly rate.
+                //
+                // It also fought the rest of the app, which rates a shift
+                // against time *online* on purpose: waiting for a ping is
+                // part of the job, and an hourly rate that excludes it
+                // flatters every driver who has a slow night.
+                Text("Total miles for the block, if you have them. Your hourly rate uses the whole time you were online — waiting included.")
                     .ggText(GG.Typo.footnote, color: GG.Ink.muted)
             }
         }
@@ -248,7 +255,7 @@ struct LogShiftView: View {
                     .ggText(GG.Typo.heroAmountSmall, tracking: GG.Typo.heroAmountSmallTracking)
 
                 HStack(spacing: 16) {
-                    summaryStat("Per hour", activeHours > 0 ? Money.cents(totalGross / activeHours) : "—")
+                    summaryStat("Per hour", hours > 0 ? Money.cents(totalGross / hours) : "—")
                     summaryStat("Per mile", miles > 0 ? Money.cents(totalGross / miles) : "—")
                     summaryStat("Apps on", "\(activeRowCount)")
                 }
@@ -329,8 +336,6 @@ struct LogShiftView: View {
         if isAggregate && recordedHours > 0 { return recordedHours }
         return max(end.timeIntervalSince(start), 0) / 3600
     }
-    private var idleHours: Double { min((Double(idleText) ?? 0) / 60, hours) }
-    private var activeHours: Double { max(hours - idleHours, 0) }
     private var miles: Double { Double(milesText) ?? 0 }
 
     private var durationLabel: String {
@@ -373,11 +378,6 @@ struct LogShiftView: View {
             for account in accounts where rows[account.name] == nil {
                 rows[account.name] = EntryRow()
             }
-            // The Settings idle threshold is the starting point, so the
-            // preference isn't a number that sits there doing nothing.
-            if let minutes = profiles.first?.idleThresholdMinutes, minutes > 0 {
-                idleText = "\(minutes)"
-            }
             return
         }
 
@@ -392,7 +392,6 @@ struct LogShiftView: View {
             recordedMinutesText = "\(Hours.split(recorded).minutes)"
         }
         milesText = shift.miles > 0 ? trimmed(shift.miles) : ""
-        idleText = shift.idleMinutes > 0 ? trimmed(shift.idleMinutes) : ""
         note = shift.note ?? ""
 
         for account in accounts {
@@ -423,7 +422,9 @@ struct LogShiftView: View {
         shift.start = start
         shift.end = end
         shift.miles = miles
-        shift.idleMinutes = Double(idleText) ?? 0
+        // No longer asked for. Left at zero so active hours equal online
+        // hours, which is the assumption every rate in the app already makes.
+        shift.idleMinutes = 0
         shift.note = note.isEmpty ? nil : note
 
         // Rebuild the earnings rather than diffing them — a shift has at most

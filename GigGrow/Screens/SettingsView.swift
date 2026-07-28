@@ -327,11 +327,21 @@ struct SettingsView: View {
         // every drive was recorded and correctly marked as not deductible.
         let personalMiles = drives.filter { $0.purpose == .personal }
             .reduce(0) { $0 + $1.miles }
+        let total = businessMiles + personalMiles
+
+        // "1 business · 5 personal" was two bare numbers next to two nouns,
+        // in a log whose rows are drives — so it read as a count of trips,
+        // and the unit it was actually in appeared nowhere. Written as a
+        // part of a whole with "mi" attached, there's nothing left to
+        // misread.
+        //
+        // One decimal, not none: `%.0f` turned a 0.4-mile business drive
+        // into "0", which is a deduction disappearing into a rounding.
         if businessMiles > 0 && personalMiles > 0 {
-            return String(format: "%.0f business · %.0f personal", businessMiles, personalMiles)
+            return String(format: "%.1f of %.1f mi for work", businessMiles, total)
         }
-        if businessMiles > 0 { return String(format: "%.0f business mi", businessMiles) }
-        return String(format: "%.0f personal mi", personalMiles)
+        if businessMiles > 0 { return String(format: "%.1f mi, all for work", total) }
+        return String(format: "%.1f mi, none for work", total)
     }
 
     private var mileageToggle: some View {

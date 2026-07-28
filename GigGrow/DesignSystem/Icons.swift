@@ -13,12 +13,32 @@ import SwiftUI
 private let iconStroke = StrokeStyle(lineWidth: 1.9, lineCap: .round, lineJoin: .round)
 
 enum GGIcon: String, CaseIterable, Identifiable {
+    /// Not a tab. `allCases` drives the tab bar, so the gear is declared
+    /// separately below rather than added here, where it would appear as a
+    /// sixth tab the moment it was defined.
+
     // Apps came out and Taxes went in. The per-platform split it showed
     // already lives inside Analytics, whereas "what do I owe" is the question
     // that brings drivers to an app like this and had no home at all.
-    case dashboard, taxes, analytics, vehicle, settings
+    //
+    // Then Settings came out and Expenses went in. Five is the most a phone
+    // tab bar holds without truncating titles, so this is a swap rather than
+    // an addition. Expenses is something you do — weekly, with a receipt in
+    // your hand — and it was buried in a menu behind a button labelled
+    // "Log". Settings is something you visit twice: once at the start and
+    // once when something's wrong. It now lives behind the gear on the
+    // dashboard, which is where iOS has put it for fifteen years.
+    case dashboard, taxes, analytics, vehicle, expenses
+
+    /// The gear. Deliberately excluded from the tab bar by `tabs` below
+    /// rather than by being a separate type, so `GGIconView` can draw it with
+    /// the same code path and at the same optical weight.
+    case settingsGear
 
     var id: String { rawValue }
+
+    /// What the tab bar shows. Five, which is the most a phone fits.
+    static let tabs: [GGIcon] = [.dashboard, .taxes, .analytics, .vehicle, .expenses]
 
     var title: String {
         switch self {
@@ -26,7 +46,8 @@ enum GGIcon: String, CaseIterable, Identifiable {
         case .taxes:     return "Taxes"
         case .analytics: return "Analytics"
         case .vehicle:   return "Vehicle"
-        case .settings:  return "Settings"
+        case .expenses:  return "Expenses"
+        case .settingsGear: return "Settings"
         }
     }
 }
@@ -43,7 +64,8 @@ struct GGIconView: View {
             case .taxes:     TaxGlyph().stroke(style: scaled)
             case .analytics: AnalyticsGlyph().stroke(style: scaled)
             case .vehicle:   VehicleGlyph().stroke(style: scaled)
-            case .settings:  SettingsGlyph().stroke(style: scaled)
+            case .expenses:  ExpensesGlyph().stroke(style: scaled)
+            case .settingsGear: SettingsGlyph().stroke(style: scaled)
             }
         }
         .frame(width: size, height: size)
@@ -240,5 +262,42 @@ struct PlusGlyph: Shape {
                     .foregroundStyle(GG.Palette.violet400)
             }
         }
+    }
+}
+
+/// A receipt with a torn edge — the object the tab is about.
+///
+/// Drawn rather than borrowed from SF Symbols so it sits at the same optical
+/// weight as the other four, which are all custom strokes.
+struct ExpensesGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.width, h = rect.height
+        let left = w * 0.24, right = w * 0.76
+        let top = h * 0.14, bottom = h * 0.86
+
+        // Body, with a zigzag along the bottom for the tear.
+        path.move(to: CGPoint(x: left, y: bottom))
+        path.addLine(to: CGPoint(x: left, y: top))
+        path.addLine(to: CGPoint(x: right, y: top))
+        path.addLine(to: CGPoint(x: right, y: bottom))
+
+        let steps = 4
+        let stepWidth = (right - left) / CGFloat(steps)
+        for step in 0..<steps {
+            let x = right - stepWidth * CGFloat(step) - stepWidth / 2
+            let y = step.isMultiple(of: 2) ? bottom - h * 0.09 : bottom
+            path.addLine(to: CGPoint(x: x, y: y))
+            path.addLine(to: CGPoint(x: x - stepWidth / 2,
+                                     y: step.isMultiple(of: 2) ? bottom : bottom - h * 0.09))
+        }
+
+        // Two lines of writing.
+        for row in 0..<2 {
+            let y = top + h * (0.28 + 0.18 * CGFloat(row))
+            path.move(to: CGPoint(x: left + w * 0.10, y: y))
+            path.addLine(to: CGPoint(x: right - w * 0.10, y: y))
+        }
+        return path
     }
 }

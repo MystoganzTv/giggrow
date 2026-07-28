@@ -18,6 +18,12 @@ struct ExpensesView: View {
 
     @Query(sort: \Expense.date, order: .reverse) private var expenses: [Expense]
 
+    /// True when this is a tab rather than a sheet.
+    ///
+    /// A tab has nowhere to be dismissed to, so the Done button has to go —
+    /// it was the one control that would have done nothing at all.
+    var embedded: Bool = false
+
     @State private var isAdding = false
     @State private var editing: Expense?
 
@@ -37,9 +43,11 @@ struct ExpensesView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(GG.Palette.screen, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                        .foregroundStyle(GG.Ink.secondary)
+                if !embedded {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                            .foregroundStyle(GG.Ink.secondary)
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {

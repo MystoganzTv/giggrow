@@ -20,6 +20,7 @@ struct DashboardView: View {
     var onShowMileage: () -> Void = {}
     var onShowExpenses: () -> Void = {}
     var onAddExpense: () -> Void = {}
+    var onShowSettings: () -> Void = {}
 
     @Query private var drives: [DriveRecord]
     @Query(sort: \Shift.start, order: .reverse) private var allShifts: [Shift]
@@ -425,6 +426,17 @@ struct DashboardView: View {
                 .accessibilityLabel("Shift history")
             }
 
+            // Settings gave up its tab so Expenses could have one. The gear
+            // in the top-right of the home screen is where iOS has kept it
+            // for fifteen years, so this isn't a compromise — it's where
+            // people look first anyway.
+            Button(action: onShowSettings) {
+                GGIconView(icon: .settingsGear, size: 21)
+                    .foregroundStyle(GG.Ink.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Settings")
+
             // An avatar in the corner reads as a profile button in every app
             // a driver already uses. It should behave like one.
             Button(action: onShowProfile) {
@@ -709,12 +721,10 @@ struct DashboardView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 9) {
-                    // The bar only means something when idle time is actually
-                    // known. With no split it sits permanently full, which
-                    // looks like a measurement of "100% productive".
-                    if snapshot.idleHours > 0 {
-                        SplitBar(activeShare: snapshot.activeShare)
-                    }
+                    // The active/idle bar was here. It's gone with the field
+                    // that fed it: nobody can report their own waiting time
+                    // accurately, so the split was a guess drawn as a
+                    // measurement.
                     // Was "Active 4h 22m · Idle 0m". No gig app publishes the
                     // split — Uber gives online time and nothing else — so idle
                     // was zero on every imported shift and the pair read as a

@@ -73,6 +73,7 @@ struct AddDriveView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .keyboardDoneBar($focus)
         .onAppear { focus = .miles }
     }
 

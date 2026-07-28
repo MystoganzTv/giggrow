@@ -14,7 +14,7 @@ struct GGTabBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(GGIcon.allCases) { icon in
+            ForEach(GGIcon.tabs) { icon in
                 Button {
                     // A quick fade rather than a slide keeps the tab switch
                     // feeling like the same surface reflowing.

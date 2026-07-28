@@ -143,14 +143,33 @@ struct TaxView: View {
 
     // MARK: Year
 
+    /// Scrolls, because the list only grows.
+    ///
+    /// A fixed HStack was fine with two years and would quietly start
+    /// clipping the oldest one somewhere around 2029. Horizontal scrolling
+    /// costs nothing when everything already fits.
     private var yearPicker: some View {
-        HStack(spacing: 12) {
-            ForEach(availableYears, id: \.self) { candidate in
-                let isSelected = candidate == year
-                Button {
-                    withAnimation(.easeOut(duration: 0.16)) { year = candidate }
-                } label: {
-                    Text(String(candidate))
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(availableYears, id: \.self) { candidate in
+                    let isSelected = candidate == year
+                    Button {
+                        withAnimation(.easeOut(duration: 0.16)) { year = candidate }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(String(candidate))
+                            // A year we have no published table for is marked
+                            // in the picker itself, so the caveat arrives
+                            // before the number rather than under it.
+                            // A dot, not a "~". The tilde already caused
+                            // trouble once on the analytics screen, where at
+                            // small sizes it read as a minus sign.
+                            if !TaxTables.isVerified(candidate) {
+                                Circle()
+                                    .fill(GG.Palette.amber)
+                                    .frame(width: 5, height: 5)
+                            }
+                        }
                         .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
                         .foregroundStyle(isSelected ? .white : GG.Ink.tertiary)
                         .padding(.horizontal, 16)
@@ -158,12 +177,17 @@ struct TaxView: View {
                         .background(isSelected ? AnyShapeStyle(GG.Gradients.segment)
                                                : AnyShapeStyle(GG.Surface.glassFaint),
                                     in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, 2)
         }
+        .scrollClipDisabled()
     }
+
+    /// True when the selected year has no published table yet.
+    private var usesEstimatedYear: Bool { !TaxTables.isVerified(year) }
 
     // MARK: Headline
 
@@ -286,7 +310,13 @@ struct TaxView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("This is an estimate, not a filing.")
                 .ggText(.system(size: 12.5, weight: .semibold), color: GG.Ink.secondary)
-            Text("Worked out for a single filer taking the standard deduction, with no other household income, no dependants or credits, and earnings below the Social Security wage cap. Federal figures are the IRS's published \(String(estimate.year)) brackets, checked \(TaxTables.table(for: year).verifiedOn). Your own return will differ — this is for knowing what to set aside, not for filing.")
+            if usesEstimatedYear {
+                Text("GigGrow doesn't have \(String(year)) figures yet. The IRS publishes them the autumn before, so this is worked out with \(String(TaxTables.latest.year))'s brackets and standard deduction — close, but not the real thing. Update the app once the new rates land.")
+                    .ggText(GG.Typo.footnote, color: GG.Palette.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text("Worked out for a single filer taking the standard deduction, with no other household income, no dependants or credits, and earnings below the Social Security wage cap. Federal figures are the IRS's published \(String(TaxTables.latest.year)) brackets, checked \(TaxTables.latest.verifiedOn). Your own return will differ — this is for knowing what to set aside, not for filing.")
                 .ggText(GG.Typo.footnote, color: GG.Ink.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -350,11 +380,28 @@ struct TaxView: View {
 
     // MARK: Data
 
+    /// Years you can look at: every one with published figures, plus any
+    /// later year you've actually driven in.
+    ///
+    /// The second half matters more than it looks. The IRS publishes next
+    /// year's brackets in the autumn, so a driver who opens this in January
+    /// 2027 on a build that shipped in 2026 has a year of real earnings and
+    /// no table for it. Refusing to show 2027 would look like the app lost
+    /// the data; showing it silently against 2026's brackets would be a
+    /// wrong number nobody checks. It's shown, marked, and explained.
+    ///
+    /// Nothing before the earliest table is ever offered — those years can't
+    /// be approximated from a later one, because the standard deduction
+    /// changed by thousands.
     private var availableYears: [Int] {
         let calendar = Calendar.gigGrow
+        let driven = Set(shifts.map { calendar.component(.year, from: $0.start) })
+        let known = Set(TaxTables.all.map(\.year))
         let thisYear = calendar.component(.year, from: .now)
-        let found = Set(shifts.map { calendar.component(.year, from: $0.start) })
-        return Array(found.union([thisYear])).sorted(by: >).prefix(4).map { $0 }
+
+        return Array(known.union(driven).union([thisYear]))
+            .filter { $0 >= TaxTables.earliestYear }
+            .sorted(by: >)
     }
 
     /// What was logged but left out, so the omission is visible rather than

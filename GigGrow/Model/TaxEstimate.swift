@@ -106,11 +106,33 @@ enum TaxTables {
         verifiedOn: "July 2026"
     )
 
-    static func table(for year: Int) -> TaxYear {
-        switch year {
-        case 2025: return year2025
-        default:   return year2026
-        }
+    /// Every year GigGrow has verified figures for, newest first.
+    ///
+    /// 2025 is the earliest on purpose. Going further back means finding and
+    /// checking a full bracket table per year, and a half-remembered one is
+    /// worse than none here — the number leaves this screen and goes on a
+    /// return. Adding a year is adding a struct to this array; nothing else
+    /// needs to change.
+    static let all: [TaxYear] = [year2026, year2025]
+
+    /// The most recent year with real figures.
+    static var latest: TaxYear { all[0] }
+
+    /// The earliest year the app will let you select.
+    static var earliestYear: Int { all.last?.year ?? latest.year }
+
+    static func isVerified(_ year: Int) -> Bool { table(for: year) != nil }
+
+    /// Nil for a year we don't have verified figures for.
+    ///
+    /// This used to be `default: return year2026`, which meant asking for
+    /// 2023 got you 2026's brackets and 2026's standard deduction under a
+    /// 2023 heading — a wrong tax figure returned with no indication that
+    /// anything was missing. On this screen that is the worst possible
+    /// failure: nobody checks a number that looks plausible, and the mistake
+    /// only surfaces when someone files on it.
+    static func table(for year: Int) -> TaxYear? {
+        all.first { $0.year == year }
     }
 
     // MARK: Self-employment
@@ -166,7 +188,13 @@ struct TaxEstimate {
                       deductibleExpenses: Double,
                       stateRate: Double) -> TaxEstimate {
 
-        let table = TaxTables.table(for: year)
+        // A year past the last published table — January 2027 on a copy of
+        // the app that shipped in 2026 — falls back to the newest figures
+        // rather than to nothing. The screen says so; see `usesEstimatedYear`
+        // in TaxView. Silently substituting them without saying is what the
+        // old `default: return year2026` did, and that is the version of this
+        // that gets someone into trouble.
+        let table = TaxTables.table(for: year) ?? TaxTables.latest
 
         let mileageDeduction = businessMiles * mileageRate
         // Floored at zero: a loss is a real thing on a return, but showing a
