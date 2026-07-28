@@ -210,15 +210,7 @@ struct ImportScreenshotView: View {
                     }
                 }
             }
-            .scrollDismissesKeyboard(.interactively)
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { isEditingField = false }
-                        .fontWeight(.semibold)
-                        .foregroundStyle(GG.Palette.violet400)
-                }
-            }
+            .keyboardDoneBar($isEditingField)
             .onChange(of: sources.map {
                 "\($0.platform)-\($0.period.rawValue)-\($0.date.timeIntervalSince1970)"
             }) { _, _ in
@@ -491,30 +483,18 @@ struct ImportScreenshotView: View {
                     }
 
                     RowDivider()
-                    figureRow("Gross", text: source.amountText, prefix: "$",
-                              alternatives: value.parsed.amounts.map {
-                                  (String(format: "%.2f", $0.value), context(of: $0.source))
-                              })
+                    figureRow("Gross", text: source.amountText, prefix: "$")
                     // The breakdown was on the screen and being thrown away.
                     // It's what answers "was this a good day or a good quest".
                     // Fare is editable too, and writes back through the
                     // total. Four independent boxes could disagree; a fare
                     // that adjusts the gross cannot.
                     RowDivider()
-                    figureRow("Fare", text: fareBinding(source), prefix: "$",
-                              alternatives: value.parsed.amounts.map {
-                                  (String(format: "%.2f", $0.value), context(of: $0.source))
-                              })
+                    figureRow("Fare", text: fareBinding(source), prefix: "$")
                     RowDivider()
-                    figureRow("of which tips", text: source.tipsText, prefix: "$",
-                              alternatives: value.parsed.amounts.map {
-                                  (String(format: "%.2f", $0.value), context(of: $0.source))
-                              })
+                    figureRow("of which tips", text: source.tipsText, prefix: "$")
                     RowDivider()
-                    figureRow("of which promotions", text: source.promotionsText, prefix: "$",
-                              alternatives: value.parsed.amounts.map {
-                                  (String(format: "%.2f", $0.value), context(of: $0.source))
-                              })
+                    figureRow("of which promotions", text: source.promotionsText, prefix: "$")
 
                     if value.gross > 0 {
                         breakdownSummary(value)
@@ -525,17 +505,11 @@ struct ImportScreenshotView: View {
                     // word for the thing it counts, and it is on the screen
                     // being imported.
                     figureRow(unitNoun(for: value.platform), text: source.unitsText,
-                              prefix: "",
-                              alternatives: value.parsed.units.map {
-                                  ("\($0.value)", context(of: $0.source))
-                              })
+                              prefix: "")
                     RowDivider()
                     timeRow(source)
                     RowDivider()
-                    figureRow("Miles", text: source.milesText, prefix: "",
-                              alternatives: value.parsed.miles.map {
-                                  (String(format: "%.0f", $0.value), context(of: $0.source))
-                              })
+                    figureRow("Miles", text: source.milesText, prefix: "")
                     if value.period == .week, let shares = value.dailyShares {
                         RowDivider()
                         splitRow(source, shares: shares)
@@ -669,7 +643,7 @@ struct ImportScreenshotView: View {
         Binding(
             get: {
                 let fare = source.wrappedValue.baseFare
-                return fare > 0 ? String(format: "%.2f", fare) : ""
+                return String(format: "%.2f", max(fare, 0))
             },
             set: { newValue in
                 guard let fare = Double(newValue) else { return }
@@ -740,55 +714,18 @@ struct ImportScreenshotView: View {
     private func timeRow(_ source: Binding<ImportedSource>) -> some View {
         let value = source.wrappedValue
 
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Time online")
-                    .ggText(GG.Typo.rowLabel)
-                if value.hours <= 0 {
-                    Text("required")
-                        .ggText(.system(size: 11, weight: .medium), color: GG.Palette.amber)
-                }
-
-                Spacer(minLength: 12)
-
-                unitField(source.hoursText, placeholder: "0", unit: "h", width: 46)
-                unitField(source.minutesText, placeholder: "00", unit: "m", width: 46)
+        HStack(spacing: 8) {
+            Text("Time online")
+                .ggText(GG.Typo.rowLabel)
+            if value.hours <= 0 {
+                Text("required")
+                    .ggText(.system(size: 11, weight: .medium), color: GG.Palette.amber)
             }
 
-            if value.parsed.hours.count > 1 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 7) {
-                        ForEach(Array(value.parsed.hours.prefix(5).enumerated()),
-                                id: \.offset) { _, candidate in
-                            let split = Hours.split(candidate.value)
-                            let isPicked = abs(candidate.value - value.hours) < 0.005
-                            Button {
-                                source.wrappedValue.hoursText = "\(split.hours)"
-                                source.wrappedValue.minutesText = "\(split.minutes)"
-                            } label: {
-                                // Written exactly as the screenshot writes it,
-                                // so it can be matched without arithmetic.
-                                Text(Hours.spaced(candidate.value))
-                                    .font(.system(size: 12.5, weight: .semibold))
-                                    .foregroundStyle(isPicked ? GG.Palette.violet300
-                                                              : GG.Ink.secondary)
-                                    .padding(.horizontal, 11)
-                                    .padding(.vertical, 7)
-                                    .background(GG.Surface.glassFaint,
-                                                in: RoundedRectangle(cornerRadius: 10,
-                                                                     style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .strokeBorder(isPicked
-                                                          ? GG.Palette.violet400.opacity(0.55)
-                                                          : Color.clear, lineWidth: 1)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
+            Spacer(minLength: 12)
+
+            unitField(source.hoursText, placeholder: "0", unit: "h", width: 46)
+            unitField(source.minutesText, placeholder: "00", unit: "m", width: 46)
         }
         .padding(.vertical, 14)
     }
@@ -898,18 +835,6 @@ struct ImportScreenshotView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE"
         return formatter.string(from: date)
-    }
-
-    /// The words around a parsed figure, trimmed to a chip's worth.
-    ///
-    /// The raw source is the whole OCR line — "Total Earnings $291.64" — so
-    /// stripping the number leaves exactly the label that identifies it.
-    private func context(of source: String) -> String {
-        let words = source
-            .replacingOccurrences(of: #"[$€£]?\s?-?[\d,]+\.?\d*"#,
-                                  with: "", options: .regularExpression)
-            .trimmingCharacters(in: CharacterSet(charactersIn: " .:·-–—"))
-        return words.count > 22 ? String(words.prefix(21)) + "…" : words
     }
 
     /// What this platform calls the thing it counts.
@@ -1055,79 +980,39 @@ struct ImportScreenshotView: View {
 
     // MARK: Fields
 
-    /// One field, plus the other readings the parser found.
+    /// One consistent editable row for every platform.
     ///
-    /// Each alternative carries the line it was read from. A row of bare
-    /// numbers — 258.20, 291.64, 26.12 — is unusable: there is no way to tell
-    /// which is the total and which is a tip without going back to the image.
-    /// "291.64 · Total Earnings" answers it on the spot.
+    /// The parser pre-fills the best structurally labelled value. Ambiguous
+    /// OCR candidates are not shown as tappable money: figures such as a
+    /// payout balance or a platform-computed hourly rate are context, not
+    /// interchangeable parts of the current period's earnings.
     private func figureRow(_ label: String, text: Binding<String>, prefix: String,
                            required: Bool = false,
-                           suffix: String = "",
-                           alternatives: [(value: String, source: String)]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(label)
-                    .ggText(GG.Typo.rowLabel)
-                if required && (Double(text.wrappedValue) ?? 0) <= 0 {
-                    Text("required")
-                        .ggText(.system(size: 11, weight: .medium), color: GG.Palette.amber)
-                }
-                Spacer(minLength: 12)
-                if !prefix.isEmpty {
-                    Text(prefix)
-                        .ggText(.system(size: 15, weight: .medium), color: GG.Ink.muted)
-                }
-                TextField("—", text: text)
-                    .keyboardType(.decimalPad)
-                    .focused($isEditingField)
-                    .multilineTextAlignment(.trailing)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: 90)
-
-                if !suffix.isEmpty {
-                    Text(suffix)
-                        .ggText(.system(size: 12.5, weight: .medium), color: GG.Ink.muted)
-                        .frame(minWidth: 54, alignment: .trailing)
-                }
+                           suffix: String = "") -> some View {
+        HStack {
+            Text(label)
+                .ggText(GG.Typo.rowLabel)
+            if required && (Double(text.wrappedValue) ?? 0) <= 0 {
+                Text("required")
+                    .ggText(.system(size: 11, weight: .medium), color: GG.Palette.amber)
             }
+            Spacer(minLength: 12)
+            if !prefix.isEmpty {
+                Text(prefix)
+                    .ggText(.system(size: 15, weight: .medium), color: GG.Ink.muted)
+            }
+            TextField("0", text: text)
+                .keyboardType(.decimalPad)
+                .focused($isEditingField)
+                .multilineTextAlignment(.trailing)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: 90)
 
-            // Other readings, so a wrong pick is one tap to fix.
-            if alternatives.count > 1 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 7) {
-                        ForEach(Array(alternatives.prefix(6).enumerated()), id: \.offset) { _, alt in
-                            let isPicked = text.wrappedValue == alt.value
-                            Button { text.wrappedValue = alt.value } label: {
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(alt.value)
-                                        .font(.system(size: 12.5, weight: .semibold))
-                                        .foregroundStyle(isPicked ? GG.Palette.violet300
-                                                                  : GG.Ink.secondary)
-                                    if !alt.source.isEmpty {
-                                        Text(alt.source)
-                                            .font(.system(size: 10, weight: .regular))
-                                            .foregroundStyle(GG.Ink.muted)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 7)
-                                .background(GG.Surface.glassFaint,
-                                            in: RoundedRectangle(cornerRadius: 10,
-                                                                 style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .strokeBorder(isPicked
-                                                      ? GG.Palette.violet400.opacity(0.55)
-                                                      : Color.clear, lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
+            if !suffix.isEmpty {
+                Text(suffix)
+                    .ggText(.system(size: 12.5, weight: .medium), color: GG.Ink.muted)
+                    .frame(minWidth: 54, alignment: .trailing)
             }
         }
         .padding(.vertical, 14)
@@ -1419,13 +1304,13 @@ struct ImportScreenshotView: View {
                     // Don't reuse a platform already claimed by another
                     // screenshot of the same block — that would double it.
                     platform: parsed.platformName ?? "",
-                    amountText: best.amount.map { String(format: "%.2f", $0) } ?? "",
-                    tipsText: parsed.tips.map { String(format: "%.2f", $0) } ?? "",
-                    promotionsText: parsed.promotions.map { String(format: "%.2f", $0) } ?? "",
-                    unitsText: best.units.map(String.init) ?? "",
-                    hoursText: best.hours.map { "\(Hours.split($0).hours)" } ?? "",
-                    minutesText: best.hours.map { "\(Hours.split($0).minutes)" } ?? "",
-                    milesText: best.miles.map { String(format: "%.0f", $0) } ?? "",
+                    amountText: best.amount.map { String(format: "%.2f", $0) } ?? "0.00",
+                    tipsText: parsed.tips.map { String(format: "%.2f", $0) } ?? "0.00",
+                    promotionsText: parsed.promotions.map { String(format: "%.2f", $0) } ?? "0.00",
+                    unitsText: best.units.map(String.init) ?? "0",
+                    hoursText: best.hours.map { "\(Hours.split($0).hours)" } ?? "0",
+                    minutesText: best.hours.map { "\(Hours.split($0).minutes)" } ?? "0",
+                    milesText: best.miles.map { String(format: "%.0f", $0) } ?? "0",
                     period: period,
                     date: resolved,
                     detectedNote: note,

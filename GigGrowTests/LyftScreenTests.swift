@@ -65,6 +65,38 @@ final class LyftScreenTests: XCTestCase {
                        "16 tipped rides is not an alternative completed count")
     }
 
+    /// Lyft leaves money from prior weeks in the Cash out balance. It can be
+    /// much larger than the current week and Vision may split the figure,
+    /// "balance" and "Cash out" into separate observations.
+    func testCashOutBalanceIsNeverPartOfTheCurrentWeekOrTips() {
+        let lines = [
+            line("Week", x: 0.347, width: 0.107, y: 0.131),
+            line("Jul 27-Aug 2", x: 0.407, width: 0.177, y: 0.195),
+            line("$57.20", x: 0.103, width: 0.774, y: 0.258, height: 0.081),
+            line("Your weekly stats", x: 0.038, width: 0.467, y: 0.608),
+            line("Rides completed", x: 0.041, width: 0.265, y: 0.712),
+            line("3", x: 0.401, width: 0.047, y: 0.712),
+            line("Rides rejected", x: 0.041, width: 0.227, y: 0.741),
+            line("6", x: 0.398, width: 0.051, y: 0.743),
+            line("EARNINGS STATS", x: 0.105, width: 0.250, y: 0.785),
+            line("$29.33", x: 0.105, width: 0.200, y: 0.815, height: 0.035),
+            line("per booked hr", x: 0.105, width: 0.220, y: 0.855),
+            line("Excluding tips", x: 0.105, width: 0.204, y: 0.880),
+            line("$1,055.51", x: 0.038, width: 0.220, y: 0.940),
+            line("balance", x: 0.260, width: 0.125, y: 0.940),
+            line("Cash out", x: 0.688, width: 0.196, y: 0.940)
+        ]
+
+        let parsed = EarningsParser.parse(lines)
+
+        XCTAssertEqual(parsed.platformName, "Lyft")
+        XCTAssertEqual(parsed.best.amount, 57.20)
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 29.33 })
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 1_055.51 })
+        XCTAssertNil(parsed.tips)
+        XCTAssertNil(parsed.promotions)
+    }
+
     func testSingleLetterWeekdayRowStillProducesSevenDailyShares() throws {
         // Vision dropped Tuesday entirely in the real screenshot. The
         // detector must reconstruct all seven columns from the remaining

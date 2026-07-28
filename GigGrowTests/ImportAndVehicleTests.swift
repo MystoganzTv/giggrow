@@ -391,8 +391,11 @@ final class ImportAndVehicleTests: XCTestCase {
 
     func testElectricVehiclesDoNotReportMPG() {
         XCTAssertFalse(FuelType.electric.burnsFuel)
-        XCTAssertEqual(FuelType.electric.efficiencyUnit, "mi/kWh")
-        XCTAssertEqual(FuelType.electric.costPerMileTitle, "Charging / mi")
+        XCTAssertEqual(FuelType.electric.efficiencyUnit, "miles/kWh")
+        XCTAssertEqual(FuelType.electric.costPerMileTitle, "Electricity cost")
+        XCTAssertEqual(FuelType.electric.costPerMileFootnote, "to drive 1 mile")
+        XCTAssertEqual(FuelType.electric.efficiencyTitle, "Energy efficiency")
+        XCTAssertEqual(FuelType.electric.efficiencyFootnote, "miles from 1 kWh")
 
         for fuel in [FuelType.gasoline, .diesel, .hybrid, .pluginHybrid] {
             XCTAssertTrue(fuel.burnsFuel, "\(fuel.label) burns fuel")
@@ -404,10 +407,10 @@ final class ImportAndVehicleTests: XCTestCase {
     /// of magnitude apart, so a swap is silently plausible without a check.
     func testImplausibleEfficiencyIsRejected() {
         XCTAssertTrue(FuelType.gasoline.isPlausibleEfficiency(39))
-        XCTAssertFalse(FuelType.gasoline.isPlausibleEfficiency(3.5), "3.5 mpg is a mistyped mi/kWh")
+        XCTAssertFalse(FuelType.gasoline.isPlausibleEfficiency(3.5), "3.5 mpg is a mistyped miles/kWh")
 
         XCTAssertTrue(FuelType.electric.isPlausibleEfficiency(3.5))
-        XCTAssertFalse(FuelType.electric.isPlausibleEfficiency(39), "39 mi/kWh is a mistyped mpg")
+        XCTAssertFalse(FuelType.electric.isPlausibleEfficiency(39), "39 miles/kWh is a mistyped mpg")
 
         XCTAssertFalse(FuelType.electric.isPlausibleEfficiency(0))
     }
@@ -419,7 +422,7 @@ final class ImportAndVehicleTests: XCTestCase {
         context.insert(ev)
         ev.efficiency = 3.5
         XCTAssertEqual(ev.efficiency, 3.5, accuracy: 0.05)
-        XCTAssertEqual(ev.efficiencyLabel, "3.5 mi/kWh")
+        XCTAssertEqual(ev.efficiencyLabel, "3.5 miles/kWh")
 
         let petrol = VehicleRecord(odometerBaseline: 1_000, fuelType: .gasoline)
         context.insert(petrol)

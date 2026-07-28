@@ -279,12 +279,14 @@ struct VehicleView: View {
 
     private func efficiencyTiles(_ vehicle: VehicleRecord) -> some View {
         TilePair {
-            // Both labels come from the fuel type: an EV is charged, not
-            // fuelled, and its efficiency has no gallons in it.
+            // Say what each number buys in driving terms. "Charging / mi"
+            // made a straightforward electricity cost sound like a charging
+            // statistic, and "Avg range" was inaccurate without battery size.
             StatTile(
                 eyebrow: vehicle.fuelType.costPerMileTitle,
                 value: vehicle.fuelCostPerMile > 0
                     ? String(format: "$%.2f", vehicle.fuelCostPerMile) : "—",
+                footnote: vehicle.fuelType.costPerMileFootnote,
                 valueFont: GG.Typo.metricSmall,
                 valueTracking: GG.Typo.metricSmallTracking
             )
@@ -292,6 +294,7 @@ struct VehicleView: View {
             StatTile(
                 eyebrow: vehicle.fuelType.efficiencyTitle,
                 value: vehicle.efficiencyLabel,
+                footnote: vehicle.fuelType.efficiencyFootnote,
                 valueFont: GG.Typo.metricSmall,
                 valueTracking: GG.Typo.metricSmallTracking
             )

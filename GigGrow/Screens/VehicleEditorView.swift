@@ -69,7 +69,7 @@ struct VehicleEditorView: View {
                     numberField("Odometer", text: $odometerText, suffix: "mi", decimal: false)
                     RowDivider()
                     numberField(fuelType.costPerMileTitle, text: $fuelCostText,
-                                suffix: "/ mi", decimal: true, prefix: "$")
+                                suffix: "/ mile", decimal: true, prefix: "$")
                     RowDivider()
                     numberField(fuelType.efficiencyTitle, text: $efficiencyText,
                                 suffix: fuelType.efficiencyUnit,
@@ -247,8 +247,8 @@ struct VehicleEditorView: View {
                 }
 
                 Text(fuelType.burnsFuel
-                     ? "Efficiency in \(fuelType.efficiencyUnit), and the per-mile cost is fuel."
-                     : "No mpg on an EV — efficiency is \(fuelType.efficiencyUnit), and the per-mile cost is charging.")
+                     ? "Enter what fuel costs to drive one mile and the car's average miles per gallon."
+                     : "Enter what electricity costs to drive one mile and how many miles the car travels per kWh.")
                     .ggText(GG.Typo.footnote, color: GG.Ink.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -261,7 +261,7 @@ struct VehicleEditorView: View {
         guard !fuelType.isPlausibleEfficiency(value) else { return nil }
         return fuelType.burnsFuel
             ? "\(Int(value)) mpg looks off for a \(fuelType.label.lowercased()) car."
-            : "\(value) mi/kWh looks off for an EV — most sit between 2 and 5."
+            : "\(value) miles/kWh looks off for an EV — most sit between 2 and 5."
     }
 
     private func numberField(_ label: String, text: Binding<String>, suffix: String,

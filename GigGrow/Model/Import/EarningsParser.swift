@@ -118,6 +118,27 @@ enum PayoutCues {
     }
 }
 
+/// Rates and averages calculated by the platform are context, not earnings.
+///
+/// Their values change every week, so filtering a known number is useless.
+/// The label is the stable part: "$29.33 per booked hr", "$18.40/hour" and
+/// "$4.25 per trip" must never become gross, tips or promotions.
+enum DerivedMetricCues {
+    static let all = [
+        "average", "avg ", "avg.", "hourly",
+        "per booked hr", "per booked hour",
+        "per active hr", "per active hour",
+        "per online hr", "per online hour",
+        "per hour", "per hr", "/hour", "/hr",
+        "per trip", "per ride", "per delivery", "per order",
+        "per mile", "/mile", "/mi"
+    ]
+
+    static func matches(_ lowercasedLine: String) -> Bool {
+        all.contains { lowercasedLine.contains($0) }
+    }
+}
+
 /// The named rows of an earnings breakdown.
 enum BreakdownKind: String, CaseIterable {
     case netFare, promotions, tips
@@ -173,8 +194,9 @@ enum EarningsParser {
             // into a plausible week's earnings.
             let isDeduction = lower.contains("-$") || lower.contains("−$")
                 || lower.hasPrefix("-") || lower.hasPrefix("−")
+            let isExcludedAmount = isNonPeriodAmount(line, in: lines)
 
-            if !isDeduction {
+            if !isDeduction && !isExcludedAmount {
                 for amount in currencyAmounts(in: line.text) {
                     result.amounts.append(
                         ParsedCandidate(
@@ -266,7 +288,7 @@ enum EarningsParser {
     // MARK: Cues
 
     private static let totalCues = ["total", "earnings", "earned", "you made",
-                                    "payout", "net pay", "gross", "balance"]
+                                    "net pay", "gross"]
     private static let unitCues  = ["trip", "trips", "delivery", "deliveries",
                                     "order", "orders", "batch", "batches",
                                     "ride", "rides", "job", "jobs"]
@@ -365,6 +387,7 @@ enum EarningsParser {
                 .sorted { $0.box.minX < $1.box.minX }
             if let money = sameRow.first(where: {
                 currencyAmounts(in: $0.text).first != nil
+                    && !isNonPeriodAmount($0, in: lines)
             }), let amount = currencyAmounts(in: money.text).first {
                 return ParsedCandidate(
                     value: amount,
@@ -381,6 +404,7 @@ enum EarningsParser {
                 .sorted { $0.topDownY < $1.topDownY }
             if let money = below.first(where: {
                 currencyAmounts(in: $0.text).first != nil
+                    && !isNonPeriodAmount($0, in: lines)
             }), let amount = currencyAmounts(in: money.text).first {
                 return ParsedCandidate(
                     value: amount,
@@ -568,6 +592,10 @@ enum EarningsParser {
             guard cues.contains(where: { lower.contains($0) }) else { continue }
             // A row that is its own total isn't a breakdown line.
             guard !lower.contains("total") else { continue }
+            // "Per booked hour · Excluding tips" describes a rate; it is not
+            // a tips row and must never borrow money from a later card.
+            guard !lower.contains("excluding tip"),
+                  !lower.contains("without tip") else { continue }
             // Nor is the balance waiting to be paid out — that money was
             // already earned and counted somewhere above.
             guard !PayoutCues.matches(lower) else { continue }
@@ -585,7 +613,8 @@ enum EarningsParser {
                 // A negative is a fee Uber kept, not something earned.
                 let text = line.text
                 guard !text.contains("-$"), !text.contains("−$"),
-                      !text.hasPrefix("-"), !text.hasPrefix("−") else { continue }
+                      !text.hasPrefix("-"), !text.hasPrefix("−"),
+                      !isNonPeriodAmount(line, in: lines) else { continue }
                 if let amount = currencyAmounts(in: text).first { return amount }
             }
 
@@ -601,11 +630,54 @@ enum EarningsParser {
             for line in below {
                 let text = line.text
                 guard !text.contains("-$"), !text.contains("−$"),
-                      !text.hasPrefix("-"), !text.hasPrefix("−") else { continue }
+                      !text.hasPrefix("-"), !text.hasPrefix("−"),
+                      !isNonPeriodAmount(line, in: lines) else { continue }
                 if let amount = currencyAmounts(in: text).first { return amount }
             }
         }
         return nil
+    }
+
+    /// A payout balance can arrive from Vision as one line
+    /// (`"$1,055.51 balance"`) or as separate amount, label and `Cash out`
+    /// observations. In either shape it is money earned in an earlier period,
+    /// not part of the week currently shown.
+    private static func isPayoutRelated(_ line: RecognisedLine,
+                                        in lines: [RecognisedLine]) -> Bool {
+        if PayoutCues.matches(line.text.lowercased()) { return true }
+
+        return lines.contains { neighbour in
+            guard neighbour.text != line.text,
+                  PayoutCues.matches(neighbour.text.lowercased())
+            else { return false }
+
+            return verticallyOverlaps(neighbour.box, line.box)
+                || abs(neighbour.topDownY - line.topDownY) < 0.035
+        }
+    }
+
+    /// A derived rate is often split into an amount above and a caption below.
+    /// Require horizontal overlap for nearby captions so an unrelated rate
+    /// elsewhere on the dashboard cannot suppress the weekly headline.
+    private static func isDerivedMetricRelated(_ line: RecognisedLine,
+                                               in lines: [RecognisedLine]) -> Bool {
+        if DerivedMetricCues.matches(line.text.lowercased()) { return true }
+
+        return lines.contains { neighbour in
+            guard neighbour.text != line.text,
+                  DerivedMetricCues.matches(neighbour.text.lowercased())
+            else { return false }
+
+            return verticallyOverlaps(neighbour.box, line.box)
+                || (abs(neighbour.topDownY - line.topDownY) < 0.085
+                    && horizontallyOverlaps(neighbour.box, line.box))
+        }
+    }
+
+    private static func isNonPeriodAmount(_ line: RecognisedLine,
+                                          in lines: [RecognisedLine]) -> Bool {
+        isPayoutRelated(line, in: lines)
+            || isDerivedMetricRelated(line, in: lines)
     }
 
     /// Two boxes share a row when their vertical spans mostly coincide.

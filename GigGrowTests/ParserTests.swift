@@ -139,7 +139,23 @@ final class ParserTests: XCTestCase {
     func testMoneyOnAMileageLineIsNotReadAsMiles() {
         let parsed = EarningsParser.parse(lines(["Uber", "Per mile $2.42"]))
         XCTAssertTrue(parsed.miles.isEmpty)
-        XCTAssertEqual(parsed.amounts.first?.value, 2.42)
+        XCTAssertTrue(parsed.amounts.isEmpty,
+                      "a per-mile rate is not earnings for the imported period")
+    }
+
+    func testDerivedRatesAndPayoutBalancesAreNotEarningsCandidates() {
+        let parsed = EarningsParser.parse(lines([
+            "Lyft",
+            "Weekly earnings $144.00",
+            "Your weekly stats",
+            "Rides completed 8",
+            "Average per hour $41.87",
+            "Cash out balance $923.14"
+        ]))
+
+        XCTAssertEqual(parsed.best.amount, 144.00)
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 41.87 })
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 923.14 })
     }
 
     // MARK: Dates
