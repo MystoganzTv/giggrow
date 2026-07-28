@@ -3,8 +3,9 @@
 Earnings, mileage and tax for drivers running more than one gig app.
 
 Open `GigGrow.xcodeproj` in Xcode 16 or later and run. iOS 17+, SwiftUI and
-SwiftData, portrait only. No account, no server: everything is stored on the
-device and nothing leaves it.
+SwiftData, portrait only. No account, no server of ours: data lives on the
+device, and — if the driver is signed in to iCloud — syncs through CloudKit
+into *their own* private database, which the developer cannot read.
 
 ## What it does
 

@@ -19,7 +19,11 @@ enum TestStore {
     @MainActor
     static func makeContext() throws -> ModelContext {
         let schema = Schema(GigGrowSchema.all)
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
     }
@@ -86,7 +90,7 @@ enum Fixture {
             let earning = PlatformEarning(account: account, gross: gross, trips: units)
             context.insert(earning)
             earning.shift = shift
-            shift.earnings.append(earning)
+            shift.earningItems.append(earning)
         }
         return shift
     }

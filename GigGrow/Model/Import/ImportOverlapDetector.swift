@@ -100,7 +100,7 @@ enum ImportReconciler {
         calendar: Calendar = .gigGrow
     ) -> [StoredEarningsOverlap] {
         shifts.flatMap { shift in
-            shift.earnings.compactMap { earning in
+            shift.earningItems.compactMap { earning in
                 guard let platform = earning.account?.name else { return nil }
                 let storedCoverage = ImportOverlapDetector.coverage(
                     of: shift,
@@ -172,14 +172,14 @@ enum ImportReconciler {
         for group in byShift.values {
             guard let shift = group.first?.shift else { continue }
             let ids = Set(group.map { $0.earning.persistentModelID })
-            shift.earnings.removeAll { ids.contains($0.persistentModelID) }
+            shift.earningItems.removeAll { ids.contains($0.persistentModelID) }
 
             for overlap in group
             where removedEarningIDs.insert(overlap.earning.persistentModelID).inserted {
                 context.delete(overlap.earning)
             }
 
-            if shift.earnings.isEmpty {
+            if shift.earningItems.isEmpty {
                 context.delete(shift)
             }
         }

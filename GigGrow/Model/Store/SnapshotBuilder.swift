@@ -93,7 +93,7 @@ enum ShiftAttribution {
         let total = shift.gross
         guard total > 0 else {
             // Nothing earned: split evenly rather than dividing by zero.
-            let n = max(shift.earnings.count, 1)
+            let n = max(shift.earningItems.count, 1)
             return 1 / Double(n)
         }
         return earning.gross / total
@@ -143,7 +143,7 @@ extension EarningsSnapshot {
         var fareTotal = 0.0
         var tipsTotal = 0.0
         var promotionsTotal = 0.0
-        for earning in inRange.flatMap(\.earnings) {
+        for earning in inRange.flatMap(\.earningItems) {
             let rowGross = max(earning.gross, 0)
             let rowTips = min(max(earning.tips, 0), rowGross)
             let rowPromotions = min(
@@ -173,10 +173,10 @@ extension EarningsSnapshot {
             var sharedHours = 0.0
 
             for shift in inRange {
-                for earning in shift.earnings where earning.account?.name == account.name {
+                for earning in shift.earningItems where earning.account?.name == account.name {
                     accGross += earning.gross
                     let earnedHours = ShiftAttribution.hours(of: earning, in: shift)
-                    if shift.earnings.count > 1 { sharedHours += earnedHours }
+                    if shift.earningItems.count > 1 { sharedHours += earnedHours }
                     accHours += earnedHours
                     accMiles += ShiftAttribution.miles(of: earning, in: shift)
                     accTrips += earning.trips
@@ -195,7 +195,7 @@ extension EarningsSnapshot {
             guard accGross > 0 || accTrips > 0 else { continue }
 
             let prevGross = previousShifts.reduce(0.0) { total, shift in
-                total + shift.earnings
+                total + shift.earningItems
                     .filter { $0.account?.name == account.name }
                     .reduce(0) { $0 + $1.gross }
             }

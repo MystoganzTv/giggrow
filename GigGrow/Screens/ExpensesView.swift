@@ -158,6 +158,16 @@ struct ExpensesView: View {
 
                 Spacer(minLength: 8)
 
+                // Which expenses could survive being questioned, visible
+                // without opening any of them. An expense with no receipt
+                // isn't wrong — it just rests on your word.
+                if expense.hasReceipt {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(GG.Ink.tertiary)
+                        .accessibilityLabel("Receipt attached")
+                }
+
                 Text(Money.cents(expense.amount))
                     .ggText(.system(size: 16, weight: .semibold), tracking: -0.3)
             }

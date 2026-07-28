@@ -18,6 +18,8 @@ struct DashboardView: View {
     var onShowProfile: () -> Void = {}
     var onImport: () -> Void = {}
     var onShowMileage: () -> Void = {}
+    var onShowExpenses: () -> Void = {}
+    var onAddExpense: () -> Void = {}
 
     @Query private var drives: [DriveRecord]
     @Query(sort: \Shift.start, order: .reverse) private var allShifts: [Shift]
@@ -70,6 +72,7 @@ struct DashboardView: View {
             earningsByApp
             rateTiles
             hoursCard
+            expensesCard
         }
     }
 
@@ -90,6 +93,7 @@ struct DashboardView: View {
                 setAsideTiles
                 rateTiles
                 hoursCard
+                expensesCard
             }
             .frame(minWidth: 310, idealWidth: 350, maxWidth: 380,
                    alignment: .topLeading)
@@ -218,6 +222,55 @@ struct DashboardView: View {
         }
 
         return items
+    }
+
+    // MARK: Expenses
+
+    /// Expenses, on the screen people actually open.
+    ///
+    /// They were reachable only from a menu behind a button labelled "Log",
+    /// which hid the whole feature: a driver who wanted to record a tank of
+    /// fuel had to guess that "Log" also meant "spend". Worse, the menu is
+    /// hidden on Settings and on an empty dashboard, so the one place a new
+    /// driver looks had no route to it at all.
+    ///
+    /// Deliberately last on the dashboard. Expenses matter at tax time, not
+    /// at the end of a shift — but they have to be visible to be remembered
+    /// at all, and a receipt is only worth logging on the day you got it.
+    private var expensesCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Expenses")
+                        .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
+                    Spacer(minLength: 8)
+                    Button(action: onShowExpenses) {
+                        Text("All")
+                            .ggText(.system(size: 13, weight: .medium),
+                                    color: GG.Palette.violet300)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text("Fuel, tolls, a phone mount, a brake job. Photograph the receipt and GigGrow reads the amount — and keeps the picture, which is the part the IRS asks for.")
+                    .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(action: onAddExpense) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Add an expense")
+                            .font(.system(size: 14.5, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(GG.Gradients.segment, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: Empty

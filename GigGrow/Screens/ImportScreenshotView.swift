@@ -1471,7 +1471,7 @@ struct ImportScreenshotView: View {
                                               trips: Int(source.unitsText) ?? 0)
                 context.insert(earning)
                 earning.shift = shift
-                shift.earnings.append(earning)
+                shift.earningItems.append(earning)
                 byAccount[source.platform] = earning
             }
 
@@ -1557,7 +1557,7 @@ struct ImportScreenshotView: View {
                 )
                 context.insert(earning)
                 earning.shift = shift
-                shift.earnings.append(earning)
+                shift.earningItems.append(earning)
             }
             created += 1
         }

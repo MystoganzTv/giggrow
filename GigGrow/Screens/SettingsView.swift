@@ -11,6 +11,7 @@
 
 import SwiftUI
 import SwiftData
+import CloudKit
 
 struct SettingsView: View {
     let snapshot: EarningsSnapshot
@@ -43,11 +44,12 @@ struct SettingsView: View {
     /// than a stored flag that could disagree with reality.
     var tracker: MileageTracker? = nil
 
-    @State private var isShowingDrives = false
-    @State private var isPickingState = false
-    @State private var isConfirmingErase = false
-    @State private var isManagingPlatforms = false
+    @State private var isImportingBackup = false
+    @State private var pendingBackup: GigGrowBackup?
+    @State private var iCloudStatus = "Checking…"
     @State private var route: Route?
+    @State private var prompt: Prompt?
+    @State private var backupDocument: GigGrowBackupDocument?
 
     /// Bound to the profile so the picker writes straight through.
     private var stateBinding: Binding<String> {
@@ -61,9 +63,37 @@ struct SettingsView: View {
 
     /// One case per destination, so a row can't be added without deciding
     /// where it goes.
+    ///
+    /// Every sheet on this screen goes through here, and that isn't tidiness.
+    /// SwiftUI resolves `.sheet`, `.alert` and `.fileImporter` against the
+    /// view they're attached to, and stacking them competes: past three or
+    /// four on one view the later ones stop firing, silently, with no warning
+    /// and no crash. This screen had eight. The ones at the bottom of the
+    /// chain — restore-from-Files and the alert reporting whether a backup
+    /// worked — were the ones that never appeared, which is exactly what a
+    /// broken backup feature looks like from the outside.
+    ///
+    /// So: one sheet, one alert, one file importer. Adding a destination
+    /// means adding a case, not another modifier.
     private enum Route: String, Identifiable {
         case profile, taxRate, maintenanceRate, mileageRate, privacy
+        case apps, mileageLog, state
         var id: String { rawValue }
+    }
+
+    /// Everything that interrupts with a question or a result.
+    private enum Prompt: Identifiable {
+        case erase
+        case restore
+        case notice(BackupNotice)
+
+        var id: String {
+            switch self {
+            case .erase:            return "erase"
+            case .restore:          return "restore"
+            case .notice(let one):  return "notice:\(one.title)"
+            }
+        }
     }
 
     var body: some View {
@@ -86,30 +116,55 @@ struct SettingsView: View {
         .sheet(item: $route) { destination in
             editor(for: destination)
         }
-        .alert("Erase all data?", isPresented: $isConfirmingErase) {
-            // Cancel first, so the default action is the safe one.
-            Button("Cancel", role: .cancel) { }
-            Button("Erase everything", role: .destructive) {
-                Seed.wipe(context)
-            }
-        } message: {
-            Text("Every shift, imported screenshot, weekly total, recorded drive, expense and vehicle record is deleted from this phone. Export first if you want to keep any of it — this can't be undone.")
+        .alert(item: $prompt) { prompt in
+            alert(for: prompt)
         }
-        .sheet(isPresented: $isManagingPlatforms) {
-            ManagePlatformsView()
+        .fileImporter(
+            isPresented: $isImportingBackup,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            loadBackup(result)
         }
-        .sheet(isPresented: $isShowingDrives) {
-            MileageView(tracker: tracker)
+        .task { await refreshICloudStatus() }
+        .task(id: shifts.count + expenses.count + drives.count) {
+            // Rebuilt when the data changes, not when the view redraws.
+            backupDocument = makeBackupDocument()
         }
-        .sheet(isPresented: $isPickingState) {
-            StatePickerView(selection: stateBinding) { state in
-                // Offer the suggestion, don't impose it — the driver may have
-                // deliberately set their own rate already.
-                if let profile, profile.taxRate == 25 {
-                    profile.taxRate = state.suggestedTaxRate
-                    save()
-                }
-            }
+    }
+
+    private func alert(for prompt: Prompt) -> Alert {
+        switch prompt {
+        case .erase:
+            return Alert(
+                title: Text("Erase all data?"),
+                message: Text("Every shift, imported screenshot, weekly total, recorded drive, expense and vehicle record is deleted. When iCloud sync is available, that deletion also reaches your other devices. Back up first if you want to keep anything — this can't be undone."),
+                // Cancel is the secondary button, which is where the system
+                // puts the default action.
+                primaryButton: .destructive(Text("Erase everything")) {
+                    Seed.wipe(context)
+                },
+                secondaryButton: .cancel()
+            )
+
+        case .restore:
+            return Alert(
+                title: Text("Replace GigGrow data?"),
+                message: Text(pendingBackup.map {
+                    "This replaces GigGrow with \($0.summary). When iCloud sync is available, the restored data also becomes the copy used by your other devices. A fresh backup first is recommended."
+                } ?? "This replaces everything currently in GigGrow."),
+                primaryButton: .destructive(Text("Restore backup")) {
+                    restorePendingBackup()
+                },
+                secondaryButton: .cancel { pendingBackup = nil }
+            )
+
+        case .notice(let notice):
+            return Alert(
+                title: Text(notice.title),
+                message: Text(notice.message),
+                dismissButton: .default(Text("OK"))
+            )
         }
     }
 
@@ -121,6 +176,7 @@ struct SettingsView: View {
             moneyGroup
             trackingGroup
             generalGroup
+            helpAndLegalGroup
 
             #if DEBUG
             debugSection
@@ -145,6 +201,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
                 trackingGroup
                 generalGroup
+                helpAndLegalGroup
 
                 #if DEBUG
                 debugSection
@@ -194,13 +251,13 @@ struct SettingsView: View {
             // off. Losing a feature to a navigation change is the kind of
             // thing nobody notices until a driver asks where it went.
             SettingsRow(label: "Your apps", value: activePlatformSummary) {
-                isManagingPlatforms = true
+                route = .apps
             }
             RowDivider(color: GG.Surface.dividerSoft)
             SettingsRow(label: "State",
                         value: StateDirectory.state(code: profile?.stateCode ?? "")?.name
                                ?? "Not set") {
-                isPickingState = true
+                route = .state
             }
             RowDivider(color: GG.Surface.dividerSoft)
             SettingsRow(label: "Tax set-aside",
@@ -214,13 +271,13 @@ struct SettingsView: View {
             SettingsRow(label: "Mileage rate", value: mileageRateLabel) {
                 route = .mileageRate
             }
-            RowDivider(color: GG.Surface.dividerSoft)
-            SettingsRow(label: "Payout account",
-                        value: (profile?.payoutLast4).flatMap { $0.isEmpty ? nil : "•••• \($0)" }
-                               ?? "Not set") {
-                route = .profile
-            }
         }
+        // "Payout account" used to sit here. It asked for the last four
+        // digits of a bank account and then nothing read them: no screen
+        // reconciled a deposit, no export carried them, no figure changed.
+        // Asking a driver for any part of a bank detail to display it back
+        // to them is a cost with no return, and it makes the privacy answer
+        // longer for nothing. Removed rather than justified.
     }
 
     // MARK: Tracking
@@ -232,7 +289,7 @@ struct SettingsView: View {
             RowDivider(color: GG.Surface.dividerSoft)
             SettingsRow(label: "Mileage log",
                         value: mileageSummary) {
-                isShowingDrives = true
+                route = .mileageLog
             }
 
 
@@ -330,6 +387,34 @@ struct SettingsView: View {
 
     private var generalGroup: some View {
         SettingsGroup(title: "General") {
+            SettingsRow(label: "iCloud sync",
+                        value: iCloudStatus,
+                        showsChevron: false) { }
+                .allowsHitTesting(false)
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
+            if let document = backupDocument {
+                ShareLink(
+                    item: document,
+                    preview: SharePreview("Complete GigGrow backup")
+                ) {
+                    shareRowLabel("Back up GigGrow", value: "Everything")
+                }
+            } else {
+                shareRowLabel("Back up GigGrow", value: "Unavailable")
+                    .opacity(0.5)
+            }
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
+            SettingsRow(label: "Restore a backup",
+                        value: "From Files") {
+                isImportingBackup = true
+            }
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
             // ShareLink is the row, so it works without a chevron that lies.
             ShareLink(
                 item: CSVDocument(name: "giggrow-shifts", text: CSVExport.shifts(shifts)),
@@ -376,7 +461,45 @@ struct SettingsView: View {
                         value: storedSummary,
                         showsChevron: false,
                         destructive: true) {
-                isConfirmingErase = true
+                prompt = .erase
+            }
+        }
+    }
+
+    private var helpAndLegalGroup: some View {
+        SettingsGroup(title: "Help & legal") {
+            ShareLink(item: GigGrowLinks.appStore) {
+                shareRowLabel("Share GigGrow", value: "")
+            }
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
+            Link(destination: GigGrowLinks.writeReview) {
+                shareRowLabel("Rate GigGrow", value: "")
+            }
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
+            Link(destination: GigGrowLinks.support) {
+                shareRowLabel("Contact support", value: "")
+            }
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
+            Link(destination: GigGrowLinks.privacyPolicy) {
+                shareRowLabel("Privacy policy", value: "")
+            }
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
+            Link(destination: GigGrowLinks.terms) {
+                shareRowLabel("Terms of use", value: "")
+            }
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
+            Link(destination: GigGrowLinks.refunds) {
+                shareRowLabel("App Store refunds", value: "Apple")
             }
         }
     }
@@ -402,6 +525,89 @@ struct SettingsView: View {
         }
         .padding(.vertical, 15)
         .contentShape(Rectangle())
+    }
+
+    /// The whole database, serialised.
+    ///
+    /// This was a computed property read directly by `body`, which meant a
+    /// full fetch of every model plus a JSON encode on *every* redraw of the
+    /// Settings screen — each toggle, each keystroke, each time the iCloud
+    /// status refreshed. Now that receipt photos are in the file, that is
+    /// megabytes of work per frame.
+    ///
+    /// It's built once when the screen appears, and again after a change,
+    /// which is the only time it can be out of date.
+    private func makeBackupDocument() -> GigGrowBackupDocument? {
+        guard let backup = try? GigGrowBackup.capture(from: context),
+              let data = try? backup.encoded() else {
+            return nil
+        }
+        return GigGrowBackupDocument(
+            data: data,
+            filename: backup.suggestedFilename
+        )
+    }
+
+    @MainActor
+    private func refreshICloudStatus() async {
+        do {
+            let status = try await CKContainer(
+                identifier: "iCloud.com.giggrow.app"
+            ).accountStatus()
+            switch status {
+            case .available:
+                iCloudStatus = "On · Private"
+            case .noAccount:
+                iCloudStatus = "Sign in to iCloud"
+            case .restricted:
+                iCloudStatus = "Restricted"
+            case .temporarilyUnavailable:
+                iCloudStatus = "Temporarily unavailable"
+            case .couldNotDetermine:
+                iCloudStatus = "Unavailable"
+            @unknown default:
+                iCloudStatus = "Unavailable"
+            }
+        } catch {
+            iCloudStatus = "Unavailable"
+        }
+    }
+
+    private func loadBackup(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            let hasAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if hasAccess { url.stopAccessingSecurityScopedResource() }
+            }
+            let data = try Data(contentsOf: url)
+            pendingBackup = try GigGrowBackup.decoded(from: data)
+            prompt = .restore
+        } catch {
+            prompt = .notice(BackupNotice(
+                title: "Couldn't read backup",
+                message: error.localizedDescription
+            ))
+        }
+    }
+
+    private func restorePendingBackup() {
+        guard let backup = pendingBackup else { return }
+        do {
+            try backup.restore(into: context)
+            pendingBackup = nil
+            prompt = .notice(BackupNotice(
+                title: "Backup restored",
+                message: "Restored: \(backup.summary)."
+            ))
+        } catch {
+            prompt = .notice(BackupNotice(
+                title: "Restore failed",
+                message: "Your previous data was kept. \(error.localizedDescription)"
+            ))
+        }
     }
 
     // MARK: Editors
@@ -443,9 +649,30 @@ struct SettingsView: View {
 
             case .privacy:
                 PrivacySheet()
+
+            case .apps:
+                ManagePlatformsView()
+
+            case .mileageLog:
+                MileageView(tracker: tracker)
+
+            case .state:
+                StatePickerView(selection: stateBinding) { state in
+                    // Offer the suggestion, don't impose it — the driver may
+                    // have deliberately set their own rate already.
+                    if profile.taxRate == 25 {
+                        profile.taxRate = state.suggestedTaxRate
+                        save()
+                    }
+                }
             }
         } else {
-            PrivacySheet()
+            // No profile yet. Only the routes that don't need one can open.
+            switch route {
+            case .apps:       ManagePlatformsView()
+            case .mileageLog: MileageView(tracker: tracker)
+            default:          PrivacySheet()
+            }
         }
     }
 
@@ -487,6 +714,12 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.top, 14)
     }
+}
+
+private struct BackupNotice: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
 }
 
 // MARK: - Row components

@@ -290,8 +290,8 @@ struct VehicleEditorView: View {
     private var deleteButton: some View {
         Button(role: .destructive) {
             if let vehicle = editing {
-                let records = vehicle.service
-                vehicle.service = []
+                let records = vehicle.serviceItems
+                vehicle.serviceItems = []
                 for record in records { context.delete(record) }
                 context.delete(vehicle)
                 try? context.save()

@@ -396,7 +396,7 @@ struct LogShiftView: View {
         note = shift.note ?? ""
 
         for account in accounts {
-            if let earning = shift.earnings.first(where: { $0.account?.name == account.name }) {
+            if let earning = shift.earningItems.first(where: { $0.account?.name == account.name }) {
                 rows[account.name] = EntryRow(
                     isOn: true,
                     gross: String(format: "%.2f", earning.gross),
@@ -429,8 +429,8 @@ struct LogShiftView: View {
         // Rebuild the earnings rather than diffing them — a shift has at most
         // a handful. Detach first, then delete: mutating the relationship
         // while iterating it is asking for trouble.
-        let stale = shift.earnings
-        shift.earnings = []
+        let stale = shift.earningItems
+        shift.earningItems = []
         for earning in stale {
             context.delete(earning)
         }
@@ -444,7 +444,7 @@ struct LogShiftView: View {
             )
             context.insert(earning)
             earning.shift = shift
-            shift.earnings.append(earning)
+            shift.earningItems.append(earning)
         }
 
         try? context.save()
@@ -454,8 +454,8 @@ struct LogShiftView: View {
     /// Same action as the history list's context menu, somewhere obvious.
     private func deleteShift() {
         guard let shift = editing else { return }
-        let earnings = shift.earnings
-        shift.earnings = []
+        let earnings = shift.earningItems
+        shift.earningItems = []
         for earning in earnings { context.delete(earning) }
         context.delete(shift)
         try? context.save()

@@ -72,7 +72,7 @@ final class ImportReconciliationTests: XCTestCase {
         let earning = PlatformEarning(account: uber, gross: 700, trips: 30)
         context.insert(earning)
         earning.shift = storedWeek
-        storedWeek.earnings.append(earning)
+        storedWeek.earningItems.append(earning)
         try context.save()
 
         let incoming = ImportCoverage(

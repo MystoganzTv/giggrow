@@ -37,6 +37,12 @@ struct LogExpenseView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var isShowingCamera = false
     @State private var receiptImage: UIImage?
+    /// True when `receiptImage` came out of the store rather than the picker.
+    /// Re-encoding a JPEG that's already been through this once would lose
+    /// quality on every edit for no reason, so a saved receipt is passed
+    /// back through untouched.
+    @State private var storedReceipt = false
+    @State private var originalReceiptData: Data?
     @State private var receipt: ParsedReceipt?
     @State private var isReading = false
     @State private var readError: String?
@@ -49,7 +55,11 @@ struct LogExpenseView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
-                        if editing == nil { receiptCard }
+                        // Shown when editing too: the receipt is the reason
+                        // the expense holds up, so it has to be visible from
+                        // the row that shows the figure — and replaceable
+                        // when the first photo came out unreadable.
+                        receiptCard
                         amountCard
                         categoryCard
                         detailsCard
@@ -158,7 +168,13 @@ struct LogExpenseView: View {
         let isSelected = option == category
 
         return Button {
-            withAnimation(.easeOut(duration: 0.14)) { category = option }
+            withAnimation(.easeOut(duration: 0.14)) {
+                category = option
+                // Meals start off, everything else starts on. The toggle is
+                // right there if this one really was a business meal — the
+                // default just isn't the answer that gets people in trouble.
+                isDeductible = option.isUsuallyDeductible
+            }
         } label: {
             HStack(spacing: 8) {
                 Circle()
@@ -258,6 +274,8 @@ struct LogExpenseView: View {
                         Button {
                             receiptImage = nil
                             receipt = nil
+                            storedReceipt = false
+                            originalReceiptData = nil
                         } label: {
                             Text("Remove")
                                 .font(.system(size: 13, weight: .medium))
@@ -307,7 +325,7 @@ struct LogExpenseView: View {
                         }
                     }
 
-                    Text("Reads the amount, date and merchant on this phone. GigGrow does not store the image, so keep the original receipt or another digital copy for your records.")
+                    Text("Reads the amount, date and merchant on this phone, and keeps the photo with the expense. The IRS wants the receipt behind a deduction, not just the figure — so the paper can go in the bin once this is saved.")
                         .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -361,12 +379,19 @@ struct LogExpenseView: View {
             let parsed = ReceiptParser.parse(try TextRecognizer.recognise(in: cgImage))
             receiptImage = image
             receipt = parsed
+            // A freshly picked photo, so it gets encoded on save rather than
+            // reusing whatever was already attached.
+            storedReceipt = false
+            originalReceiptData = nil
 
             // Filled in, never decided. Anything the parser missed is left
             // for the driver rather than guessed at.
             if let total = parsed.total { amountText = String(format: "%.2f", total) }
             if let found = parsed.date { date = found }
-            if let suggested = parsed.suggestedCategory { category = suggested }
+            if let suggested = parsed.suggestedCategory {
+                category = suggested
+                isDeductible = suggested.isUsuallyDeductible
+            }
             if note.isEmpty, let merchant = parsed.merchant { note = merchant }
 
             if !parsed.foundAnything {
@@ -460,6 +485,35 @@ struct LogExpenseView: View {
         amountText = String(format: "%.2f", expense.amount)
         note = expense.note ?? ""
         isDeductible = expense.isDeductible
+        // The stored receipt, so editing shows the evidence rather than an
+        // empty "add a photo" slot for an expense that already has one.
+        if let data = expense.receiptImage {
+            receiptImage = UIImage(data: data)
+            originalReceiptData = data
+            storedReceipt = true
+        }
+    }
+
+    /// The receipt photo, re-encoded small enough to keep a year of them.
+    ///
+    /// A phone camera JPEG is three to six megabytes; a receipt is a page of
+    /// black text on white paper. 1600px on the long edge at 0.7 quality
+    /// stays readable to a human and to the IRS while costing a couple of
+    /// hundred kilobytes — which matters because these sync through iCloud,
+    /// where the driver's storage is not ours to spend.
+    private var attachment: Data? {
+        guard let receiptImage else { return nil }
+        if storedReceipt, let originalReceiptData { return originalReceiptData }
+        let longEdge = max(receiptImage.size.width, receiptImage.size.height)
+        let scale = min(1, 1600 / max(longEdge, 1))
+        let target = CGSize(width: receiptImage.size.width * scale,
+                            height: receiptImage.size.height * scale)
+
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let resized = renderer.image { _ in
+            receiptImage.draw(in: CGRect(origin: .zero, size: target))
+        }
+        return resized.jpegData(compressionQuality: 0.7)
     }
 
     private func save() {
@@ -471,13 +525,23 @@ struct LogExpenseView: View {
             expense.category = category
             expense.note = note.isEmpty ? nil : note
             expense.isDeductible = isDeductible
+            // Only overwrite an existing receipt when a new one was picked,
+            // so editing the amount on a scanned expense doesn't quietly
+            // detach its evidence.
+            // Assigned unconditionally: `attachment` mirrors what's on
+            // screen, so clearing the photo detaches the receipt rather than
+            // leaving an orphan the driver thinks they removed.
+            expense.receiptImage = attachment
+            if let merchant = receipt?.merchant { expense.merchant = merchant }
         } else {
             let expense = Expense(
                 date: date,
                 amount: amount,
                 category: category,
                 note: note.isEmpty ? nil : note,
-                isDeductible: isDeductible
+                isDeductible: isDeductible,
+                receiptImage: attachment,
+                merchant: receipt?.merchant
             )
             context.insert(expense)
         }

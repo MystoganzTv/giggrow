@@ -19,6 +19,156 @@ import SwiftData
 
 enum Seed {
 
+    enum CustomPlatformError: LocalizedError {
+        case emptyName
+        case duplicateName
+
+        var errorDescription: String? {
+            switch self {
+            case .emptyName:
+                return "Enter a platform name."
+            case .duplicateName:
+                return "That platform is already in GigGrow."
+            }
+        }
+    }
+
+    /// CloudKit doesn't support SwiftData uniqueness constraints. A fresh
+    /// device can briefly create the built-in catalogue before iCloud has
+    /// downloaded the same accounts, so uniqueness is enforced here instead.
+    ///
+    /// Earnings are moved before a duplicate account is deleted. An inactive
+    /// copy wins over a freshly seeded active copy so a user's platform
+    /// preference survives restoration on another device.
+    @discardableResult
+    static func reconcileDuplicatePlatforms(_ context: ModelContext) -> Int {
+        let accounts = (try? context.fetch(FetchDescriptor<PlatformAccount>())) ?? []
+        let groups = Dictionary(grouping: accounts) { account in
+            account.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+
+        var removed = 0
+        for (key, group) in groups where group.count > 1 {
+            let canonicalName = canonicalPlatformName(for: key)
+            let keeper = canonicalName.flatMap { name in
+                group.first { $0.name == name }
+            } ?? group.max { platformPriority($0) < platformPriority($1) }!
+            keeper.name = canonicalName
+                ?? keeper.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            keeper.isActive = group.allSatisfy(\.isActive)
+
+            for duplicate in group where duplicate !== keeper {
+                if keeper.providerAccountId == nil {
+                    keeper.providerAccountId = duplicate.providerAccountId
+                }
+                if keeper.lastSyncedAt == nil
+                    || (duplicate.lastSyncedAt ?? .distantPast) > (keeper.lastSyncedAt ?? .distantPast) {
+                    keeper.lastSyncedAt = duplicate.lastSyncedAt
+                    keeper.connectionStatusRaw = duplicate.connectionStatusRaw
+                }
+
+                // Reassigning the inverse first keeps cascade deletion from
+                // taking the earnings with the duplicate account.
+                for earning in duplicate.earningItems {
+                    earning.account = keeper
+                }
+                context.delete(duplicate)
+                removed += 1
+            }
+        }
+
+        if removed > 0 { try? context.save() }
+        return removed
+    }
+
+    private static func canonicalPlatformName(for normalizedName: String) -> String? {
+        switch normalizedName {
+        case "uber":          return "Uber"
+        case "lyft":          return "Lyft"
+        case "doordash":      return "DoorDash"
+        case "instacart":     return "Instacart"
+        case "amazon flex":   return "Amazon Flex"
+        case "walmart spark": return "Walmart Spark"
+        default:              return nil
+        }
+    }
+
+    static func isBuiltInPlatform(named name: String) -> Bool {
+        canonicalPlatformName(for: normalizedPlatformName(name)) != nil
+    }
+
+    /// Adds a platform without teaching the data model about one particular
+    /// company. Once inserted it automatically appears anywhere the app reads
+    /// `PlatformAccount`: manual shifts, screenshot review, analytics, backup
+    /// and iCloud sync.
+    @discardableResult
+    static func addCustomPlatform(
+        name rawName: String,
+        unitNoun rawUnitNoun: String,
+        in context: ModelContext
+    ) throws -> PlatformAccount {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw CustomPlatformError.emptyName }
+
+        let accounts = try context.fetch(FetchDescriptor<PlatformAccount>())
+        let normalized = normalizedPlatformName(name)
+        guard !accounts.contains(where: {
+            normalizedPlatformName($0.name) == normalized
+        }) else {
+            throw CustomPlatformError.duplicateName
+        }
+
+        let unitNoun = rawUnitNoun
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let palette = customPlatformPalettes[
+            accounts.filter { !isBuiltInPlatform(named: $0.name) }.count
+                % customPlatformPalettes.count
+        ]
+        let short: String
+        if name.count <= 12 {
+            short = name
+        } else if let firstWord = name.split(separator: " ").first {
+            short = String(firstWord.prefix(12))
+        } else {
+            short = String(name.prefix(12))
+        }
+
+        let account = PlatformAccount(
+            name: name,
+            short: short,
+            initial: String(name.prefix(1)).uppercased(),
+            gradientStart: palette.0,
+            gradientEnd: palette.1,
+            unitNoun: unitNoun.isEmpty ? "jobs" : unitNoun,
+            sortIndex: (accounts.map(\.sortIndex).max() ?? -1) + 1
+        )
+        context.insert(account)
+        try context.save()
+        return account
+    }
+
+    private static func normalizedPlatformName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive],
+                     locale: .current)
+    }
+
+    private static let customPlatformPalettes: [(UInt32, UInt32)] = [
+        (0xF472B6, 0xA855F7),
+        (0x34D399, 0x3B82F6),
+        (0xFB923C, 0xEC4899),
+        (0x22D3EE, 0x6366F1)
+    ]
+
+    private static func platformPriority(_ account: PlatformAccount) -> Int {
+        var score = account.earningItems.count * 1_000
+        if account.providerAccountId != nil { score += 100 }
+        if account.lastSyncedAt != nil { score += 50 }
+        if !account.isActive { score += 10 }
+        return score
+    }
+
     /// Creates the platform catalogue if it's missing. Safe on every launch.
     ///
     /// Deliberately does **not** create a `DriverProfile` — see `hasCompletedOnboarding`.
@@ -62,10 +212,10 @@ enum Seed {
     static func removeInapplicableService(for vehicle: VehicleRecord,
                                            in context: ModelContext) {
         guard vehicle.fuelType == .electric else { return }
-        let obsolete = vehicle.service.filter {
+        let obsolete = vehicle.serviceItems.filter {
             $0.name.localizedCaseInsensitiveContains("oil change")
         }
-        vehicle.service.removeAll {
+        vehicle.serviceItems.removeAll {
             $0.name.localizedCaseInsensitiveContains("oil change")
         }
         for record in obsolete { context.delete(record) }
@@ -233,6 +383,26 @@ enum Seed {
     /// touches a few thousand rows at most and happens by explicit choice, so
     /// the speed was never worth the corruption.
     private static func eraseEverything(_ context: ModelContext) {
+        deleteEverything(context)
+
+        do {
+            try context.save()
+        } catch {
+            // A failed wipe leaves the store inconsistent, which is worth
+            // knowing about rather than swallowing into a `try?`.
+            assertionFailure("Wipe failed: \(error)")
+            context.rollback()
+        }
+    }
+
+    /// Deletes the current graph without committing it. Backup restore uses
+    /// this so replacement is one transaction: if any imported row fails,
+    /// `rollback()` brings the original store back.
+    static func prepareForRestore(_ context: ModelContext) {
+        deleteEverything(context)
+    }
+
+    private static func deleteEverything(_ context: ModelContext) {
         // Order matters: anything owned is deleted before its owner, so no
         // deletion ever has to nullify a relationship still being read.
         deleteAll(PlatformEarning.self, in: context)
@@ -249,15 +419,6 @@ enum Seed {
         // here now fails on the spot instead of shipping.
         assert(erasedTypeCount == GigGrowSchema.all.count,
                "Seed.eraseEverything covers \(erasedTypeCount) of \(GigGrowSchema.all.count) models")
-
-        do {
-            try context.save()
-        } catch {
-            // A failed wipe leaves the store inconsistent, which is worth
-            // knowing about rather than swallowing into a `try?`.
-            assertionFailure("Wipe failed: \(error)")
-            context.rollback()
-        }
     }
 
     /// How many model types `eraseEverything` deletes, checked against the

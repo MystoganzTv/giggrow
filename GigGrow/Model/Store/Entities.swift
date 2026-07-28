@@ -19,11 +19,11 @@ import SwiftData
 @Model
 final class Shift {
     /// Start of the driving block.
-    var start: Date
+    var start: Date = Date.now
     /// End of the block. Always ≥ `start`.
-    var end: Date
+    var end: Date = Date.now
     /// Miles driven across the whole shift, all platforms together.
-    var miles: Double
+    var miles: Double = 0
 
     /// Hours worked, when they can't be derived from the span.
     ///
@@ -39,12 +39,18 @@ final class Shift {
     var isAggregate: Bool = false
     /// Minutes spent waiting for a ping. Subtracted from the duration to get
     /// active time; the design's dashboard shows this split.
-    var idleMinutes: Double
+    var idleMinutes: Double = 0
     var note: String?
 
     /// What each app paid during this block.
     @Relationship(deleteRule: .cascade, inverse: \PlatformEarning.shift)
-    var earnings: [PlatformEarning]
+    var earnings: [PlatformEarning]? = []
+
+    /// Recorded drives may point back to a shift. CloudKit requires every
+    /// relationship to have an explicit inverse, even when the app only reads
+    /// the relationship from the drive side.
+    @Relationship(deleteRule: .nullify, inverse: \DriveRecord.shift)
+    var drives: [DriveRecord]? = []
 
     init(
         start: Date,
@@ -64,6 +70,14 @@ final class Shift {
 
     // MARK: Derived
 
+    /// Non-optional application view of the optional CloudKit relationship.
+    /// The stored relationship must be optional for CloudKit; callers should
+    /// not have to scatter nil handling through every earnings calculation.
+    var earningItems: [PlatformEarning] {
+        get { earnings ?? [] }
+        set { earnings = newValue }
+    }
+
     /// Hours worked — counted once, however many apps were on.
     ///
     /// A confirmed figure beats the span, so an imported week reports the
@@ -78,16 +92,16 @@ final class Shift {
 
     /// Everything earned during the block, across every platform.
     var gross: Double {
-        earnings.reduce(0) { $0 + $1.gross }
+        (earnings ?? []).reduce(0) { $0 + $1.gross }
     }
 
     var tripCount: Int {
-        earnings.reduce(0) { $0 + $1.trips }
+        (earnings ?? []).reduce(0) { $0 + $1.trips }
     }
 
     /// How many apps were running. Two or more means this shift is the reason
     /// per-platform hours have to be attributed rather than counted.
-    var platformCount: Int { earnings.count }
+    var platformCount: Int { earnings?.count ?? 0 }
 }
 
 // MARK: - Platform earning
@@ -96,24 +110,24 @@ final class Shift {
 @Model
 final class PlatformEarning {
     /// Gross before expenses, including tips.
-    var gross: Double
+    var gross: Double = 0
     /// Portion of `gross` that was tips, when known.
     ///
     /// Worth keeping separate: tips are the part of a day's takings the
     /// platform didn't set, so a driver comparing apps needs to see whether
     /// the good week was the algorithm or the customers.
-    var tips: Double
+    var tips: Double = 0
     /// Portion of `gross` from promotions, quests, surges and bonuses.
     ///
     /// The most important number nobody records. A week propped up by a $100
     /// quest is not a week you can repeat, and "am I actually making this?"
     /// can't be answered without splitting it out.
-    var promotions: Double
+    var promotions: Double = 0
     /// Trips, deliveries, batches or blocks — whatever this app counts.
-    var trips: Int
+    var trips: Int = 0
     /// Miles attributable to this platform, when the app reports them.
     /// Left at zero when only the shift total is known.
-    var reportedMiles: Double
+    var reportedMiles: Double = 0
 
     var account: PlatformAccount?
     var shift: Shift?
@@ -150,19 +164,21 @@ final class PlatformEarning {
 /// A gig platform the driver has connected or added by hand.
 @Model
 final class PlatformAccount {
-    @Attribute(.unique) var name: String
+    /// CloudKit doesn't support uniqueness constraints. The catalogue and
+    /// backup validator keep platform names unique at the application layer.
+    var name: String = ""
     /// Abbreviated label for tight rows — "Flex" for "Amazon Flex".
-    var short: String
+    var short: String = ""
     /// Letter shown in the rounded badge.
-    var initial: String
+    var initial: String = ""
     /// Brand gradient endpoints, stored as hex so the palette survives a migration.
-    var gradientStart: UInt32
-    var gradientEnd: UInt32
+    var gradientStart: UInt32 = 0
+    var gradientEnd: UInt32 = 0
     /// Noun this app uses for a unit of work: "trips", "orders", "batches", "blocks".
-    var unitNoun: String
-    var isActive: Bool
+    var unitNoun: String = "trips"
+    var isActive: Bool = true
     /// Display order on the Apps screen.
-    var sortIndex: Int
+    var sortIndex: Int = 0
 
     // Sync state. Populated once an earnings provider is connected; until
     // then every account is manual and these stay at their defaults.
@@ -172,7 +188,7 @@ final class PlatformAccount {
     var lastSyncedAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \PlatformEarning.account)
-    var earnings: [PlatformEarning]
+    var earnings: [PlatformEarning]? = []
 
     init(
         name: String,
@@ -200,6 +216,11 @@ final class PlatformAccount {
     var connectionStatus: ConnectionStatus {
         get { ConnectionStatus(rawValue: connectionStatusRaw) ?? .disconnected }
         set { connectionStatusRaw = newValue.rawValue }
+    }
+
+    var earningItems: [PlatformEarning] {
+        get { earnings ?? [] }
+        set { earnings = newValue }
     }
 
     // MARK: Sync helpers
@@ -240,11 +261,11 @@ enum DrivePurpose: String, Codable, CaseIterable, Identifiable {
 /// off the dashboard. The shift can adopt it, explicitly.
 @Model
 final class DriveRecord {
-    var start: Date
-    var end: Date
+    var start: Date = Date.now
+    var end: Date = Date.now
     /// Metres, as Core Location reports them. Converted for display.
-    var distanceMeters: Double
-    var purposeRaw: String
+    var distanceMeters: Double = 0
+    var purposeRaw: String = DrivePurpose.unclassified.rawValue
 
     /// Human-readable end points, when reverse geocoding succeeded. Never
     /// coordinates: a stored trail of where a driver has been is a liability
@@ -291,18 +312,19 @@ final class DriveRecord {
 // MARK: - Expense
 
 enum ExpenseCategory: String, Codable, CaseIterable, Identifiable {
-    case fuel, maintenance, insurance, phone, supplies, fees, other
+    case fuel, maintenance, insurance, phone, supplies, fees, meals, other
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .fuel:        return "Fuel"
+        case .fuel:        return "Fuel or charging"
         case .maintenance: return "Maintenance"
         case .insurance:   return "Insurance"
         case .phone:       return "Phone"
         case .supplies:    return "Supplies"
-        case .fees:        return "Fees"
+        case .fees:        return "Tolls, parking and fees"
+        case .meals:       return "Meals"
         case .other:       return "Other"
         }
     }
@@ -324,40 +346,83 @@ enum ExpenseCategory: String, Codable, CaseIterable, Identifiable {
     var isCoveredByMileageRate: Bool {
         switch self {
         case .fuel, .maintenance, .insurance: return true
-        case .phone, .supplies, .fees, .other: return false
+        case .phone, .supplies, .fees, .meals, .other: return false
         }
     }
 
+    /// Whether the IRS allows this at all for a driver working their own area.
+    ///
+    /// Meals are the one every gig driver believes is deductible and almost
+    /// never is. A business meal needs a business associate across the table;
+    /// the travel-meal rule needs an assignment far enough from your tax home
+    /// to require sleep before driving back. Lunch bought alone between
+    /// deliveries is neither — it is a personal expense you'd have had
+    /// anyway, and it's a common enough mistake to draw attention to a
+    /// return.
+    ///
+    /// So the category exists — knowing what the day really costs you is
+    /// worth tracking — but it doesn't come off the tax by default.
+    ///
+    /// Source: IRS Publication 463, chapter 2.
+    var isUsuallyDeductible: Bool { self != .meals }
+
     /// Said plainly, where the driver is deciding.
     var deductionNote: String {
-        isCoveredByMileageRate
-            ? "Already covered by your mileage deduction — logged for your records, not deducted again."
-            : "Deductible on top of your mileage deduction."
+        switch self {
+        case .meals:
+            return "Usually not deductible. Eating while you work is a personal cost unless you were away overnight or had a business associate with you. Logged so you can see what the day really costs."
+        default:
+            return isCoveredByMileageRate
+                ? "Already covered by your mileage deduction — logged for your records, not deducted again."
+                : "Deductible on top of your mileage deduction."
+        }
     }
 }
 
 @Model
 final class Expense {
-    var date: Date
-    var amount: Double
-    var categoryRaw: String
+    var date: Date = Date.now
+    var amount: Double = 0
+    var categoryRaw: String = ExpenseCategory.other.rawValue
     var note: String?
     /// Whether it counts against taxable income.
-    var isDeductible: Bool
+    var isDeductible: Bool = true
+
+    /// The receipt itself, as a JPEG.
+    ///
+    /// The scanner used to read a receipt and throw the photo away, which got
+    /// the arithmetic right and the point wrong: in an audit the receipt *is*
+    /// the deduction. A figure typed into an app is an assertion; the photo
+    /// is the evidence for it, and the driver has usually binned the paper by
+    /// the time anyone asks.
+    ///
+    /// `.externalStorage` keeps the bytes in a file beside the store rather
+    /// than in a row, so a year of receipts doesn't slow down every query
+    /// that touches expenses.
+    @Attribute(.externalStorage) var receiptImage: Data?
+
+    /// What the till called itself, when the scan could tell.
+    var merchant: String?
 
     init(
         date: Date,
         amount: Double,
         category: ExpenseCategory,
         note: String? = nil,
-        isDeductible: Bool = true
+        isDeductible: Bool = true,
+        receiptImage: Data? = nil,
+        merchant: String? = nil
     ) {
         self.date = date
         self.amount = amount
         self.categoryRaw = category.rawValue
         self.note = note
         self.isDeductible = isDeductible
+        self.receiptImage = receiptImage
+        self.merchant = merchant
     }
+
+    var hasReceipt: Bool { receiptImage != nil }
 
     var category: ExpenseCategory {
         get { ExpenseCategory(rawValue: categoryRaw) ?? .other }
@@ -372,9 +437,9 @@ final class VehicleRecord {
     /// Legacy free-text name, kept so existing installs migrate cleanly.
     /// New records fill the structured fields below and `displayName`
     /// composes from those.
-    var name: String
+    var name: String = ""
     /// Legacy free-text subtitle. Superseded by `displayDetail`.
-    var detail: String
+    var detail: String = ""
 
     // Structured identity. One free-text line couldn't be queried, validated
     // or used to work out what the car actually costs to run.
@@ -385,13 +450,13 @@ final class VehicleRecord {
     var fuelTypeRaw: String = FuelType.gasoline.rawValue
     /// Odometer at the moment `odometerAsOf` was recorded; live mileage is this
     /// plus everything driven since.
-    var odometerBaseline: Int
-    var odometerAsOf: Date
-    var fuelCostPerMile: Double
-    var averageMPG: Int
+    var odometerBaseline: Int = 0
+    var odometerAsOf: Date = Date.now
+    var fuelCostPerMile: Double = 0
+    var averageMPG: Int = 0
 
     @Relationship(deleteRule: .cascade, inverse: \ServiceRecord.vehicle)
-    var service: [ServiceRecord]
+    var service: [ServiceRecord]? = []
 
     init(
         name: String = "",
@@ -421,6 +486,11 @@ final class VehicleRecord {
     }
 
     // MARK: Derived
+
+    var serviceItems: [ServiceRecord] {
+        get { service ?? [] }
+        set { service = newValue }
+    }
 
     var fuelType: FuelType {
         get { FuelType(rawValue: fuelTypeRaw) ?? .gasoline }
@@ -462,9 +532,9 @@ final class VehicleRecord {
 /// A maintenance item, due either at a mileage or on a date.
 @Model
 final class ServiceRecord {
-    var name: String
+    var name: String = ""
     /// Odometer reading at which this falls due. Zero when it's date-driven.
-    var dueAtMileage: Int
+    var dueAtMileage: Int = 0
     /// Date it falls due. Nil when it's mileage-driven.
     var dueOn: Date?
     /// Free-text suffix shown after the computed distance, e.g. "Sep 2026".
@@ -564,23 +634,23 @@ final class ServiceRecord {
 /// derives its set-asides from.
 @Model
 final class DriverProfile {
-    var name: String
+    var name: String = ""
     /// "Phoenix, AZ · Since 2023"
-    var detail: String
+    var detail: String = ""
     /// Percent of gross reserved for taxes.
-    var taxRate: Double
+    var taxRate: Double = 25
     /// Percent of gross reserved for maintenance.
-    var maintenanceRate: Double
+    var maintenanceRate: Double = 8
     /// Manual override of the IRS standard mileage rate, in dollars per mile.
     ///
     /// Zero means "use the published schedule", which is the right default:
     /// the rate is set by date, and in 2026 it changed mid-year. Storing one
     /// number would misstate whichever half of the year it didn't match.
-    var mileageRate: Double
-    var payoutLast4: String
-    var maintenanceGoal: Double
+    var mileageRate: Double = 0
+    var payoutLast4: String = ""
+    var maintenanceGoal: Double = 3_000
     /// Opening balance of the maintenance fund, for drivers who already had one.
-    var maintenanceOpeningBalance: Double
+    var maintenanceOpeningBalance: Double = 0
 
     // Tracking preferences.
     //
@@ -588,11 +658,11 @@ final class DriverProfile {
     // off: reading someone's location is not a thing to switch on for them.
     // `shiftDetectionAutomatic` is still stored but unimplemented — Settings
     // must not present it as active; see `TrackingCapability`.
-    var autoMileageTracking: Bool
-    var shiftDetectionAutomatic: Bool
+    var autoMileageTracking: Bool = false
+    var shiftDetectionAutomatic: Bool = true
     /// Minutes of waiting before time counts as idle. Used as the default in
     /// the shift entry sheet.
-    var idleThresholdMinutes: Int
+    var idleThresholdMinutes: Int = 8
 
     /// State income tax, as a percentage, for the tax estimate.
     ///

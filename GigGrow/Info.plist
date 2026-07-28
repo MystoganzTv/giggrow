@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  Reference only.
-
-  The Xcode target uses GENERATE_INFOPLIST_FILE = YES and declares these
-  values as INFOPLIST_KEY_* build settings, so this file is not compiled
-  into the app. It is kept as documentation of the intended configuration.
--->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
 	<key>UISupportedInterfaceOrientations</key>

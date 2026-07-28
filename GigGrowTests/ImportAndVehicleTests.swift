@@ -54,13 +54,13 @@ final class ImportAndVehicleTests: XCTestCase {
         )
         context.insert(oil)
         oil.vehicle = vehicle
-        vehicle.service.append(oil)
+        vehicle.serviceItems.append(oil)
 
         Seed.repairKnownVehicleDefaults(context)
 
         XCTAssertEqual(vehicle.fuelType, .electric)
         XCTAssertEqual(vehicle.displayDetail, "Electric · SVERIGE")
-        XCTAssertFalse(vehicle.service.contains {
+        XCTAssertFalse(vehicle.serviceItems.contains {
             $0.name.localizedCaseInsensitiveContains("oil change")
         })
     }
@@ -113,7 +113,7 @@ final class ImportAndVehicleTests: XCTestCase {
         let earning = PlatformEarning(account: account, gross: 185.27, trips: 0)
         context.insert(earning)
         earning.shift = shift
-        shift.earnings.append(earning)
+        shift.earningItems.append(earning)
 
         let snapshot = EarningsSnapshot.build(
             shifts: try context.fetch(FetchDescriptor<Shift>()),
@@ -180,7 +180,7 @@ final class ImportAndVehicleTests: XCTestCase {
         let earning = PlatformEarning(account: account, gross: 150, trips: 10)
         context.insert(earning)
         earning.shift = shift
-        shift.earnings.append(earning)
+        shift.earningItems.append(earning)
 
         let snapshot = EarningsSnapshot.build(
             shifts: [shift],

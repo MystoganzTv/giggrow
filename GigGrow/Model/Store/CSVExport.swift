@@ -61,14 +61,14 @@ enum CSVExport {
                 num(shift.miles)
             ]
 
-            if shift.earnings.isEmpty {
+            if shift.earningItems.isEmpty {
                 rows.append((base + ["", "0", "0", "0", "0", "0",
                                      num(shift.hours), num(shift.miles)])
                     .joined(separator: ","))
                 continue
             }
 
-            for earning in shift.earnings {
+            for earning in shift.earningItems {
                 rows.append((base + [
                     escape(earning.account?.name ?? "Unknown"),
                     num(earning.gross),

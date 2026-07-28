@@ -21,6 +21,7 @@ struct ManagePlatformsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @Query(sort: \PlatformAccount.sortIndex) private var accounts: [PlatformAccount]
+    @State private var isAddingPlatform = false
 
     var body: some View {
         NavigationStack {
@@ -46,6 +47,29 @@ struct ManagePlatformsView: View {
                             }
                         }
 
+                        Button {
+                            isAddingPlatform = true
+                        } label: {
+                            HStack(spacing: 9) {
+                                Image(systemName: "plus")
+                                Text("Add another platform")
+                            }
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(GG.Palette.violet300)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                GG.Surface.glassFaint,
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(GG.Palette.violet500.opacity(0.35),
+                                                  style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
+                            )
+                        }
+                        .buttonStyle(.plain)
+
                         Text("Turning one off hides it from new shifts. Anything you already logged for it stays in your totals.")
                             .ggText(GG.Typo.footnote, color: GG.Ink.muted)
                             .fixedSize(horizontal: false, vertical: true)
@@ -66,6 +90,9 @@ struct ManagePlatformsView: View {
                         .foregroundStyle(GG.Palette.violet400)
                 }
             }
+        }
+        .sheet(isPresented: $isAddingPlatform) {
+            AddPlatformView()
         }
         .preferredColorScheme(.dark)
     }
@@ -89,8 +116,13 @@ struct ManagePlatformsView: View {
                 Text(account.name)
                     .ggText(GG.Typo.rowLabel,
                             color: account.isActive ? GG.Ink.primary : GG.Ink.tertiary)
-                if !account.earnings.isEmpty {
-                    Text("\(account.earnings.count) shift\(account.earnings.count == 1 ? "" : "s") logged")
+                if !account.earningItems.isEmpty {
+                    // Says what switching it off does, on the row where the
+                    // switch is. Turning off an app you've earned on looks
+                    // like it might delete the earnings, so people either
+                    // don't do it or do it and worry.
+                    Text("\(account.earningItems.count) shift\(account.earningItems.count == 1 ? "" : "s") logged"
+                         + (account.isActive ? "" : " · kept"))
                         .ggText(GG.Typo.footnote, color: GG.Ink.muted)
                 }
             }
@@ -107,6 +139,106 @@ struct ManagePlatformsView: View {
         .padding(.vertical, 13)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(account.name)
+    }
+}
+
+private struct AddPlatformView: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var unitNoun = "jobs"
+    @State private var errorMessage: String?
+    @FocusState private var isEditingName: Bool
+
+    private let unitOptions = ["trips", "rides", "deliveries", "orders", "batches", "blocks", "jobs"]
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                GG.Palette.screen.ignoresSafeArea()
+                GG.Gradients.appsWash().ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                        Text("Use this for Roadie, Shipt, Gopuff, a local courier, or any platform that isn't in the built-in list.")
+                            .ggText(GG.Typo.subtitle, color: GG.Ink.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        GlassCard {
+                            VStack(alignment: .leading, spacing: 18) {
+                                VStack(alignment: .leading, spacing: 7) {
+                                    Text("Platform name")
+                                        .ggText(GG.Typo.rowLabel)
+                                    TextField("Example: Roadie", text: $name)
+                                        .textInputAutocapitalization(.words)
+                                        .autocorrectionDisabled()
+                                        .focused($isEditingName)
+                                        .ggText(.system(size: 16, weight: .medium))
+                                        .padding(.horizontal, 13)
+                                        .padding(.vertical, 12)
+                                        .background(
+                                            GG.Surface.glassFaint,
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        )
+                                }
+
+                                VStack(alignment: .leading, spacing: 7) {
+                                    Text("What does it count?")
+                                        .ggText(GG.Typo.rowLabel)
+
+                                    Picker("Work unit", selection: $unitNoun) {
+                                        ForEach(unitOptions, id: \.self) {
+                                            Text($0.capitalized).tag($0)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .tint(GG.Palette.violet300)
+                                }
+
+                                if let errorMessage {
+                                    Text(errorMessage)
+                                        .ggText(GG.Typo.footnote, color: Color.red.opacity(0.9))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, GG.Layout.screenInset)
+                    .padding(.top, 16)
+                    .padding(.bottom, 36)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .navigationTitle("Add platform")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(GG.Palette.screen, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { addPlatform() }
+                        .fontWeight(.semibold)
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isEditingName = false }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func addPlatform() {
+        do {
+            try Seed.addCustomPlatform(name: name, unitNoun: unitNoun, in: context)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 

@@ -237,7 +237,6 @@ struct ProfileEditor: View {
     let profile: DriverProfile
 
     @State private var name = ""
-    @State private var payoutLast4 = ""
     @State private var loaded = false
     @State private var isPickingState = false
 
@@ -274,10 +273,6 @@ struct ProfileEditor: View {
 
             GlassCard {
                 VStack(alignment: .leading, spacing: 12) {
-                    field("Payout account", text: $payoutLast4, placeholder: "last 4 digits")
-                        .keyboardType(.numberPad)
-                        .focused($isEditingField)
-
                     Text("Last four digits only, as a label so you can tell accounts apart. GigGrow never connects to your bank and never asks for a full account number.")
                         .ggText(GG.Typo.footnote, color: GG.Ink.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -288,7 +283,6 @@ struct ProfileEditor: View {
             guard !loaded else { return }
             loaded = true
             name = profile.name
-            payoutLast4 = profile.payoutLast4
         }
         .sheet(isPresented: $isPickingState) {
             StatePickerView(selection: Binding(
@@ -325,7 +319,6 @@ struct ProfileEditor: View {
 
         profile.name = name.trimmingCharacters(in: .whitespaces)
         profile.detail = place.isEmpty ? since : "\(place) · \(since)"
-        profile.payoutLast4 = String(payoutLast4.filter(\.isNumber).suffix(4))
 
         try? context.save()
         dismiss()
@@ -392,13 +385,14 @@ struct PrivacySheet: View {
                     VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
                         GlassCard {
                             VStack(alignment: .leading, spacing: 14) {
-                                Text("Your data stays on this device")
+                                Text("Your data stays private")
                                     .ggText(GG.Typo.cardTitle, tracking: GG.Typo.cardTitleTracking)
 
-                                point("No account, no sign-in, no server. Everything you log is stored locally on your iPhone.")
+                                point("GigGrow has no separate account or password. Everything you log is stored locally first, so the app keeps working offline.")
+                                point("When iCloud is available, Apple's private CloudKit database syncs your GigGrow data between your iPhone and iPad and can restore it on a new device.")
                                 point("GigGrow has no analytics and no third-party trackers.")
-                                point("Nothing is shared with anyone unless you export it yourself.")
-                                point("Deleting the app deletes the data with it — export first if you want to keep it.")
+                                point("GigGrow doesn't receive or share that private iCloud data. You can also create a complete backup file from Settings.")
+                                point("Deleting the app removes its local copy. Synced data may remain in your private iCloud database and return when you reinstall.")
                             }
                         }
 
@@ -409,17 +403,29 @@ struct PrivacySheet: View {
                                 Text("If you turn on mileage tracking")
                                     .ggText(GG.Typo.cardTitle, tracking: GG.Typo.cardTitleTracking)
 
-                                point("GigGrow reads your location to measure how far you drove. It stays on this device like everything else — there is no server to send it to.")
+                                point("GigGrow reads your location to measure how far you drove. Raw locations stay on the device; only the resulting drive record can sync through your private iCloud database.")
                                 point("Only the distance and the times are kept. Your route isn't stored, and neither are coordinates.")
                                 point("GPS switches on when motion says you're driving and off again when you stop, which is what keeps it from draining the battery.")
                                 point("Turn it off in Settings and recording stops immediately. Drives already recorded stay until you delete them.")
                             }
                         }
 
-                        Text("This describes the app as it stands today. If a future version connects to your gig platforms, that connection will be something you opt into explicitly, and this page will say so.")
-                            .ggText(GG.Typo.footnote, color: GG.Ink.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 6)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("This describes the app as it stands today. If a future version connects to your gig platforms, that connection will be something you opt into explicitly, and this page will say so.")
+                                .ggText(GG.Typo.footnote, color: GG.Ink.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            // The same commitments, hosted, dated and
+                            // readable before you install — which is what
+                            // the App Store listing links to. A policy that
+                            // exists only inside the app can't be checked by
+                            // anyone deciding whether to trust it.
+                            Link(destination: GigGrowLinks.privacyPolicy) {
+                                Text("Read the full policy online ↗")
+                                    .ggText(GG.Typo.footnote, color: GG.Palette.violet300)
+                            }
+                        }
+                        .padding(.horizontal, 6)
                     }
                     .padding(.horizontal, GG.Layout.screenInset)
                     .padding(.top, 12)

@@ -211,7 +211,7 @@ struct ShiftHistoryView: View {
                         .transition(.scale.combined(with: .opacity))
                 }
 
-                ForEach(Array(shift.earnings.enumerated()), id: \.element.id) { _, earning in
+                ForEach(Array(shift.earningItems.enumerated()), id: \.element.id) { _, earning in
                     if let account = earning.account {
                         Text(account.initial)
                             .font(.system(size: 10, weight: .bold))
@@ -313,7 +313,7 @@ struct ShiftHistoryView: View {
     }
 
     private func platformNames(_ shift: Shift) -> String {
-        let names = shift.earnings.compactMap { $0.account?.name }
+        let names = shift.earningItems.compactMap { $0.account?.name }
         return names.isEmpty ? "Manual entry" : names.joined(separator: " + ")
     }
 
@@ -321,7 +321,7 @@ struct ShiftHistoryView: View {
     /// trips; delivery apps may report orders, batches or blocks. A generic
     /// "unit" hides information we already have on the earning record.
     private func workLabel(for shift: Shift) -> String? {
-        let earnings = shift.earnings.filter { $0.trips > 0 }
+        let earnings = shift.earningItems.filter { $0.trips > 0 }
         guard !earnings.isEmpty else { return nil }
 
         let nouns = Set(earnings.compactMap { $0.account?.unitNoun.lowercased() })
@@ -458,8 +458,8 @@ enum ShiftDeletion {
     @MainActor
     static func delete(_ shifts: [Shift], from context: ModelContext) throws {
         for shift in shifts {
-            let earnings = shift.earnings
-            shift.earnings = []
+            let earnings = shift.earningItems
+            shift.earningItems = []
             for earning in earnings { context.delete(earning) }
             context.delete(shift)
         }

@@ -69,7 +69,17 @@ enum ReceiptParser {
         (.insurance, ["geico", "progressive", "state farm", "allstate", "insurance"]),
         (.phone, ["verizon", "at&t", "t-mobile", "mint mobile", "wireless"]),
         (.fees, ["toll", "ez pass", "e-zpass", "fastrak", "parking", "garage",
-                 "meter", "sunpass"])
+                 "meter", "sunpass"]),
+        // Recognised so the app can say the awkward thing early. A meal
+        // bought alone mid-shift is not deductible, and a driver who finds
+        // that out in April has already counted on it.
+        //
+        // Last in the list on purpose: a forecourt that sells coffee should
+        // still read as fuel.
+        (.meals, ["restaurant", "cafe", "coffee", "grill", "kitchen", "diner",
+                  "pizza", "burger", "taco", "deli", "bakery", "starbucks",
+                  "dunkin", "mcdonald", "chipotle", "subway", "wendy",
+                  "server", "table", "dine in", "dine-in", "guest check"])
     ]
 
     // MARK: Entry point

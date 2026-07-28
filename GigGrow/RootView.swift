@@ -21,6 +21,10 @@ struct RootView: View {
     @State private var isShowingProfile = false
     @State private var isImporting = false
     @State private var isShowingMileage = false
+    /// A brand-new install gets a short iCloud grace period before local
+    /// reference data is created. This avoids racing a private CloudKit
+    /// restore and briefly producing two copies of every platform.
+    @State private var isPreparingStore = true
 
     /// Kept alive for the whole app run: UNUserNotificationCenter holds its
     /// delegate weakly, so a local one would be deallocated and taps would
@@ -106,7 +110,18 @@ struct RootView: View {
             let usesSidebarLayout = proxy.size.width >= GG.Layout.sidebarLayoutMinimumWidth
 
             Group {
-                if needsOnboarding {
+                if isPreparingStore {
+                    ZStack {
+                        GG.Palette.screen.ignoresSafeArea()
+                        VStack(spacing: 16) {
+                            GigGrowLogo(size: 52)
+                            ProgressView()
+                                .tint(GG.Palette.violet400)
+                            Text("Checking iCloud…")
+                                .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                        }
+                    }
+                } else if needsOnboarding {
                     OnboardingView()
                         .transition(.opacity)
                 } else if let ready = snapshot ?? buildDashboard() {
@@ -127,10 +142,17 @@ struct RootView: View {
         .preferredColorScheme(.dark)
         .animation(.easeOut(duration: 0.25), value: needsOnboarding)
         .task {
-            // The platform catalogue is reference data, not user data, so it
-            // is safe to create before onboarding runs.
+            // Existing installs open immediately. An entirely empty store
+            // waits briefly for CloudKit's first import before creating the
+            // built-in platform catalogue.
+            if profiles.isEmpty && accounts.isEmpty && shifts.isEmpty
+                && expenses.isEmpty && vehicles.isEmpty {
+                try? await Task.sleep(for: .seconds(2))
+            }
+            Seed.reconcileDuplicatePlatforms(context)
             Seed.bootstrapPlatformsIfNeeded(context)
             Seed.repairKnownVehicleDefaults(context)
+            isPreparingStore = false
             configureTracker()
             rebuild()
             UNUserNotificationCenter.current().delegate = notificationDelegate
@@ -144,6 +166,16 @@ struct RootView: View {
         // happens to re-evaluate the view. @Query publishes on every save,
         // which is exactly the signal wanted and nothing more.
         .onChange(of: dataFingerprint) { _, _ in rebuild() }
+        .onChange(of: platformFingerprint) { _, _ in
+            // CloudKit imports records asynchronously. Reconcile after the
+            // batch has had time to settle rather than once per inserted row.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                if Seed.reconcileDuplicatePlatforms(context) > 0 {
+                    rebuild()
+                }
+            }
+        }
         .onChange(of: analyticsSelection) { _, _ in rebuildAnalytics() }
         .onChange(of: dashboardScope) { _, _ in rebuild() }
         .onChange(of: selection) { _, tab in
@@ -175,8 +207,8 @@ struct RootView: View {
             hasher.combine(shift.miles)
             hasher.combine(shift.idleMinutes)
             hasher.combine(shift.recordedHours)
-            hasher.combine(shift.earnings.count)
-            for earning in shift.earnings {
+            hasher.combine(shift.earningItems.count)
+            for earning in shift.earningItems {
                 hasher.combine(earning.gross)
                 hasher.combine(earning.tips)
                 hasher.combine(earning.promotions)
@@ -201,6 +233,17 @@ struct RootView: View {
         if let vehicle = vehicles.first {
             hasher.combine(vehicle.odometerBaseline)
             hasher.combine(vehicle.fuelCostPerMile)
+        }
+        return hasher.finalize()
+    }
+
+    private var platformFingerprint: Int {
+        var hasher = Hasher()
+        hasher.combine(accounts.count)
+        for account in accounts {
+            hasher.combine(account.name.lowercased())
+            hasher.combine(account.isActive)
+            hasher.combine(account.earningItems.count)
         }
         return hasher.finalize()
     }
@@ -276,7 +319,9 @@ struct RootView: View {
                                        onShowHistory: { isShowingHistory = true },
                                        onShowProfile: { isShowingProfile = true },
                                        onImport: { isImporting = true },
-                                       onShowMileage: { isShowingMileage = true })
+                                       onShowMileage: { isShowingMileage = true },
+                                       onShowExpenses: { isShowingExpenses = true },
+                                       onAddExpense: { isLoggingExpense = true })
         case .taxes:     TaxView(embedded: true)
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
                                        selection: $analyticsSelection,

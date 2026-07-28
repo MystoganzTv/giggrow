@@ -102,7 +102,7 @@ final class AccountingTests: XCTestCase {
         let profile = Fixture.profile(context)
         let account = Fixture.account(context, name: "Lyft")
         let shift = Fixture.shift(context, splits: [(account, 500, 15)])
-        let earning = try XCTUnwrap(shift.earnings.first)
+        let earning = try XCTUnwrap(shift.earningItems.first)
         earning.tips = 75
         earning.promotions = 50
 
@@ -120,7 +120,7 @@ final class AccountingTests: XCTestCase {
         let profile = Fixture.profile(context)
         let account = Fixture.account(context, name: "Lyft")
         let shift = Fixture.shift(context, splits: [(account, 100, 4)])
-        let earning = try XCTUnwrap(shift.earnings.first)
+        let earning = try XCTUnwrap(shift.earningItems.first)
         earning.tips = 80
         earning.promotions = 70
 

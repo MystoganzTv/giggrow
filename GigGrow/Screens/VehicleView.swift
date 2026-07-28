@@ -38,7 +38,7 @@ struct VehicleView: View {
     }
 
     private var service: [ServiceRecord] {
-        (vehicle?.service ?? []).sorted {
+        (vehicle?.serviceItems ?? []).sorted {
             $0.status(currentMileage: odometer).urgency
                 < $1.status(currentMileage: odometer).urgency
         }

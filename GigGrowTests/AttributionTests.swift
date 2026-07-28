@@ -29,7 +29,7 @@ final class AttributionTests: XCTestCase {
             splits: [(uber, 89.60, 13), (dd, 84.13, 12), (lyft, 69.01, 10)]
         )
 
-        let total = shift.earnings.reduce(0.0) {
+        let total = shift.earningItems.reduce(0.0) {
             $0 + ShiftAttribution.hours(of: $1, in: shift)
         }
         XCTAssertEqual(total, shift.hours, accuracy: 0.0001)
@@ -43,7 +43,7 @@ final class AttributionTests: XCTestCase {
 
         let shift = Fixture.shift(context, miles: 104, splits: [(a, 60, 5), (b, 40, 4)])
 
-        let total = shift.earnings.reduce(0.0) {
+        let total = shift.earningItems.reduce(0.0) {
             $0 + ShiftAttribution.miles(of: $1, in: shift)
         }
         XCTAssertMoneyEqual(total, 104)
@@ -57,7 +57,7 @@ final class AttributionTests: XCTestCase {
 
         let shift = Fixture.shift(context, from: 10, to: 20,
                                   splits: [(big, 70, 7), (small, 30, 3)])
-        let earnings = shift.earnings.sorted { $0.gross > $1.gross }
+        let earnings = shift.earningItems.sorted { $0.gross > $1.gross }
 
         XCTAssertEqual(ShiftAttribution.hours(of: earnings[0], in: shift), 7, accuracy: 0.0001)
         XCTAssertEqual(ShiftAttribution.hours(of: earnings[1], in: shift), 3, accuracy: 0.0001)
@@ -74,7 +74,7 @@ final class AttributionTests: XCTestCase {
 
         let shift = Fixture.shift(context, from: 10, to: 14, splits: [(a, 0, 0), (b, 0, 0)])
 
-        for earning in shift.earnings {
+        for earning in shift.earningItems {
             let hours = ShiftAttribution.hours(of: earning, in: shift)
             XCTAssertFinite(hours, "attributed hours")
             XCTAssertEqual(hours, 2, accuracy: 0.0001)
@@ -87,7 +87,7 @@ final class AttributionTests: XCTestCase {
         let shift = Fixture.shift(context, from: 10, to: 14, miles: 96,
                                   splits: [(flex, 131.21, 19)])
 
-        let earning = try XCTUnwrap(shift.earnings.first)
+        let earning = try XCTUnwrap(shift.earningItems.first)
         XCTAssertEqual(ShiftAttribution.hours(of: earning, in: shift), 4, accuracy: 0.0001)
         XCTAssertMoneyEqual(ShiftAttribution.miles(of: earning, in: shift), 96)
     }
@@ -99,7 +99,7 @@ final class AttributionTests: XCTestCase {
         let b = Fixture.account(context, name: "Lyft", sortIndex: 1)
 
         let shift = Fixture.shift(context, miles: 100, splits: [(a, 50, 5), (b, 50, 5)])
-        let first = try XCTUnwrap(shift.earnings.first)
+        let first = try XCTUnwrap(shift.earningItems.first)
         first.reportedMiles = 88
 
         XCTAssertMoneyEqual(ShiftAttribution.miles(of: first, in: shift), 88)

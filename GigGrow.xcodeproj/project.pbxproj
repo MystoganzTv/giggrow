@@ -139,6 +139,14 @@
 				TargetAttributes = {
 					1A0000000000000000000002 = {
 						CreatedOnToolsVersion = 16.0;
+						SystemCapabilities = {
+							com.apple.BackgroundModes = {
+								enabled = 1;
+							};
+							com.apple.iCloud = {
+								enabled = 1;
+							};
+						};
 					};
 					1A0000000000000000000011 = {
 						CreatedOnToolsVersion = 16.0;
@@ -327,11 +335,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GigGrow/GigGrow.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GigGrow/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GigGrow uses the camera to read a receipt's amount, date, and merchant on this device.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GigGrow records driving in the background so a shift's miles are captured without you opening the app. Your location stays on this device and is never sent anywhere.";
@@ -339,7 +349,6 @@
 				INFOPLIST_KEY_NSMotionUsageDescription = "GigGrow uses motion activity to tell driving from walking, so it only turns on GPS when you're actually behind the wheel. This is what keeps it from draining your battery.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = location;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
@@ -364,11 +373,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GigGrow/GigGrow.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GigGrow/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GigGrow uses the camera to read a receipt's amount, date, and merchant on this device.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GigGrow records driving in the background so a shift's miles are captured without you opening the app. Your location stays on this device and is never sent anywhere.";
@@ -376,7 +387,6 @@
 				INFOPLIST_KEY_NSMotionUsageDescription = "GigGrow uses motion activity to tell driving from walking, so it only turns on GPS when you're actually behind the wheel. This is what keeps it from draining your battery.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = location;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;

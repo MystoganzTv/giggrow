@@ -11,11 +11,19 @@ import SwiftData
 @main
 struct GigGrowApp: App {
 
-    /// One on-disk store for the whole app. Built once here rather than with
-    /// `.modelContainer(for:)` so a failure is loud instead of silent.
+    /// One on-disk, local-first store for the whole app. CloudKit mirrors this
+    /// store through the user's private iCloud database when their account is
+    /// available; SwiftData continues to work offline.
+    ///
+    /// `.automatic` detects the primary CloudKit container from the signed
+    /// entitlements. Preview/test configurations explicitly disable it.
     private let container: ModelContainer = {
         let schema = Schema(GigGrowSchema.all)
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let config = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .automatic
+        )
         do {
             let container = try ModelContainer(for: schema, configurations: [config])
             #if DEBUG
@@ -64,7 +72,11 @@ extension ModelContainer {
 
     private static func makeInMemory() -> ModelContainer {
         let schema = Schema(GigGrowSchema.all)
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
