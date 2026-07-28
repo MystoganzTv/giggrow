@@ -867,7 +867,7 @@ struct ImportScreenshotView: View {
                             }
                             .frame(height: 6)
                             Text(share > 0.001
-                                 ? "≈\(Money.whole(value.gross * share))"
+                                 ? Money.whole(value.gross * share)
                                  : "—")
                                 .ggText(.system(size: 12.5, weight: .medium),
                                         color: share > 0.001 ? GG.Ink.secondary : GG.Ink.muted)

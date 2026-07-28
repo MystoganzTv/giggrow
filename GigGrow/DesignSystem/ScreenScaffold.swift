@@ -10,8 +10,21 @@
 import SwiftUI
 
 struct ScreenScaffold<Wash: View, Content: View>: View {
-    @ViewBuilder var wash: Wash
-    @ViewBuilder var content: Content
+    @Environment(\.ggUsesSidebarLayout) private var usesSidebarLayout
+
+    private let maxContentWidth: CGFloat
+    private let wash: Wash
+    private let content: Content
+
+    init(
+        maxContentWidth: CGFloat = GG.Layout.contentMaxWidth,
+        @ViewBuilder wash: () -> Wash,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.maxContentWidth = maxContentWidth
+        self.wash = wash()
+        self.content = content()
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -20,7 +33,14 @@ struct ScreenScaffold<Wash: View, Content: View>: View {
             }
             .padding(.horizontal, GG.Layout.screenInset)
             .padding(.top, 8)
-            .padding(.bottom, GG.Layout.tabBarHeight + GG.Layout.scrollBottomPadding)
+            .padding(
+                .bottom,
+                usesSidebarLayout
+                    ? GG.Layout.scrollBottomPadding
+                    : GG.Layout.tabBarHeight + GG.Layout.scrollBottomPadding
+            )
+            .frame(maxWidth: maxContentWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .scrollBounceBehavior(.basedOnSize)
         // The background goes on as a modifier, not as a ZStack sibling.

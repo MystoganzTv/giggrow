@@ -28,7 +28,7 @@ struct RootView: View {
     @State private var notificationDelegate = TripNotificationDelegate()
     /// One selection per screen. Tapping "Year" on Analytics shouldn't
     /// silently reframe the dashboard, and vice versa.
-    @State private var dashboardSelection = RangeSelection(range: .week)
+    @State private var dashboardScope: DashboardScope = .week
     @State private var analyticsSelection = RangeSelection(range: .week)
 
     /// One tracker for the whole app. It owns a CLLocationManager, so a second
@@ -48,8 +48,7 @@ struct RootView: View {
     /// A profile exists only after onboarding, so its absence is the flag.
     private var needsOnboarding: Bool { profiles.isEmpty }
 
-    /// The week. Four of the five screens read this — the dashboard says
-    /// "This week" in the design, and it means it.
+    /// The dashboard projection for its selected Week / Year / Total scope.
     ///
     /// Cached, not computed. As a computed property this ran on every single
     /// body evaluation — every keystroke, every tab change, every frame of an
@@ -70,6 +69,21 @@ struct RootView: View {
     @State private var analyticsSnapshot: EarningsSnapshot?
 
     private func build(_ selection: RangeSelection) -> EarningsSnapshot? {
+        build(range: selection.window, rangeKind: selection.range)
+    }
+
+    private func buildDashboard() -> EarningsSnapshot? {
+        let dates = shifts.map(\.start) + expenses.map(\.date)
+        return build(
+            range: dashboardScope.window(recordDates: dates),
+            rangeKind: dashboardScope.rangeKind
+        )
+    }
+
+    private func build(
+        range: Range<Date>,
+        rangeKind: AnalyticsRange
+    ) -> EarningsSnapshot? {
         guard let profile = profiles.first else { return nil }
         return EarningsSnapshot.build(
             shifts: shifts,
@@ -81,24 +95,34 @@ struct RootView: View {
             profile: profile,
             vehicle: vehicles.first,
             // The window the driver is pointing at, not always the present.
-            range: selection.window,
-            rangeKind: selection.range
+            range: range,
+            rangeKind: rangeKind
         )
     }
 
     var body: some View {
-        Group {
-            if needsOnboarding {
-                OnboardingView()
-                    .transition(.opacity)
-            } else if let ready = snapshot ?? build(dashboardSelection) {
-                // Falls through to building it inline when the cache hasn't
-                // caught up. Caching the projection introduced a window right
-                // after onboarding where the profile existed but the snapshot
-                // was still nil, and the app rendered nothing at all — a black
-                // screen at the exact moment someone finishes signing up.
-                main(ready)
+        GeometryReader { proxy in
+            let usesWideLayout = proxy.size.width >= GG.Layout.wideLayoutMinimumWidth
+            let usesSidebarLayout = proxy.size.width >= GG.Layout.sidebarLayoutMinimumWidth
+
+            Group {
+                if needsOnboarding {
+                    OnboardingView()
+                        .transition(.opacity)
+                } else if let ready = snapshot ?? buildDashboard() {
+                    // Falls through to building it inline when the cache hasn't
+                    // caught up. Caching the projection introduced a window right
+                    // after onboarding where the profile existed but the snapshot
+                    // was still nil, and the app rendered nothing at all — a black
+                    // screen at the exact moment someone finishes signing up.
+                    main(
+                        ready,
+                        usesSidebarLayout: usesSidebarLayout
+                    )
+                }
             }
+            .environment(\.ggUsesWideLayout, usesWideLayout)
+            .environment(\.ggUsesSidebarLayout, usesSidebarLayout)
         }
         .preferredColorScheme(.dark)
         .animation(.easeOut(duration: 0.25), value: needsOnboarding)
@@ -121,7 +145,7 @@ struct RootView: View {
         // which is exactly the signal wanted and nothing more.
         .onChange(of: dataFingerprint) { _, _ in rebuild() }
         .onChange(of: analyticsSelection) { _, _ in rebuildAnalytics() }
-        .onChange(of: dashboardSelection) { _, _ in rebuild() }
+        .onChange(of: dashboardScope) { _, _ in rebuild() }
         .onChange(of: selection) { _, tab in
             // Analytics is the only screen that needs the second projection.
             if tab == .analytics { rebuildAnalytics() }
@@ -182,7 +206,7 @@ struct RootView: View {
     }
 
     private func rebuild() {
-        snapshot = build(dashboardSelection)
+        snapshot = buildDashboard()
         if selection == .analytics { rebuildAnalytics() }
     }
 
@@ -204,16 +228,31 @@ struct RootView: View {
 
     // MARK: App
 
-    private func main(_ snapshot: EarningsSnapshot) -> some View {
-        ZStack(alignment: .bottom) {
-            GG.Palette.screen.ignoresSafeArea()
+    private func main(
+        _ snapshot: EarningsSnapshot,
+        usesSidebarLayout: Bool
+    ) -> some View {
+        Group {
+            if usesSidebarLayout {
+                HStack(spacing: 0) {
+                    GGNavigationRail(selection: $selection)
 
-            screen(snapshot)
-                .transition(.opacity)
-
-            GGTabBar(selection: $selection)
-
-            logButton(snapshot)
+                    ZStack(alignment: .bottomTrailing) {
+                        GG.Palette.screen.ignoresSafeArea()
+                        screen(snapshot)
+                            .transition(.opacity)
+                        logButton(snapshot, usesSidebarLayout: true)
+                    }
+                }
+            } else {
+                ZStack(alignment: .bottom) {
+                    GG.Palette.screen.ignoresSafeArea()
+                    screen(snapshot)
+                        .transition(.opacity)
+                    GGTabBar(selection: $selection)
+                    logButton(snapshot, usesSidebarLayout: false)
+                }
+            }
         }
         .sheet(isPresented: $isLoggingShift) { LogShiftView() }
         .sheet(isPresented: $isLoggingExpense) { LogExpenseView() }
@@ -232,6 +271,7 @@ struct RootView: View {
     private func screen(_ snapshot: EarningsSnapshot) -> some View {
         switch selection {
         case .dashboard: DashboardView(snapshot: snapshot,
+                                       scope: $dashboardScope,
                                        onLogShift: { isLoggingShift = true },
                                        onShowHistory: { isShowingHistory = true },
                                        onShowProfile: { isShowingProfile = true },
@@ -249,7 +289,10 @@ struct RootView: View {
     /// Floating action button. Hidden on Settings, and on the empty dashboard
     /// where a full-width prompt does the job better.
     @ViewBuilder
-    private func logButton(_ snapshot: EarningsSnapshot) -> some View {
+    private func logButton(
+        _ snapshot: EarningsSnapshot,
+        usesSidebarLayout: Bool
+    ) -> some View {
         let hiddenOnEmptyDashboard = selection == .dashboard && !snapshot.hasData
 
         if selection != .settings && !hiddenOnEmptyDashboard {
@@ -281,7 +324,8 @@ struct RootView: View {
             } primaryAction: {
                 isImporting = true
             }
-            .padding(.bottom, GG.Layout.tabBarHeight + 18)
+            .padding(.trailing, usesSidebarLayout ? 26 : 0)
+            .padding(.bottom, usesSidebarLayout ? 24 : GG.Layout.tabBarHeight + 18)
             .transition(.scale.combined(with: .opacity))
         }
     }

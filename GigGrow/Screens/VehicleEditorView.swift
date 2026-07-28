@@ -22,6 +22,8 @@ struct VehicleEditorView: View {
 
     @State private var make = ""
     @State private var model = ""
+    @State private var customMake = ""
+    @State private var customModel = ""
     @State private var yearText = ""
     @State private var plate = ""
     @State private var fuelType: FuelType = .gasoline
@@ -34,15 +36,25 @@ struct VehicleEditorView: View {
         EditorScaffold(
             title: editing == nil ? "Add vehicle" : "Vehicle",
             canSave: !model.trimmingCharacters(in: .whitespaces).isEmpty
-                  || !make.trimmingCharacters(in: .whitespaces).isEmpty,
+                  && !make.trimmingCharacters(in: .whitespaces).isEmpty
+                  && !resolvedMake.isEmpty
+                  && !resolvedModel.isEmpty,
             onCancel: { dismiss() },
             onSave: save
         ) {
             GlassCard {
                 VStack(spacing: 0) {
-                    field("Make", text: $make, placeholder: "Tesla")
-                    RowDivider()
-                    field("Model", text: $model, placeholder: "Model Y")
+                    vehicleWheels
+
+                    if make == VehicleCatalog.other {
+                        RowDivider()
+                        field("Other make", text: $customMake, placeholder: "Vehicle make")
+                    }
+                    if model == VehicleCatalog.other {
+                        RowDivider()
+                        field("Other model", text: $customModel, placeholder: "Vehicle model")
+                    }
+
                     RowDivider()
                     numberField("Year", text: $yearText, suffix: "", decimal: false)
                     RowDivider()
@@ -87,9 +99,104 @@ struct VehicleEditorView: View {
             if editing != nil { deleteButton }
         }
         .onAppear(perform: loadIfNeeded)
+        .onChange(of: make) { oldValue, newValue in
+            handleMakeChange(oldValue, newValue)
+        }
+        .onChange(of: customMake) { _, newValue in
+            guard make == VehicleCatalog.other,
+                  let inferred = FuelType.unambiguousType(make: newValue) else { return }
+            fuelType = inferred
+        }
     }
 
     // MARK: Fields
+
+    private var resolvedMake: String {
+        (make == VehicleCatalog.other ? customMake : make)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var resolvedModel: String {
+        (model == VehicleCatalog.other ? customModel : model)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var modelOptions: [String] {
+        guard !make.isEmpty, make != VehicleCatalog.other else {
+            return ["", VehicleCatalog.other]
+        }
+        return [""] + VehicleCatalog.models(for: make) + [VehicleCatalog.other]
+    }
+
+    private var vehicleWheels: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 12) {
+                Text("Make")
+                    .frame(maxWidth: .infinity)
+                Text("Model")
+                    .frame(maxWidth: .infinity)
+            }
+            .ggText(GG.Typo.captionMuted, color: GG.Ink.tertiary)
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(GG.Palette.violet500.opacity(0.15))
+                    .frame(height: 42)
+
+                HStack(spacing: 6) {
+                    Picker("Make", selection: $make) {
+                        Text("Choose make").tag("")
+                        ForEach(VehicleCatalog.makeNames, id: \.self) {
+                            Text($0).tag($0)
+                        }
+                        Text(VehicleCatalog.other).tag(VehicleCatalog.other)
+                    }
+                    .accessibilityLabel("Vehicle make")
+
+                    Picker("Model", selection: $model) {
+                        Text(make.isEmpty ? "Choose make first" : "Choose model").tag("")
+                        ForEach(modelOptions.filter { !$0.isEmpty }, id: \.self) {
+                            Text($0).tag($0)
+                        }
+                    }
+                    .disabled(make.isEmpty)
+                    .accessibilityLabel("Vehicle model")
+                }
+                .pickerStyle(.wheel)
+                .frame(height: 156)
+                .clipped()
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 6)
+            .padding(.bottom, 8)
+        }
+    }
+
+    private func handleMakeChange(_ oldValue: String, _ newValue: String) {
+        guard loaded, oldValue != newValue else { return }
+
+        let currentModel = resolvedModel
+        let modelStillBelongsToMake = newValue != VehicleCatalog.other
+            && VehicleCatalog.canonicalModel(
+                matching: currentModel,
+                for: newValue
+            ) != nil
+        let preservingStoredCustomModel = oldValue.isEmpty
+            && model == VehicleCatalog.other
+            && !customModel.isEmpty
+
+        if !modelStillBelongsToMake && !preservingStoredCustomModel {
+            model = ""
+            customModel = ""
+        }
+
+        let selectedMake = newValue == VehicleCatalog.other ? customMake : newValue
+        if let inferred = FuelType.unambiguousType(make: selectedMake) {
+            fuelType = inferred
+        }
+    }
 
     private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
         HStack {
@@ -210,8 +317,27 @@ struct VehicleEditorView: View {
         loaded = true
         guard let vehicle = editing else { return }
 
-        make = vehicle.make
-        model = vehicle.model
+        let storedMake = vehicle.make.trimmingCharacters(in: .whitespacesAndNewlines)
+        let storedModel = vehicle.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let canonicalMake = VehicleCatalog.canonicalMake(matching: storedMake) {
+            make = canonicalMake
+            if let canonicalModel = VehicleCatalog.canonicalModel(
+                matching: storedModel,
+                for: canonicalMake
+            ) {
+                model = canonicalModel
+            } else if !storedModel.isEmpty {
+                model = VehicleCatalog.other
+                customModel = storedModel
+            }
+        } else if !storedMake.isEmpty {
+            make = VehicleCatalog.other
+            customMake = storedMake
+            if !storedModel.isEmpty {
+                model = VehicleCatalog.other
+                customModel = storedModel
+            }
+        }
         yearText = vehicle.year > 0 ? "\(vehicle.year)" : ""
         plate = vehicle.plate
         fuelType = vehicle.fuelType
@@ -219,7 +345,8 @@ struct VehicleEditorView: View {
         // Records created before the fields were split carry everything in
         // one line; drop it into Model so nothing is lost on first edit.
         if make.isEmpty && model.isEmpty && !vehicle.name.isEmpty {
-            model = vehicle.name
+            model = VehicleCatalog.other
+            customModel = vehicle.name
         }
 
         odometerText = "\(vehicle.odometerBaseline)"
@@ -238,8 +365,8 @@ struct VehicleEditorView: View {
         let isNew = editing == nil
         if isNew { context.insert(vehicle) }
 
-        vehicle.make = make.trimmingCharacters(in: .whitespaces)
-        vehicle.model = model.trimmingCharacters(in: .whitespaces)
+        vehicle.make = resolvedMake
+        vehicle.model = resolvedModel
         vehicle.year = Int(yearText.filter(\.isNumber)) ?? 0
         vehicle.plate = plate.trimmingCharacters(in: .whitespaces).uppercased()
         vehicle.fuelType = fuelType

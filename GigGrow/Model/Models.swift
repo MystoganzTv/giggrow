@@ -125,6 +125,60 @@ struct Driver: Hashable {
 
 // MARK: - Analytics range
 
+/// The dashboard has fewer, more durable views than Analytics. "Total" is not
+/// an Analytics range because it has no previous period to compare against
+/// and its window begins with the driver's first record, not a calendar edge.
+enum DashboardScope: String, CaseIterable, Identifiable {
+    case week = "Week"
+    case year = "Year"
+    case allTime = "Total"
+
+    var id: String { rawValue }
+
+    var rangeKind: AnalyticsRange {
+        switch self {
+        case .week:   return .week
+        case .year, .allTime: return .year
+        }
+    }
+
+    var activityLabel: String {
+        switch self {
+        case .week:    return "this week"
+        case .year:    return "this year"
+        case .allTime: return "all time"
+        }
+    }
+
+    var comparisonLabel: String? {
+        switch self {
+        case .week:    return "vs last week"
+        case .year:    return "vs last year"
+        case .allTime: return nil
+        }
+    }
+
+    func window(
+        recordDates: [Date],
+        now: Date = .now,
+        calendar: Calendar = .gigGrow
+    ) -> Range<Date> {
+        switch self {
+        case .week:
+            return DateRange.week(containing: now, calendar: calendar)
+        case .year:
+            return DateRange.year(containing: now, calendar: calendar)
+        case .allTime:
+            let first = recordDates.min() ?? now
+            let lower = calendar.startOfDay(for: first)
+            let today = calendar.startOfDay(for: now)
+            let upper = calendar.date(byAdding: .day, value: 1, to: today)
+                ?? now.addingTimeInterval(86_400)
+            return lower..<max(upper, lower.addingTimeInterval(1))
+        }
+    }
+}
+
 /// The Week / Month / Year selector on the Analytics screen.
 ///
 /// Each range owns three things that have to stay consistent with each other:

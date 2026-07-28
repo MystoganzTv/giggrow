@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct AnalyticsView: View {
+    @Environment(\.ggUsesWideLayout) private var usesWideLayout
+
     /// Built for whatever `range` is set to, so every figure on this screen
     /// belongs to the selected period rather than always to the week.
     let snapshot: EarningsSnapshot
@@ -19,7 +21,11 @@ struct AnalyticsView: View {
 
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(
+            maxContentWidth: usesWideLayout
+                ? GG.Layout.tabletContentMaxWidth
+                : GG.Layout.contentMaxWidth
+        ) {
             GG.Gradients.analyticsWash()
         } content: {
             Text("Analytics")
@@ -28,22 +34,60 @@ struct AnalyticsView: View {
             // The picker stays put whether or not this period has data —
             // an empty week shouldn't trap you out of checking the month.
             segmentedControl
-            ownAverageCard
 
             if snapshot.hasData {
+                if usesWideLayout {
+                    tabletAnalyticsContent
+                } else {
+                    phoneAnalyticsContent
+                }
+            } else {
+                VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                    ownAverageCard
+                    EmptyStateCard(
+                        title: "Nothing logged \(range.possessive.lowercased())",
+                        message: "Analytics needs a few shifts before the patterns mean anything — which hours pay best, which app earns most per hour, where the miles go."
+                    )
+                }
+                .frame(maxWidth: GG.Layout.contentMaxWidth)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var phoneAnalyticsContent: some View {
+        VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+            ownAverageCard
+            weeklyIncomeCard
+            monthlyIncomeCard
+            comparisonCard
+            if range == .week { dailyByAppCard }
+            hourlyCard
+            tiles
+            setAsideCard
+        }
+    }
+
+    /// Trends and comparisons form the primary story; supporting totals and
+    /// operational metrics stay in a parallel column instead of stretching
+    /// every chart across the entire iPad.
+    private var tabletAnalyticsContent: some View {
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                ownAverageCard
                 weeklyIncomeCard
-                monthlyIncomeCard
                 comparisonCard
                 if range == .week { dailyByAppCard }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                monthlyIncomeCard
                 hourlyCard
                 tiles
                 setAsideCard
-            } else {
-                EmptyStateCard(
-                    title: "Nothing logged \(range.possessive.lowercased())",
-                    message: "Analytics needs a few shifts before the patterns mean anything — which hours pay best, which app earns most per hour, where the miles go."
-                )
             }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
@@ -371,7 +415,7 @@ struct AnalyticsView: View {
                     }
                     .frame(height: 6)
 
-                    Text(values[day] > 0 ? "≈\(Money.whole(values[day]))" : "—")
+                    Text(values[day] > 0 ? Money.whole(values[day]) : "—")
                         .ggText(.system(size: 11.5, weight: .semibold),
                                 color: values[day] > 0 ? GG.Ink.secondary : GG.Ink.muted)
                         .frame(width: 62, alignment: .trailing)

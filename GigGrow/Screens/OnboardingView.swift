@@ -34,7 +34,7 @@ struct OnboardingView: View {
     @FocusState private var focused: Field?
 
     private enum Field: Hashable {
-        case name, vehicleMake, vehicleModel, vehiclePlate, odometer
+        case name, vehicleOtherMake, vehicleOtherModel, vehiclePlate, odometer
     }
 
     // Step 1
@@ -47,6 +47,8 @@ struct OnboardingView: View {
     // Step 3
     @State private var vehicleMake = ""
     @State private var vehicleModel = ""
+    @State private var vehicleOtherMake = ""
+    @State private var vehicleOtherModel = ""
     @State private var vehiclePlate = ""
     @State private var odometerText = ""
 
@@ -111,9 +113,14 @@ struct OnboardingView: View {
             // state step or it covers the wheel.
             switch newStep {
             case 0: focused = .name
-            case 2: focused = .vehicleMake
+            case 2: focused = nil
             default: focused = nil
             }
+        }
+        .onChange(of: vehicleMake) { oldValue, newValue in
+            guard oldValue != newValue else { return }
+            vehicleModel = ""
+            vehicleOtherModel = ""
         }
     }
 
@@ -187,15 +194,21 @@ struct OnboardingView: View {
 
             GlassCard {
                 VStack(spacing: 0) {
-                    field("Make", text: $vehicleMake, placeholder: "Tesla", optional: true)
-                        .focused($focused, equals: .vehicleMake)
-                        .submitLabel(.next)
-                        .onSubmit { focused = .vehicleModel }
-                    RowDivider()
-                    field("Model", text: $vehicleModel, placeholder: "Model Y", optional: true)
-                        .focused($focused, equals: .vehicleModel)
-                        .submitLabel(.next)
-                        .onSubmit { focused = .vehiclePlate }
+                    onboardingVehicleWheels
+
+                    if vehicleMake == VehicleCatalog.other {
+                        RowDivider()
+                        field("Other make", text: $vehicleOtherMake,
+                              placeholder: "Vehicle make", optional: true)
+                            .focused($focused, equals: .vehicleOtherMake)
+                    }
+                    if vehicleModel == VehicleCatalog.other {
+                        RowDivider()
+                        field("Other model", text: $vehicleOtherModel,
+                              placeholder: "Vehicle model", optional: true)
+                            .focused($focused, equals: .vehicleOtherModel)
+                    }
+
                     RowDivider()
                     field("Plate", text: $vehiclePlate, placeholder: "SVERIGE", optional: true)
                         .textInputAutocapitalization(.characters)
@@ -212,6 +225,62 @@ struct OnboardingView: View {
                 .ggText(GG.Typo.footnote, color: GG.Ink.muted)
                 .padding(.leading, 6)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var onboardingModelOptions: [String] {
+        guard !vehicleMake.isEmpty, vehicleMake != VehicleCatalog.other else {
+            return ["", VehicleCatalog.other]
+        }
+        return [""] + VehicleCatalog.models(for: vehicleMake) + [VehicleCatalog.other]
+    }
+
+    private var onboardingVehicleWheels: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 12) {
+                Text("Make")
+                    .frame(maxWidth: .infinity)
+                Text("Model")
+                    .frame(maxWidth: .infinity)
+            }
+            .ggText(GG.Typo.captionMuted, color: GG.Ink.tertiary)
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(GG.Palette.violet500.opacity(0.15))
+                    .frame(height: 42)
+
+                HStack(spacing: 6) {
+                    Picker("Make", selection: $vehicleMake) {
+                        Text("Choose make").tag("")
+                        ForEach(VehicleCatalog.makeNames, id: \.self) {
+                            Text($0).tag($0)
+                        }
+                        Text(VehicleCatalog.other).tag(VehicleCatalog.other)
+                    }
+                    .accessibilityLabel("Vehicle make")
+
+                    Picker("Model", selection: $vehicleModel) {
+                        Text(vehicleMake.isEmpty
+                             ? "Choose make first"
+                             : "Choose model").tag("")
+                        ForEach(onboardingModelOptions.filter { !$0.isEmpty },
+                                id: \.self) {
+                            Text($0).tag($0)
+                        }
+                    }
+                    .disabled(vehicleMake.isEmpty)
+                    .accessibilityLabel("Vehicle model")
+                }
+                .pickerStyle(.wheel)
+                .frame(height: 176)
+                .clipped()
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 6)
+            .padding(.bottom, 8)
         }
     }
 
@@ -413,13 +482,19 @@ struct OnboardingView: View {
     private func finish() {
         // The state's full name reads better in the profile than its code.
         let place = StateDirectory.state(code: stateCode)?.name ?? ""
+        let resolvedVehicleMake = (
+            vehicleMake == VehicleCatalog.other ? vehicleOtherMake : vehicleMake
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedVehicleModel = (
+            vehicleModel == VehicleCatalog.other ? vehicleOtherModel : vehicleModel
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
 
         Seed.completeOnboarding(
             context,
             name: name.trimmingCharacters(in: .whitespaces),
             location: place,
-            vehicleMake: vehicleMake.trimmingCharacters(in: .whitespaces),
-            vehicleModel: vehicleModel.trimmingCharacters(in: .whitespaces),
+            vehicleMake: resolvedVehicleMake,
+            vehicleModel: resolvedVehicleModel,
             vehiclePlate: vehiclePlate.trimmingCharacters(in: .whitespaces).uppercased(),
             odometer: Int(odometerText) ?? 0,
             activePlatformNames: selectedPlatforms,

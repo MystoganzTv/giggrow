@@ -17,6 +17,7 @@ struct VehicleView: View {
     let snapshot: EarningsSnapshot
 
     @Environment(\.modelContext) private var context
+    @Environment(\.ggUsesWideLayout) private var usesWideLayout
     @Query private var vehicles: [VehicleRecord]
     @Query(sort: \Shift.start) private var shifts: [Shift]
 
@@ -44,19 +45,21 @@ struct VehicleView: View {
     }
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(
+            maxContentWidth: usesWideLayout
+                ? GG.Layout.tabletContentMaxWidth
+                : GG.Layout.contentMaxWidth
+        ) {
             GG.Gradients.vehicleWash()
         } content: {
             header
 
             if let vehicle {
-                vehicleCard(vehicle)
-
-                maintenanceFundCard
-
-                serviceCard
-
-                efficiencyTiles(vehicle)
+                if usesWideLayout {
+                    tabletVehicleContent(vehicle)
+                } else {
+                    phoneVehicleContent(vehicle)
+                }
             } else {
                 EmptyStateCard(
                     title: "No vehicle yet",
@@ -64,6 +67,8 @@ struct VehicleView: View {
                     actionTitle: "Add your vehicle",
                     action: { isEditingVehicle = true }
                 )
+                .frame(maxWidth: GG.Layout.contentMaxWidth)
+                .frame(maxWidth: .infinity)
             }
         }
         .sheet(isPresented: $isEditingVehicle) {
@@ -74,6 +79,33 @@ struct VehicleView: View {
         }
         .sheet(item: $editingService) { record in
             ServiceEditorView(editing: record, vehicle: vehicle, currentMileage: odometer)
+        }
+    }
+
+    private func phoneVehicleContent(_ vehicle: VehicleRecord) -> some View {
+        VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+            vehicleCard(vehicle)
+            maintenanceFundCard
+            serviceCard
+            efficiencyTiles(vehicle)
+        }
+    }
+
+    /// Car identity and costs are one visual group; the service schedule is
+    /// the second. This makes the iPad screen scan like a garage dashboard
+    /// instead of a long phone feed with oversized rows.
+    private func tabletVehicleContent(_ vehicle: VehicleRecord) -> some View {
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                vehicleCard(vehicle)
+                maintenanceFundCard
+                efficiencyTiles(vehicle)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            serviceCard
+                .frame(minWidth: 330, idealWidth: 390, maxWidth: 430,
+                       alignment: .topLeading)
         }
     }
 

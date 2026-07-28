@@ -29,6 +29,33 @@ final class RangeAndSeriesTests: XCTestCase {
         XCTAssertEqual(AnalyticsRange.year.comparisonUnit, .year)
     }
 
+    func testDashboardOffersWeekYearAndAllTime() {
+        XCTAssertEqual(DashboardScope.allCases, [.week, .year, .allTime])
+        XCTAssertEqual(DashboardScope.week.comparisonLabel, "vs last week")
+        XCTAssertEqual(DashboardScope.year.comparisonLabel, "vs last year")
+        XCTAssertNil(DashboardScope.allTime.comparisonLabel)
+    }
+
+    func testAllTimeDashboardWindowIncludesTheFirstRecordAndToday() {
+        let calendar = Calendar.gigGrow
+        let first = calendar.date(
+            from: DateComponents(year: 2023, month: 4, day: 12, hour: 9)
+        )!
+        let now = calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 28, hour: 11)
+        )!
+
+        let window = DashboardScope.allTime.window(
+            recordDates: [now, first],
+            now: now,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(window.contains(first))
+        XCTAssertTrue(window.contains(now))
+        XCTAssertEqual(window.lowerBound, calendar.startOfDay(for: first))
+    }
+
     /// Weeks of the month, counted from the 1st. Day 29–31 all land in W5.
     func testMonthBucketEdges() {
         let cal = Calendar.gigGrow

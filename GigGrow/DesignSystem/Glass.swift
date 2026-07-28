@@ -142,6 +142,8 @@ struct Pill: View {
     var verticalPadding: CGFloat = 5
     /// Optional upward arrow, as on the dashboard delta.
     var showsTrendArrow: Bool = false
+    /// A decline points down instead of pairing a minus sign with an up arrow.
+    var trendIsNegative: Bool = false
 
     var body: some View {
         HStack(spacing: 3) {
@@ -149,6 +151,7 @@ struct Pill: View {
                 TrendArrow()
                     .stroke(foreground, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .frame(width: 10, height: 10)
+                    .rotationEffect(.degrees(trendIsNegative ? 180 : 0))
             }
             Text(text)
                 .font(font)

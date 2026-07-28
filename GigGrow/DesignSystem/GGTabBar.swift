@@ -26,6 +26,8 @@ struct GGTabBar: View {
                 .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: GG.Layout.contentMaxWidth)
+        .frame(maxWidth: .infinity)
         .padding(.top, 12)
         .padding(.horizontal, 14)
         .background(alignment: .top) {

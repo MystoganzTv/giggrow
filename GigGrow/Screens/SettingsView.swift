@@ -31,6 +31,7 @@ struct SettingsView: View {
     }
 
     @Environment(\.modelContext) private var context
+    @Environment(\.ggUsesWideLayout) private var usesWideLayout
 
     @Query private var profiles: [DriverProfile]
     @Query(sort: \Shift.start) private var shifts: [Shift]
@@ -66,23 +67,21 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(
+            maxContentWidth: usesWideLayout
+                ? GG.Layout.tabletContentMaxWidth
+                : GG.Layout.contentMaxWidth
+        ) {
             GG.Gradients.settingsWash()
         } content: {
             Text("Settings")
                 .ggText(GG.Typo.screenTitle, tracking: GG.Typo.screenTitleTracking)
 
-            profileCard
-
-            moneyGroup
-            trackingGroup
-            generalGroup
-
-            #if DEBUG
-            debugSection
-            #endif
-
-            footer
+            if usesWideLayout {
+                tabletSettingsContent
+            } else {
+                phoneSettingsContent
+            }
         }
         .sheet(item: $route) { destination in
             editor(for: destination)
@@ -111,6 +110,49 @@ struct SettingsView: View {
                     save()
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var phoneSettingsContent: some View {
+        VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+            profileCard
+
+            moneyGroup
+            trackingGroup
+            generalGroup
+
+            #if DEBUG
+            debugSection
+            #endif
+
+            footer
+        }
+    }
+
+    /// Account and money belong together; tracking, export and app behaviour
+    /// form the operational column. Neither side needs to stretch settings
+    /// rows across a desktop-sized width.
+    @ViewBuilder
+    private var tabletSettingsContent: some View {
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                profileCard
+                moneyGroup
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                trackingGroup
+                generalGroup
+
+                #if DEBUG
+                debugSection
+                #endif
+
+                footer
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 

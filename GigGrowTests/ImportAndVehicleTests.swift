@@ -65,6 +65,36 @@ final class ImportAndVehicleTests: XCTestCase {
         })
     }
 
+    // MARK: Vehicle catalog
+
+    func testVehicleCatalogFiltersModelsByMake() {
+        XCTAssertTrue(VehicleCatalog.models(for: "Tesla").contains("Model Y"))
+        XCTAssertFalse(VehicleCatalog.models(for: "Toyota").contains("Model Y"))
+        XCTAssertTrue(VehicleCatalog.models(for: "Toyota").contains("RAV4"))
+    }
+
+    func testVehicleCatalogMatchesStoredNamesWithoutChangingTheirCase() {
+        XCTAssertEqual(VehicleCatalog.canonicalMake(matching: " tesla "), "Tesla")
+        XCTAssertEqual(
+            VehicleCatalog.canonicalModel(matching: "model y", for: "TESLA"),
+            "Model Y"
+        )
+    }
+
+    func testVehicleCatalogHasUniqueMakesAndModels() {
+        XCTAssertEqual(
+            Set(VehicleCatalog.makeNames).count,
+            VehicleCatalog.makeNames.count
+        )
+        for make in VehicleCatalog.makes {
+            XCTAssertEqual(
+                Set(make.models).count,
+                make.models.count,
+                "\(make.name) contains a duplicate model"
+            )
+        }
+    }
+
     // MARK: The invented hour
 
     /// A Spark screenshot showing $185.27 and no duration produced a one-hour

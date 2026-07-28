@@ -8,6 +8,30 @@
 
 import SwiftUI
 
+/// True when the app has enough *window* width for its native iPad
+/// composition. This is deliberately based on the live scene width rather
+/// than the device model: an iPad in Split View should fall back to the same
+/// focused, single-column layout as an iPhone.
+private struct GGWideLayoutKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private struct GGSidebarLayoutKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var ggUsesWideLayout: Bool {
+        get { self[GGWideLayoutKey.self] }
+        set { self[GGWideLayoutKey.self] = newValue }
+    }
+
+    var ggUsesSidebarLayout: Bool {
+        get { self[GGSidebarLayoutKey.self] }
+        set { self[GGSidebarLayoutKey.self] = newValue }
+    }
+}
+
 // MARK: - Colour
 
 extension Color {
@@ -249,6 +273,20 @@ enum GG {
     enum Layout {
         /// Horizontal inset of every screen's scroll content.
         static let screenInset: CGFloat = 20
+        /// Keeps cards readable on iPad instead of stretching the phone
+        /// composition from edge to edge. Narrow screens remain unchanged.
+        static let contentMaxWidth: CGFloat = 720
+        /// Native iPad canvas shared by every main screen. Content inside it
+        /// is composed into columns; this is not a stretched phone column.
+        static let tabletContentMaxWidth: CGFloat = 1_080
+        /// The rail replaces the bottom tab bar when the scene is wide enough.
+        static let navigationRailWidth: CGFloat = 184
+        /// A full-size portrait iPad gets the rail even when it is not wide
+        /// enough for two content columns.
+        static let sidebarLayoutMinimumWidth: CGFloat = 760
+        /// Scene breakpoint, not a hardware check. Below it (including narrow
+        /// Split View) content returns to a single readable column.
+        static let wideLayoutMinimumWidth: CGFloat = 900
         /// Vertical rhythm between top-level cards.
         static let stackSpacing: CGFloat = 14
         /// Gap between the two tiles of a 2-up grid.

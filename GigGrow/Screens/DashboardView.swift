@@ -10,6 +10,7 @@ import SwiftData
 
 struct DashboardView: View {
     let snapshot: EarningsSnapshot
+    @Binding var scope: DashboardScope
     /// The dashboard was hard-wired to the current week. Nothing about "at a
     /// glance" requires that it can only ever be *this* glance.
     var onLogShift: () -> Void = {}
@@ -21,9 +22,11 @@ struct DashboardView: View {
     @Query private var drives: [DriveRecord]
     @Query(sort: \Shift.start, order: .reverse) private var allShifts: [Shift]
     @Query private var profiles: [DriverProfile]
+    @Environment(\.ggUsesWideLayout) private var usesWideLayout
+    @Namespace private var scopeAnimation
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(maxContentWidth: dashboardContentMaxWidth) {
             GG.Gradients.dashboardWash()
         } content: {
             // No RangeBar. It was the same control Analytics opens with, so
@@ -34,16 +37,62 @@ struct DashboardView: View {
             header
 
             if snapshot.hasData {
+                if usesTabletLayout {
+                    tabletDashboard
+                } else {
+                    phoneDashboard
+                }
+            } else {
+                emptyState
+                    .frame(maxWidth: GG.Layout.contentMaxWidth)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// Regular-width iPads get a dashboard composition rather than a widened
+    /// phone feed. Compact windows (including Split View) fall back to the
+    /// single column automatically.
+    private var usesTabletLayout: Bool { usesWideLayout }
+
+    private var dashboardContentMaxWidth: CGFloat {
+        usesTabletLayout
+            ? GG.Layout.tabletContentMaxWidth
+            : GG.Layout.contentMaxWidth
+    }
+
+    private var phoneDashboard: some View {
+        VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+            heroCard
+            keepCard
+            if !attention.isEmpty { attentionCard }
+            setAsideTiles
+            earningsByApp
+            rateTiles
+            hoursCard
+        }
+    }
+
+    /// The left side answers "what did I make?"; the right rail answers
+    /// "what can I keep and what needs attention?". Each card keeps a natural
+    /// reading width while the iPad canvas is actually put to use.
+    private var tabletDashboard: some View {
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
                 heroCard
+                earningsByApp
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
                 keepCard
                 if !attention.isEmpty { attentionCard }
                 setAsideTiles
-                earningsByApp
                 rateTiles
                 hoursCard
-            } else {
-                emptyState
             }
+            .frame(minWidth: 310, idealWidth: 350, maxWidth: 380,
+                   alignment: .topLeading)
         }
     }
 
@@ -189,9 +238,9 @@ struct DashboardView: View {
                             Circle().fill(GG.Palette.violet400)
                                 .frame(width: 6, height: 6).padding(.top, 7)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Nothing this week, but you have earlier shifts")
+                                Text(emptyHistoryTitle)
                                     .ggText(.system(size: 13.5, weight: .semibold))
-                                Text("Imported a past week? It saved — this screen only ever shows the current one. Tap to see everything.")
+                                Text("Your earlier records are still saved. Use Total on the earnings card or tap here to inspect them.")
                                     .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -204,7 +253,7 @@ struct DashboardView: View {
             }
 
             EmptyStateCard(
-                title: "No shifts yet this week",
+                title: emptyTitle,
                 message: "Screenshot your gig app's earnings screen and GigGrow reads the figures off it. Faster than typing, and you're not transcribing numbers by hand.",
                 actionTitle: "Import a screenshot",
                 action: onImport,
@@ -253,6 +302,22 @@ struct DashboardView: View {
                     )
                 }
             }
+        }
+    }
+
+    private var emptyTitle: String {
+        switch scope {
+        case .week:    return "No shifts yet this week"
+        case .year:    return "No shifts yet this year"
+        case .allTime: return "No earnings logged yet"
+        }
+    }
+
+    private var emptyHistoryTitle: String {
+        switch scope {
+        case .week:    return "Nothing this week, but you have earlier shifts"
+        case .year:    return "Nothing this year, but you have earlier shifts"
+        case .allTime: return "Your records need attention"
         }
     }
 
@@ -322,35 +387,182 @@ struct DashboardView: View {
     private var heroCard: some View {
         HeroCard(glow: true) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Total earnings".uppercased())
-                    .ggText(GG.Typo.heroEyebrow,
-                            tracking: GG.Typo.heroEyebrowTracking,
-                            color: Color.white.opacity(0.55))
+                HStack(spacing: 12) {
+                    Text("Earnings".uppercased())
+                        .ggText(GG.Typo.heroEyebrow,
+                                tracking: GG.Typo.heroEyebrowTracking,
+                                color: Color.white.opacity(0.55))
+                    Spacer(minLength: 0)
+                    scopePicker
+                }
 
                 HStack(alignment: .bottom, spacing: 10) {
                     Text(Money.cents(snapshot.weeklyTotal))
                         .ggText(GG.Typo.heroAmount, tracking: GG.Typo.heroAmountTracking)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                        .contentTransition(.numericText())
 
-                    Pill(text: snapshot.weeklyChange.replacingOccurrences(of: "+", with: ""),
-                         foreground: GG.Palette.mint,
-                         background: Color(hex: 0x34D399, opacity: 0.16),
-                         font: .system(size: 13, weight: .semibold),
-                         horizontalPadding: 9,
-                         showsTrendArrow: true)
-                        .padding(.bottom, 7)
+                    if let comparison = scope.comparisonLabel,
+                       snapshot.weeklyChange != "—" {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Pill(
+                                text: trendMagnitude,
+                                foreground: trendColor,
+                                background: trendBackground,
+                                font: .system(size: 13, weight: .semibold),
+                                horizontalPadding: 9,
+                                showsTrendArrow: true,
+                                trendIsNegative: trendIsNegative
+                            )
+                            Text(comparison)
+                                .ggText(.system(size: 10.5, weight: .medium),
+                                        color: Color.white.opacity(0.38))
+                                .padding(.leading, 4)
+                        }
+                        .padding(.bottom, 4)
+                    }
                 }
                 .padding(.top, 8)
 
                 VStack(spacing: 8) {
                     HeroAreaChart(
-                        points: snapshot.series.cumulative
+                        points: heroCumulative
                             .chartPoints(box: ChartData.weekTrendBox),
                         box: ChartData.weekTrendBox
                     )
-                    AxisLabels(labels: ChartData.weekdayNames, color: Color.white.opacity(0.42))
+                    AxisLabels(labels: heroLabels, color: Color.white.opacity(0.42))
                 }
                 .padding(.top, 18)
             }
+        }
+        .animation(.easeInOut(duration: 0.28), value: scope)
+    }
+
+    private var scopePicker: some View {
+        HStack(spacing: 3) {
+            ForEach(DashboardScope.allCases) { option in
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        scope = option
+                    }
+                } label: {
+                    Text(option.rawValue)
+                        .font(.system(size: 11.5,
+                                      weight: option == scope ? .semibold : .medium))
+                        .foregroundStyle(option == scope
+                                         ? Color.white
+                                         : Color.white.opacity(0.46))
+                        .padding(.horizontal, option == .allTime ? 10 : 9)
+                        .padding(.vertical, 7)
+                        .background {
+                            if option == scope {
+                                Capsule()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                GG.Palette.violet400.opacity(0.95),
+                                                GG.Palette.blue400.opacity(0.82)
+                                            ],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .matchedGeometryEffect(
+                                        id: "dashboard-scope",
+                                        in: scopeAnimation
+                                    )
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show \(option.activityLabel) earnings")
+                .accessibilityAddTraits(option == scope ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(Color.black.opacity(0.20), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+    }
+
+    private var trendIsNegative: Bool {
+        snapshot.weeklyChange.trimmingCharacters(in: .whitespaces)
+            .hasPrefix("-")
+    }
+
+    private var trendMagnitude: String {
+        snapshot.weeklyChange
+            .replacingOccurrences(of: "+", with: "")
+            .replacingOccurrences(of: "-", with: "")
+    }
+
+    private var trendColor: Color {
+        trendIsNegative ? Color(hex: 0xFB7185) : GG.Palette.mint
+    }
+
+    private var trendBackground: Color {
+        trendIsNegative
+            ? Color(hex: 0xFB7185, opacity: 0.16)
+            : Color(hex: 0x34D399, opacity: 0.16)
+    }
+
+    private var heroCumulative: [Double] {
+        var running = 0.0
+        return heroBuckets.map {
+            running += $0
+            return running
+        }
+    }
+
+    private var heroBuckets: [Double] {
+        guard scope == .allTime else { return snapshot.series.primary }
+
+        let groups = allTimeYearGroups
+        guard groups.count > 1 else { return snapshot.series.primary }
+
+        return groups.map { group in
+            allShifts
+                .filter {
+                    group.years.contains(
+                        Calendar.gigGrow.component(.year, from: $0.start)
+                    )
+                }
+                .reduce(0) { $0 + $1.gross }
+        }
+    }
+
+    private var heroLabels: [String] {
+        guard scope == .allTime else { return snapshot.series.primaryLabels }
+
+        let groups = allTimeYearGroups
+        guard groups.count > 1 else { return snapshot.series.primaryLabels }
+        return groups.map(\.label)
+    }
+
+    private var yearsWithEarnings: [Int] {
+        Array(Set(allShifts.map {
+            Calendar.gigGrow.component(.year, from: $0.start)
+        })).sorted()
+    }
+
+    /// Six labels stay legible at phone width. If the driver has a longer
+    /// history, the first point carries every earlier year and the remaining
+    /// five retain their individual shape.
+    private var allTimeYearGroups: [(label: String, years: Set<Int>)] {
+        let years = yearsWithEarnings
+        guard years.count > 6 else {
+            return years.map {
+                (String($0).suffix(2).description, Set([$0]))
+            }
+        }
+
+        let recent = Array(years.suffix(5))
+        let earlier = Set(years.dropLast(5))
+        let earlierLabel = "≤" + String(
+            String(earlier.max() ?? years[0]).suffix(2)
+        )
+        return [(earlierLabel, earlier)] + recent.map {
+            (String($0).suffix(2).description, Set([$0]))
         }
     }
 
@@ -387,7 +599,7 @@ struct DashboardView: View {
                     Spacer()
                     // Not "connected" — nothing is connected to anything.
                     // These are apps the driver logged by hand.
-                    Text("\(snapshot.platforms.count) this week")
+                    Text("\(snapshot.platforms.count) \(scope.activityLabel)")
                         .ggText(GG.Typo.captionMuted, color: Color.white.opacity(0.40))
                 }
 
@@ -511,11 +723,11 @@ struct DashboardView: View {
 }
 
 #Preview("Dashboard") {
-    DashboardView(snapshot: .mock)
+    DashboardView(snapshot: .mock, scope: .constant(.week))
         .preferredColorScheme(.dark)
 }
 
 #Preview("Dashboard — empty") {
-    DashboardView(snapshot: .empty)
+    DashboardView(snapshot: .empty, scope: .constant(.week))
         .preferredColorScheme(.dark)
 }

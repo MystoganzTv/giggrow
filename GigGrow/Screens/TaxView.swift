@@ -25,6 +25,7 @@ struct TaxView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Environment(\.ggUsesWideLayout) private var usesWideLayout
 
     @Query(sort: \Shift.start) private var shifts: [Shift]
     @Query private var expenses: [Expense]
@@ -42,20 +43,55 @@ struct TaxView: View {
 
     /// Tab form: the app's own scaffold, matching the other four screens.
     private var tab: some View {
-        ScreenScaffold {
+        ScreenScaffold(
+            maxContentWidth: usesWideLayout
+                ? GG.Layout.tabletContentMaxWidth
+                : GG.Layout.contentMaxWidth
+        ) {
             GG.Gradients.settingsWash()
         } content: {
             Text("Taxes")
                 .ggText(GG.Typo.screenTitle, tracking: GG.Typo.screenTitleTracking)
 
             yearPicker
+
+            if usesWideLayout {
+                tabletTaxContent
+            } else {
+                phoneTaxContent
+            }
+        }
+        .sheet(isPresented: $isEditingStateRate) { stateRateEditor }
+    }
+
+    private var phoneTaxContent: some View {
+        VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
             headline
             workingOut
             breakdown
             setAsideAdvice
             assumptions
         }
-        .sheet(isPresented: $isEditingStateRate) { stateRateEditor }
+    }
+
+    /// The estimate and the recommended action stay visible together while
+    /// the arithmetic gets a dedicated reading column.
+    private var tabletTaxContent: some View {
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                headline
+                setAsideAdvice
+                assumptions
+            }
+            .frame(minWidth: 310, idealWidth: 360, maxWidth: 410,
+                   alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                workingOut
+                breakdown
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
     }
 
     private var sheet: some View {
