@@ -314,9 +314,7 @@ struct TaxView: View {
                 Text(label)
                     .ggText(GG.Typo.rowLabel, color: GG.Ink.secondary)
                 Spacer(minLength: 12)
-                // Written as a subtraction, because that's what it is and
-                // seeing it come off is the point of the screen.
-                Text("−" + Money.cents(amount))
+                Text(Money.cents(amount))
                     .ggText(.system(size: 15, weight: .semibold), tracking: -0.3,
                             color: GG.Palette.mint)
             }
@@ -338,7 +336,7 @@ struct TaxView: View {
                     Chevron(size: 12, color: Color.white.opacity(0.25))
                 }
                 Spacer(minLength: 12)
-                Text("−" + Money.cents(amount))
+                Text(Money.cents(amount))
                     .ggText(.system(size: 15, weight: .semibold), tracking: -0.3,
                             color: Color(hex: 0xFB7185))
             }
