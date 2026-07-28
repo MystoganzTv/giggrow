@@ -141,6 +141,8 @@ struct ImportScreenshotView: View {
         let gross: Double
         let earliest: Date
         let latest: Date
+        /// Existing manual/imported app entries replaced by these reports.
+        let replacedEntries: Int
         /// True when none of it falls in the week the dashboard displays.
         let outsideThisWeek: Bool
     }
@@ -362,6 +364,15 @@ struct ImportScreenshotView: View {
     private func sourceCard(_ source: Binding<ImportedSource>) -> some View {
         let value = source.wrappedValue
         let isOpen = expanded == value.id
+        let overlaps = storedOverlaps(value)
+        let overlapCount = uniqueEarningCount(overlaps)
+        let automaticReplacementCount = uniqueEarningCount(
+            ImportReconciler.replacements(
+                from: overlaps,
+                incoming: coverage(for: value),
+                replacingImported: false
+            )
+        )
 
         return GlassCard {
             VStack(alignment: .leading, spacing: 14) {
@@ -421,7 +432,7 @@ struct ImportScreenshotView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(value.isSkipped
                                  ? "Already imported — this one will be skipped."
-                                 : "Already imported. Saving it again will double this day's earnings.")
+                                 : "This corrected report will replace \(overlapCount) existing \(overlapCount == 1 ? "entry" : "entries") for \(value.platform).")
                                 .ggText(.system(size: 11.5, weight: .medium),
                                         color: GG.Palette.amber.opacity(0.95))
                                 .fixedSize(horizontal: false, vertical: true)
@@ -435,13 +446,28 @@ struct ImportScreenshotView: View {
                                 }
                             } label: {
                                 Text(value.isSkipped
-                                     ? "Include this corrected import"
-                                     : "Exclude this duplicate")
+                                     ? "Replace existing import"
+                                     : "Keep existing import")
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundStyle(GG.Palette.violet300)
                             }
                             .buttonStyle(.plain)
                         }
+                        Spacer(minLength: 0)
+                    }
+                } else if automaticReplacementCount > 0 {
+                    HStack(alignment: .top, spacing: 9) {
+                        CheckGlyph()
+                            .stroke(GG.Palette.mint,
+                                    style: StrokeStyle(lineWidth: 2,
+                                                       lineCap: .round,
+                                                       lineJoin: .round))
+                            .frame(width: 11, height: 11)
+                            .padding(.top, 2)
+                        Text("This report covers \(automaticReplacementCount) existing \(value.platform) \(automaticReplacementCount == 1 ? "entry" : "entries"). Saving will replace only those \(value.platform) earnings, so the period is counted once.")
+                            .ggText(.system(size: 11.5, weight: .medium),
+                                    color: GG.Palette.mint.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
                     }
                 }
@@ -1143,7 +1169,7 @@ struct ImportScreenshotView: View {
         guard !canSave else { return nil }
         if let overlapWarning { return overlapWarning }
         if included.isEmpty, !sources.isEmpty {
-            return "Nothing is included. These reports were already imported, so GigGrow excluded them to prevent double-counting. Open each card and tap “Include this corrected import”, or delete the previous import first."
+            return "Nothing is included. These reports were already imported, so GigGrow excluded them to prevent double-counting. Open each card and tap “Replace existing import”, or keep the previous import."
         }
         let missingApps = included.filter { $0.platform.isEmpty }.count
         let missingGross = included.filter { $0.gross <= 0 }.count
@@ -1164,28 +1190,40 @@ struct ImportScreenshotView: View {
     /// second import of a day is usually a *corrected* one — same day, same
     /// app, different figure — and that is still a duplicate.
     private func alreadyStored(_ source: ImportedSource) -> Bool {
-        guard !source.platform.isEmpty else { return false }
-        let calendar = Calendar.gigGrow
-        let incoming = ImportCoverage(
+        ImportReconciler.hasBlockingDuplicate(
+            incoming: coverage(for: source),
+            overlaps: storedOverlaps(source)
+        )
+    }
+
+    private func storedOverlaps(_ source: ImportedSource) -> [StoredEarningsOverlap] {
+        guard !source.platform.isEmpty else { return [] }
+        return ImportReconciler.overlaps(
+            coverage(for: source),
+            in: existingShifts
+        )
+    }
+
+    private func coverage(for source: ImportedSource) -> ImportCoverage {
+        ImportCoverage(
             platform: source.platform,
             period: source.period,
             date: source.date
         )
+    }
 
-        return existingShifts.contains { shift in
-            shift.earnings.contains { earning in
-                guard let platform = earning.account?.name else { return false }
-                return ImportOverlapDetector.overlaps(
-                    incoming,
-                    ImportOverlapDetector.coverage(
-                        of: shift,
-                        platform: platform,
-                        calendar: calendar
-                    ),
-                    calendar: calendar
-                )
-            }
-        }
+    private func uniqueEarningCount(_ overlaps: [StoredEarningsOverlap]) -> Int {
+        Set(overlaps.map { $0.earning.persistentModelID }).count
+    }
+
+    /// Manual entries are superseded automatically by a platform report. An
+    /// imported report is removed only after the driver chooses Replace.
+    private func replacements(for source: ImportedSource) -> [StoredEarningsOverlap] {
+        ImportReconciler.replacements(
+            from: storedOverlaps(source),
+            incoming: coverage(for: source),
+            replacingImported: source.duplicateOverride
+        )
     }
 
     // MARK: Loading
@@ -1365,6 +1403,10 @@ struct ImportScreenshotView: View {
         let calendar = Calendar.gigGrow
         let usable = included.filter { !$0.platform.isEmpty && $0.gross > 0 && $0.hours > 0 }
         let groups = Dictionary(grouping: usable) { $0.groupKey(calendar) }
+        let replacedEntries = ImportReconciler.remove(
+            usable.flatMap(replacements),
+            from: context
+        )
         var daysStored = 0
 
         for group in groups.values {
@@ -1443,11 +1485,14 @@ struct ImportScreenshotView: View {
         do {
             try context.save()
         } catch {
+            context.rollback()
             errorMessage = "Those couldn't be saved: \(error.localizedDescription)"
             return
         }
 
-        report(groups: groups, daysStored: daysStored)
+        report(groups: groups,
+               daysStored: daysStored,
+               replacedEntries: replacedEntries)
     }
 
     /// Turns a weekly total into the days that made it.
@@ -1522,7 +1567,9 @@ struct ImportScreenshotView: View {
     /// Says what landed and, crucially, when. Importing June's screenshots in
     /// July saves correctly and changes nothing on a dashboard headed "This
     /// week" — which reads exactly like a broken Save button.
-    private func report(groups: [String: [ImportedSource]], daysStored: Int) {
+    private func report(groups: [String: [ImportedSource]],
+                        daysStored: Int,
+                        replacedEntries: Int) {
         let saved = groups.values.flatMap { $0 }
         guard !saved.isEmpty else {
             errorMessage = "Nothing was saved — each screenshot needs an app, an amount and a time."
@@ -1540,6 +1587,7 @@ struct ImportScreenshotView: View {
             gross: saved.reduce(0) { $0 + $1.gross },
             earliest: dates.min() ?? .now,
             latest: dates.max() ?? .now,
+            replacedEntries: replacedEntries,
             outsideThisWeek: !dates.contains { calendar.startOfWeek(for: $0) == thisWeek }
         )
     }
@@ -1560,6 +1608,10 @@ struct ImportScreenshotView: View {
 
         if result.entries > result.reports {
             text += "\n\nThe chart produced \(result.entries) estimated daily earnings entries. That is not a count of actual shifts."
+        }
+
+        if result.replacedEntries > 0 {
+            text += "\n\nReplaced \(result.replacedEntries) overlapping \(result.replacedEntries == 1 ? "entry" : "entries"), so those earnings are counted once."
         }
 
         if result.outsideThisWeek {

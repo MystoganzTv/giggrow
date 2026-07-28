@@ -29,7 +29,7 @@ extension EarningsSnapshot {
         maintenanceGoal: 3000,
         taxSavingsYTD: 8420,
         monthlyIncome: 5940,
-        netProfit: 994,
+        netProfit: 993.342,
 
         expensesTotal: 0,
         reserveDraw: 0,
@@ -65,6 +65,12 @@ extension EarningsSnapshot {
                      daily: [20, 0, 38, 0, 42, 30, 0],
                      gradient: [Color(hex: 0x93C5FD), Color(hex: 0x60A5FA)])
         ],
+
+        composition: EarningsComposition(
+            fare: 1_041.90,
+            tips: 278.40,
+            promotions: 162.30
+        ),
 
         driver: Driver(name: "Marco Delgado", detail: "Phoenix, AZ · Since 2023"),
 
@@ -112,6 +118,7 @@ extension EarningsSnapshot {
         reserveDraw: 0,
 
         platforms: [],
+        composition: .zero,
 
         driver: Driver(name: "", detail: ""),
         vehicle: Vehicle(

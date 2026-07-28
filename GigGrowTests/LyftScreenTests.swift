@@ -97,6 +97,41 @@ final class LyftScreenTests: XCTestCase {
         XCTAssertNil(parsed.promotions)
     }
 
+    func testLyftDailyTipsComeOnlyFromTipStatsCard() {
+        let lines = [
+            line("Day", x: 0.146, width: 0.128, y: 0.132),
+            line("Jul 22", x: 0.420, width: 0.160, y: 0.195),
+            line("$300.00", x: 0.111, width: 0.775, y: 0.258, height: 0.082),
+            line("$30.05 Lyft", x: 0.176, width: 0.245, y: 0.405),
+            line("incl. $4.04 tip & $4.33 bonus", x: 0.176, width: 0.410, y: 0.433),
+            line("2:11 AM", x: 0.790, width: 0.130, y: 0.418),
+            line("$2.00 Passenger canceled", x: 0.176, width: 0.390, y: 0.488),
+            line("$12.13 Lyft", x: 0.176, width: 0.230, y: 0.565),
+            line("Your daily stats", x: 0.040, width: 0.400, y: 0.665),
+            line("DRIVING STATS", x: 0.100, width: 0.250, y: 0.735),
+            line("TIP STATS", x: 0.600, width: 0.180, y: 0.735),
+            line("Rides completed", x: 0.045, width: 0.265, y: 0.775),
+            line("15", x: 0.405, width: 0.050, y: 0.775),
+            line("$34.17", x: 0.550, width: 0.245, y: 0.775, height: 0.037),
+            line("6 rides", x: 0.550, width: 0.120, y: 0.822),
+            line("Online", x: 0.045, width: 0.110, y: 0.865),
+            line("8 hr 45 min", x: 0.260, width: 0.200, y: 0.865),
+            line("$57.20 balance", x: 0.040, width: 0.350, y: 0.940),
+            line("Cash out", x: 0.690, width: 0.195, y: 0.940)
+        ]
+
+        let parsed = EarningsParser.parse(lines)
+
+        XCTAssertEqual(parsed.platformName, "Lyft")
+        XCTAssertEqual(parsed.best.amount, 300)
+        XCTAssertEqual(parsed.tips ?? 0, 34.17, accuracy: 0.001)
+        XCTAssertNotEqual(parsed.tips, 4.04)
+        XCTAssertNil(parsed.promotions,
+                     "a bonus from one visible ride is not the day's promotion total")
+        XCTAssertFalse(parsed.amounts.contains { $0.value == 57.20 },
+                       "cash-out balance belongs to another payout period")
+    }
+
     func testSingleLetterWeekdayRowStillProducesSevenDailyShares() throws {
         // Vision dropped Tuesday entirely in the real screenshot. The
         // detector must reconstruct all seven columns from the remaining

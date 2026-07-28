@@ -7,8 +7,55 @@
 
 import SwiftUI
 
+private enum EarningsBreakdownMode: String, CaseIterable, Identifiable {
+    case platform
+    case earningsType
+    case allocation
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .platform:     return "By platform"
+        case .earningsType: return "By earnings type"
+        case .allocation:   return "Where it goes"
+        }
+    }
+
+    func explanation(period: String) -> String {
+        switch self {
+        case .platform:
+            return "Each app's share of \(period). The rate underneath is what that app paid per hour you had it on."
+        case .earningsType:
+            return "How much came from fares, customer tips and promotions in \(period)."
+        case .allocation:
+            return "How gross income is divided between take-home, set-asides and out-of-pocket costs."
+        }
+    }
+
+    func centreLabel(itemCount: Int, platformCount: Int) -> String {
+        switch self {
+        case .platform:
+            return "\(platformCount) \(platformCount == 1 ? "app" : "apps")"
+        case .earningsType:
+            return "\(itemCount) pay \(itemCount == 1 ? "type" : "types")"
+        case .allocation:
+            return "gross income"
+        }
+    }
+}
+
+private struct EarningsBreakdownItem: Identifiable {
+    let id: String
+    let label: String
+    let detail: String
+    let amount: Double
+    let color: Color
+}
+
 struct AnalyticsView: View {
     @Environment(\.ggUsesWideLayout) private var usesWideLayout
+    @State private var breakdownMode: EarningsBreakdownMode = .platform
 
     /// Built for whatever `range` is set to, so every figure on this screen
     /// belongs to the selected period rather than always to the week.
@@ -240,41 +287,51 @@ struct AnalyticsView: View {
         }
     }
 
-    // MARK: App comparison
+    // MARK: Earnings breakdown
 
-    /// Where the money came from, and what each app paid for the time.
+    /// Three views of the same gross total:
+    /// - which platform paid it;
+    /// - whether it was fare, tips or promotions;
+    /// - where it goes after reserves and out-of-pocket costs.
     ///
-    /// This card used to draw a bar sized by each app's share of the money
-    /// and print an hourly rate at the end of it. Two different measures in
-    /// one row: the app with the longest bar showed the lower number, which
-    /// reads as a bug even though both figures were right. A driver earning
-    /// most of their money on Lyft at a slightly worse rate than Uber saw a
-    /// full bar next to $32.86 and a stub next to $34.72.
-    ///
-    /// So the two questions are now asked separately. The ring answers
-    /// "where did the week's money come from" — a share, drawn as a share.
-    /// The rate sits under the amount, labelled, where it can't be mistaken
-    /// for what the ring is measuring.
+    /// Every mode partitions the same headline amount. That keeps the ring
+    /// comparable when the menu changes and prevents a derived hourly rate
+    /// from being mistaken for the size of a slice.
     private var comparisonCard: some View {
-        GlassCard {
+        let items = breakdownItems
+
+        return GlassCard {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Where the money came from")
+                    Text("Earnings breakdown")
                         .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
-                    Text("The ring is each app's share of \(selection.title). The rate underneath is what that app paid per hour you had it on.")
+
+                    HStack(spacing: 10) {
+                        Text("View")
+                            .ggText(.system(size: 11.5, weight: .regular),
+                                    color: GG.Ink.muted)
+                        Spacer()
+                        breakdownPicker
+                    }
+                    .padding(.vertical, 6)
+
+                    Text(breakdownMode.explanation(period: selection.title))
                         .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if snapshot.platforms.count > 1 {
+                if !items.isEmpty {
                     HStack {
                         Spacer(minLength: 0)
                         ShareRing(
-                            slices: snapshot.platforms.map {
-                                (share: $0.share, colour: $0.gradient.first ?? GG.Palette.violet300)
+                            slices: items.map {
+                                (share: share(of: $0.amount), colour: $0.color)
                             },
                             centreTop: Money.whole(snapshot.weeklyTotal),
-                            centreBottom: "\(snapshot.platforms.count) apps"
+                            centreBottom: breakdownMode.centreLabel(
+                                itemCount: items.count,
+                                platformCount: snapshot.platforms.count
+                            )
                         )
                         .frame(width: 132, height: 132)
                         Spacer(minLength: 0)
@@ -283,17 +340,17 @@ struct AnalyticsView: View {
                 }
 
                 VStack(spacing: 12) {
-                    ForEach(snapshot.platforms) { platform in
+                    ForEach(items) { item in
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Circle()
-                                .fill(platform.gradient.first ?? GG.Palette.violet300)
+                                .fill(item.color)
                                 .frame(width: 8, height: 8)
                                 .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(platform.name)
+                                Text(item.label)
                                     .ggText(.system(size: 13, weight: .medium))
-                                Text(rateLabel(for: platform))
+                                Text(item.detail)
                                     .ggText(.system(size: 11.5, weight: .regular),
                                             color: GG.Ink.muted)
                             }
@@ -301,33 +358,160 @@ struct AnalyticsView: View {
                             Spacer(minLength: 8)
 
                             VStack(alignment: .trailing, spacing: 2) {
-                                Text(Money.cents(snapshot.amount(for: platform)))
+                                Text(Money.cents(item.amount))
                                     .ggText(.system(size: 13, weight: .semibold))
-                                Text(percentLabel(platform.share))
+                                Text(percentLabel(share(of: item.amount)))
                                     .ggText(.system(size: 11.5, weight: .regular),
                                             color: GG.Ink.muted)
                             }
                         }
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel(
-                            "\(platform.name), \(Money.cents(snapshot.amount(for: platform))), \(percentLabel(platform.share)) of the total, \(platform.hourly) per hour"
+                            "\(item.label), \(Money.cents(item.amount)), \(percentLabel(share(of: item.amount))) of the total, \(item.detail)"
                         )
                     }
                 }
 
-                if snapshot.platforms.contains(where: \.rateIsShared) {
+                if breakdownMode == .platform,
+                   snapshot.platforms.contains(where: \.rateIsShared) {
                     Text("“Time shared” means you had these apps on at once. One hour is one hour, so it's split between them by what each paid — which makes their rates match by definition. To compare apps properly, log a shift with only one running.")
                         .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if snapshot.platforms.count == 1, let only = snapshot.platforms.first {
+                if breakdownMode == .platform,
+                   snapshot.platforms.count == 1,
+                   let only = snapshot.platforms.first {
                     Text("Only \(only.name) has earnings in \(selection.title). Choose Month or Year to compare apps imported in different weeks.")
                         .ggText(.system(size: 11.5, weight: .regular), color: GG.Ink.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
+    }
+
+    private var breakdownPicker: some View {
+        Menu {
+            ForEach(EarningsBreakdownMode.allCases) { mode in
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        breakdownMode = mode
+                    }
+                } label: {
+                    if mode == breakdownMode {
+                        Label(mode.label, systemImage: "checkmark")
+                    } else {
+                        Text(mode.label)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(breakdownMode.label)
+                    .font(.system(size: 11.5, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundStyle(GG.Palette.violet300)
+            .padding(.horizontal, 11)
+            .frame(height: 32)
+            .background(GG.Surface.glassBright, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(GG.Surface.stroke, lineWidth: 1)
+            }
+            .contentShape(Capsule())
+        }
+        .accessibilityLabel("Break earnings down \(breakdownMode.label.lowercased())")
+    }
+
+    private var breakdownItems: [EarningsBreakdownItem] {
+        let items: [EarningsBreakdownItem]
+
+        switch breakdownMode {
+        case .platform:
+            items = snapshot.platforms.map { platform in
+                EarningsBreakdownItem(
+                    id: "platform-\(platform.name)",
+                    label: platform.name,
+                    detail: rateLabel(for: platform),
+                    amount: snapshot.amount(for: platform),
+                    color: platform.gradient.first ?? GG.Palette.violet300
+                )
+            }
+
+        case .earningsType:
+            items = [
+                EarningsBreakdownItem(
+                    id: "fare",
+                    label: "Fare",
+                    detail: "Pay for completed work",
+                    amount: snapshot.composition.fare,
+                    color: GG.Palette.violet400
+                ),
+                EarningsBreakdownItem(
+                    id: "tips",
+                    label: "Tips",
+                    detail: "Customer tips",
+                    amount: snapshot.composition.tips,
+                    color: GG.Palette.mint
+                ),
+                EarningsBreakdownItem(
+                    id: "promotions",
+                    label: "Promotions",
+                    detail: "Bonuses, quests and incentives",
+                    amount: snapshot.composition.promotions,
+                    color: GG.Palette.amber
+                )
+            ]
+
+        case .allocation:
+            let outOfPocket = max(snapshot.expensesTotal - snapshot.reserveDraw, 0)
+            items = [
+                EarningsBreakdownItem(
+                    id: "keep",
+                    label: "Yours to keep",
+                    detail: "After set-asides and costs",
+                    amount: snapshot.netProfit,
+                    color: GG.Palette.mint
+                ),
+                EarningsBreakdownItem(
+                    id: "tax",
+                    label: "Taxes",
+                    detail: "\(percentRate(snapshot.taxRate)) set aside",
+                    amount: snapshot.taxesToSave,
+                    color: GG.Palette.violet400
+                ),
+                EarningsBreakdownItem(
+                    id: "maintenance",
+                    label: "Maintenance",
+                    detail: "\(percentRate(snapshot.maintenanceRate)) set aside",
+                    amount: snapshot.maintenanceThisWeek,
+                    color: GG.Palette.blue400
+                ),
+                EarningsBreakdownItem(
+                    id: "expenses",
+                    label: "Other expenses",
+                    detail: "Paid out of pocket",
+                    amount: outOfPocket,
+                    color: GG.Palette.amber
+                )
+            ]
+        }
+
+        return items.filter { $0.amount > 0.004 }
+    }
+
+    private func share(of amount: Double) -> Double {
+        snapshot.weeklyTotal > 0 ? amount / snapshot.weeklyTotal : 0
+    }
+
+    private func percentRate(_ value: Double) -> String {
+        let rounded = value.rounded()
+        if abs(value - rounded) < 0.001 {
+            return "\(Int(rounded))%"
+        }
+        return String(format: "%.1f%%", value)
     }
 
     private func rateLabel(for platform: Platform) -> String {

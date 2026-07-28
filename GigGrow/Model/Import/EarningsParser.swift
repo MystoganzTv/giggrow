@@ -63,11 +63,19 @@ struct ParsedEarnings {
     }
 
     /// Uber writes "Tip", Lyft "Tips", DoorDash "Customer tips".
-    var tips: Double? { breakdown[.tips] ?? amount(labelled: BreakdownKind.tips.cues) }
+    ///
+    /// Lyft's activity list also prints individual green lines such as
+    /// "incl. $4.04 tip". That list is only a preview and is not the day's
+    /// total. For Lyft, only the TIP STATS card is authoritative.
+    var tips: Double? {
+        if platformName == "Lyft" { return breakdown[.tips] }
+        return breakdown[.tips] ?? amount(labelled: BreakdownKind.tips.cues)
+    }
 
     /// Quests, surges, bonuses and challenges all land here.
     var promotions: Double? {
-        breakdown[.promotions] ?? amount(labelled: BreakdownKind.promotions.cues)
+        if platformName == "Lyft" { return breakdown[.promotions] }
+        return breakdown[.promotions] ?? amount(labelled: BreakdownKind.promotions.cues)
     }
 
     /// The fare before anything was added to it.
@@ -248,6 +256,27 @@ enum EarningsParser {
         // The breakdown reads across the row, not down the column: the label
         // is on the left and the money is on the right, at the same height.
         for kind in BreakdownKind.allCases {
+            if result.platformName == "Lyft" {
+                switch kind {
+                case .tips:
+                    // The only complete Lyft tip total on Day/Week screens.
+                    // Individual trip tips above it are intentionally ignored.
+                    if let value = amountBesideLabel(
+                        cues: ["tip stats"],
+                        in: lines
+                    ) {
+                        result.breakdown[kind] = value
+                    }
+                    continue
+                case .promotions:
+                    // Lyft's visible activity list is partial ("See all daily
+                    // activity"), so an inline trip bonus is not a daily
+                    // promotions total.
+                    continue
+                case .netFare:
+                    break
+                }
+            }
             if let value = amountBesideLabel(cues: kind.cues, in: lines) {
                 result.breakdown[kind] = value
             }

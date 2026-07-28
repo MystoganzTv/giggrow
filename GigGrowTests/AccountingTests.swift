@@ -95,6 +95,43 @@ final class AccountingTests: XCTestCase {
                             "gross must equal taxes + reserve + out-of-pocket + take-home")
     }
 
+    /// The Analytics selector must partition the same gross headline into
+    /// fare, tips and promotions without losing or duplicating a dollar.
+    func testEarningsCompositionBalancesAndKeepsItsCategories() throws {
+        let context = try TestStore.makeContext()
+        let profile = Fixture.profile(context)
+        let account = Fixture.account(context, name: "Lyft")
+        let shift = Fixture.shift(context, splits: [(account, 500, 15)])
+        let earning = try XCTUnwrap(shift.earnings.first)
+        earning.tips = 75
+        earning.promotions = 50
+
+        let snapshot = try build(context, profile: profile)
+
+        XCTAssertMoneyEqual(snapshot.composition.fare, 375)
+        XCTAssertMoneyEqual(snapshot.composition.tips, 75)
+        XCTAssertMoneyEqual(snapshot.composition.promotions, 50)
+        XCTAssertMoneyEqual(snapshot.composition.total, snapshot.weeklyTotal)
+    }
+
+    /// A malformed OCR detail cannot make the ring larger than gross.
+    func testEarningsCompositionClampsDetailsToGross() throws {
+        let context = try TestStore.makeContext()
+        let profile = Fixture.profile(context)
+        let account = Fixture.account(context, name: "Lyft")
+        let shift = Fixture.shift(context, splits: [(account, 100, 4)])
+        let earning = try XCTUnwrap(shift.earnings.first)
+        earning.tips = 80
+        earning.promotions = 70
+
+        let snapshot = try build(context, profile: profile)
+
+        XCTAssertMoneyEqual(snapshot.composition.fare, 0)
+        XCTAssertMoneyEqual(snapshot.composition.tips, 80)
+        XCTAssertMoneyEqual(snapshot.composition.promotions, 20)
+        XCTAssertMoneyEqual(snapshot.composition.total, snapshot.weeklyTotal)
+    }
+
     // MARK: Reserve
 
     func testReserveAccruesAtTheConfiguredRate() throws {

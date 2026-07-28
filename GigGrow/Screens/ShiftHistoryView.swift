@@ -20,6 +20,8 @@ struct ShiftHistoryView: View {
 
     @State private var isAdding = false
     @State private var editing: Shift?
+    @State private var isSelecting = false
+    @State private var selectedShiftIDs: Set<PersistentIdentifier> = []
 
     var body: some View {
         NavigationStack {
@@ -29,22 +31,54 @@ struct ShiftHistoryView: View {
 
                 if shifts.isEmpty { emptyState } else { list }
             }
-            .navigationTitle("Earnings history")
+            .navigationTitle(isSelecting
+                             ? "\(selectedShiftIDs.count) selected"
+                             : "Earnings history")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(GG.Palette.screen, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button(isSelecting ? "Cancel" : "Done") {
+                        if isSelecting {
+                            endSelection()
+                        } else {
+                            dismiss()
+                        }
+                    }
                         .foregroundStyle(GG.Ink.secondary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        isAdding = true
-                    } label: {
-                        PlusGlyph()
-                            .stroke(GG.Palette.violet400,
-                                    style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-                            .frame(width: 17, height: 17)
+
+                if isSelecting {
+                    ToolbarItemGroup(placement: .confirmationAction) {
+                        Button(allShiftsSelected ? "Clear all" : "Select all") {
+                            toggleAll()
+                        }
+                        .foregroundStyle(GG.Palette.violet300)
+
+                        Button(role: .destructive) {
+                            deleteSelected()
+                        } label: {
+                            Label("Delete \(selectedShiftIDs.count)", systemImage: "trash")
+                        }
+                        .disabled(selectedShiftIDs.isEmpty)
+                    }
+                } else {
+                    ToolbarItemGroup(placement: .confirmationAction) {
+                        Button("Select") {
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                isSelecting = true
+                            }
+                        }
+                        .foregroundStyle(GG.Palette.violet300)
+
+                        Button {
+                            isAdding = true
+                        } label: {
+                            PlusGlyph()
+                                .stroke(GG.Palette.violet400,
+                                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                                .frame(width: 17, height: 17)
+                        }
                     }
                 }
             }
@@ -82,19 +116,23 @@ struct ShiftHistoryView: View {
                                 .listRowInsets(EdgeInsets(top: 0, leading: GG.Layout.screenInset,
                                                           bottom: 0, trailing: GG.Layout.screenInset))
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        delete(shift)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
+                                    if !isSelecting {
+                                        Button(role: .destructive) {
+                                            delete(shift)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
                                     }
                                 }
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    Button {
-                                        editing = shift
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
+                                    if !isSelecting {
+                                        Button {
+                                            editing = shift
+                                        } label: {
+                                            Label("Edit", systemImage: "pencil")
+                                        }
+                                        .tint(GG.Palette.violet500)
                                     }
-                                    .tint(GG.Palette.violet500)
                                 }
                         }
                     }
@@ -168,6 +206,11 @@ struct ShiftHistoryView: View {
     private func row(_ shift: Shift) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 9) {
+                if isSelecting {
+                    selectionMark(for: shift)
+                        .transition(.scale.combined(with: .opacity))
+                }
+
                 ForEach(Array(shift.earnings.enumerated()), id: \.element.id) { _, earning in
                     if let account = earning.account {
                         Text(account.initial)
@@ -205,11 +248,34 @@ struct ShiftHistoryView: View {
         // List's native horizontal swipe. A plain row lets swipeActions win
         // immediately while a completed tap still opens the editor.
         .contentShape(Rectangle())
-        .onTapGesture { editing = shift }
+        .onTapGesture {
+            if isSelecting {
+                toggleSelection(for: shift)
+            } else {
+                editing = shift
+            }
+        }
+        .animation(.easeOut(duration: 0.16), value: isSelecting)
+        .animation(.easeOut(duration: 0.12),
+                   value: selectedShiftIDs.contains(shift.persistentModelID))
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("\(platformNames(shift)), \(Money.cents(shift.gross)), \(detailLine(shift))")
-        .accessibilityHint("Double tap to edit this shift")
+        .accessibilityValue(isSelecting
+                            ? (isSelected(shift) ? "Selected" : "Not selected")
+                            : "")
+        .accessibilityHint(isSelecting
+                           ? "Double tap to select or deselect this shift"
+                           : "Double tap to edit this shift")
+    }
+
+    private func selectionMark(for shift: Shift) -> some View {
+        let selected = isSelected(shift)
+        return Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(selected ? GG.Palette.violet300 : GG.Ink.muted)
+            .frame(width: 24, height: 24)
+            .accessibilityHidden(true)
     }
 
     private func dayLabel(_ date: Date) -> String {
@@ -310,6 +376,9 @@ struct ShiftHistoryView: View {
     private var earningDayCount: Int {
         Set(shifts.map { Calendar.gigGrow.startOfDay(for: $0.start) }).count
     }
+    private var allShiftsSelected: Bool {
+        !shifts.isEmpty && selectedShiftIDs.count == shifts.count
+    }
 
     /// Newest week first. Labelled by the Monday that starts it.
     private var weeks: [HistoryWeek] {
@@ -338,11 +407,63 @@ struct ShiftHistoryView: View {
     /// but the earnings are detached first so nothing is left pointing at a
     /// deleted object mid-transaction.
     private func delete(_ shift: Shift) {
-        let earnings = shift.earnings
-        shift.earnings = []
-        for earning in earnings { context.delete(earning) }
-        context.delete(shift)
-        try? context.save()
+        try? ShiftDeletion.delete([shift], from: context)
+    }
+
+    private func isSelected(_ shift: Shift) -> Bool {
+        selectedShiftIDs.contains(shift.persistentModelID)
+    }
+
+    private func toggleSelection(for shift: Shift) {
+        let id = shift.persistentModelID
+        if selectedShiftIDs.contains(id) {
+            selectedShiftIDs.remove(id)
+        } else {
+            selectedShiftIDs.insert(id)
+        }
+    }
+
+    private func toggleAll() {
+        withAnimation(.easeOut(duration: 0.16)) {
+            if allShiftsSelected {
+                selectedShiftIDs.removeAll()
+            } else {
+                selectedShiftIDs = Set(shifts.map(\.persistentModelID))
+            }
+        }
+    }
+
+    private func endSelection() {
+        withAnimation(.easeOut(duration: 0.18)) {
+            selectedShiftIDs.removeAll()
+            isSelecting = false
+        }
+    }
+
+    private func deleteSelected() {
+        let selected = shifts.filter {
+            selectedShiftIDs.contains($0.persistentModelID)
+        }
+        guard !selected.isEmpty else { return }
+
+        try? ShiftDeletion.delete(selected, from: context)
+        endSelection()
+    }
+}
+
+/// Keeps single-row and bulk deletion on the same tested path. Earnings are
+/// detached first so inverse SwiftData relationships never point at an object
+/// that has already been removed during the transaction.
+enum ShiftDeletion {
+    @MainActor
+    static func delete(_ shifts: [Shift], from context: ModelContext) throws {
+        for shift in shifts {
+            let earnings = shift.earnings
+            shift.earnings = []
+            for earning in earnings { context.delete(earning) }
+            context.delete(shift)
+        }
+        try context.save()
     }
 }
 

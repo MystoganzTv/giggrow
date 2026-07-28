@@ -59,6 +59,23 @@ struct Platform: Identifiable, Hashable {
     }
 }
 
+// MARK: - Earnings composition
+
+/// The parts that make up gross earnings for the selected period.
+///
+/// Keeping this in the snapshot lets Analytics answer a different question
+/// from the platform split: not only *which app* paid, but *what kind of pay*
+/// it was. The three values always reconcile to gross.
+struct EarningsComposition: Equatable {
+    let fare: Double
+    let tips: Double
+    let promotions: Double
+
+    var total: Double { fare + tips + promotions }
+
+    static let zero = EarningsComposition(fare: 0, tips: 0, promotions: 0)
+}
+
 // MARK: - Vehicle service
 
 /// Health of a single maintenance item.
@@ -455,6 +472,7 @@ struct EarningsSnapshot {
 
     // Collections
     let platforms: [Platform]
+    let composition: EarningsComposition
 
     let driver: Driver
     let vehicle: Vehicle

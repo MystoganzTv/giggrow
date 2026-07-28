@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftData
 
 /// What a screenshot covers. A week and one of its days are overlapping
 /// reports, not independent earnings.
@@ -63,5 +64,126 @@ enum ImportOverlapDetector {
                 ? calendar.startOfWeek(for: shift.start)
                 : calendar.startOfDay(for: shift.start)
         )
+    }
+
+    /// Manual entries can be reconciled with a later platform report. A
+    /// report imported earlier is different: it is a true duplicate and must
+    /// stay excluded until the driver explicitly chooses to replace it.
+    static func isImported(_ shift: Shift) -> Bool {
+        let note = shift.note?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return note.hasPrefix("imported from")
+            || note.hasPrefix("from a weekly screenshot")
+    }
+}
+
+enum StoredEarningsOrigin: Equatable {
+    case manual
+    case imported
+}
+
+struct StoredEarningsOverlap {
+    let shift: Shift
+    let earning: PlatformEarning
+    let coverage: ImportCoverage
+    let origin: StoredEarningsOrigin
+}
+
+/// Finds and removes only the app earnings covered by an incoming report.
+/// If a manual shift also contains Lyft, replacing its Uber earnings must not
+/// erase Lyft or the shared shift metadata.
+enum ImportReconciler {
+    static func overlaps(
+        _ incoming: ImportCoverage,
+        in shifts: [Shift],
+        calendar: Calendar = .gigGrow
+    ) -> [StoredEarningsOverlap] {
+        shifts.flatMap { shift in
+            shift.earnings.compactMap { earning in
+                guard let platform = earning.account?.name else { return nil }
+                let storedCoverage = ImportOverlapDetector.coverage(
+                    of: shift,
+                    platform: platform,
+                    calendar: calendar
+                )
+                guard
+                      ImportOverlapDetector.overlaps(
+                        incoming,
+                        storedCoverage,
+                        calendar: calendar
+                      )
+                else { return nil }
+
+                return StoredEarningsOverlap(
+                    shift: shift,
+                    earning: earning,
+                    coverage: storedCoverage,
+                    origin: ImportOverlapDetector.isImported(shift)
+                        ? .imported
+                        : .manual
+                )
+            }
+        }
+    }
+
+    /// A weekly report legitimately supersedes previously imported daily
+    /// reports inside that week. It is a duplicate only when another weekly
+    /// report already covers the same app/week. A daily report remains
+    /// blocked by either the same day or an existing weekly report.
+    static func hasBlockingDuplicate(
+        incoming: ImportCoverage,
+        overlaps: [StoredEarningsOverlap]
+    ) -> Bool {
+        overlaps.contains { overlap in
+            guard overlap.origin == .imported else { return false }
+            return !(incoming.period == .week && overlap.coverage.period == .day)
+        }
+    }
+
+    /// Manual entries are superseded automatically. Previously imported data
+    /// is touched automatically only when a broader weekly report subsumes a
+    /// stored day. Other imported data requires an explicit Replace.
+    static func replacements(
+        from overlaps: [StoredEarningsOverlap],
+        incoming: ImportCoverage,
+        replacingImported: Bool
+    ) -> [StoredEarningsOverlap] {
+        overlaps.filter {
+            $0.origin == .manual
+                || replacingImported
+                || (incoming.period == .week && $0.coverage.period == .day)
+        }
+    }
+
+    /// Removes each matched earning once. A shift survives when another app
+    /// still has earnings on it; otherwise the now-empty shell is removed.
+    @MainActor
+    @discardableResult
+    static func remove(
+        _ overlaps: [StoredEarningsOverlap],
+        from context: ModelContext
+    ) -> Int {
+        let byShift = Dictionary(grouping: overlaps) {
+            $0.shift.persistentModelID
+        }
+        var removedEarningIDs: Set<PersistentIdentifier> = []
+
+        for group in byShift.values {
+            guard let shift = group.first?.shift else { continue }
+            let ids = Set(group.map { $0.earning.persistentModelID })
+            shift.earnings.removeAll { ids.contains($0.persistentModelID) }
+
+            for overlap in group
+            where removedEarningIDs.insert(overlap.earning.persistentModelID).inserted {
+                context.delete(overlap.earning)
+            }
+
+            if shift.earnings.isEmpty {
+                context.delete(shift)
+            }
+        }
+
+        return removedEarningIDs.count
     }
 }

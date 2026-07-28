@@ -134,6 +134,33 @@ extension EarningsSnapshot {
         let miles = inRange.reduce(0) { $0 + $1.miles }
         let trips = inRange.reduce(0) { $0 + $1.tripCount }
 
+        // MARK: Earnings composition
+
+        // OCR and hand edits can occasionally produce a tip or promotion
+        // larger than the row's gross. Clamp each row independently so the
+        // visual breakdown cannot exceed the headline total, while retaining
+        // as much of the supplied detail as the gross can support.
+        var fareTotal = 0.0
+        var tipsTotal = 0.0
+        var promotionsTotal = 0.0
+        for earning in inRange.flatMap(\.earnings) {
+            let rowGross = max(earning.gross, 0)
+            let rowTips = min(max(earning.tips, 0), rowGross)
+            let rowPromotions = min(
+                max(earning.promotions, 0),
+                max(rowGross - rowTips, 0)
+            )
+
+            tipsTotal += rowTips
+            promotionsTotal += rowPromotions
+            fareTotal += max(rowGross - rowTips - rowPromotions, 0)
+        }
+        let composition = EarningsComposition(
+            fare: fareTotal,
+            tips: tipsTotal,
+            promotions: promotionsTotal
+        )
+
         // MARK: Platforms
 
         let previous = DateRange.shifted(range, by: -1, unit: rangeKind.comparisonUnit, calendar: calendar)
@@ -292,6 +319,7 @@ extension EarningsSnapshot {
             reserveDraw: reserveDraw,
 
             platforms: platforms,
+            composition: composition,
 
             driver: Driver(name: profile.name, detail: profile.detail),
             vehicle: vehicle,
