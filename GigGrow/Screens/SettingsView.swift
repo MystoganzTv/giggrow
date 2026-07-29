@@ -77,7 +77,7 @@ struct SettingsView: View {
     /// means adding a case, not another modifier.
     private enum Route: String, Identifiable {
         case profile, taxRate, maintenanceRate, mileageRate, privacy
-        case apps, mileageLog, state
+        case apps, mileageLog, state, vehicle, earningsHistory
         var id: String { rawValue }
     }
 
@@ -173,6 +173,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
             profileCard
 
+            businessGroup
             moneyGroup
             trackingGroup
             generalGroup
@@ -194,6 +195,7 @@ struct SettingsView: View {
         HStack(alignment: .top, spacing: 18) {
             VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
                 profileCard
+                businessGroup
                 moneyGroup
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -240,6 +242,34 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+    }
+
+    // MARK: Business
+
+    /// Vehicle and earnings records are part of the driver's setup and
+    /// archive, not destinations they need beside Dashboard every day.
+    /// Keeping both here gives the bottom bar room for Expenses without
+    /// hiding either feature behind an unlabeled dashboard control.
+    private var businessGroup: some View {
+        SettingsGroup(title: "Your business") {
+            SettingsRow(
+                label: "Vehicle",
+                value: snapshot.vehicle.name
+            ) {
+                route = .vehicle
+            }
+
+            RowDivider(color: GG.Surface.dividerSoft)
+
+            SettingsRow(
+                label: "Earnings history",
+                value: shifts.isEmpty
+                    ? "Empty"
+                    : "\(shifts.count) entr\(shifts.count == 1 ? "y" : "ies")"
+            ) {
+                route = .earningsHistory
+            }
+        }
     }
 
     // MARK: Money
@@ -675,12 +705,20 @@ struct SettingsView: View {
                         save()
                     }
                 }
+
+            case .vehicle:
+                VehicleView(snapshot: snapshot, showsDismissButton: true)
+
+            case .earningsHistory:
+                ShiftHistoryView()
             }
         } else {
             // No profile yet. Only the routes that don't need one can open.
             switch route {
             case .apps:       ManagePlatformsView()
             case .mileageLog: MileageView(tracker: tracker)
+            case .vehicle:    VehicleView(snapshot: snapshot, showsDismissButton: true)
+            case .earningsHistory: ShiftHistoryView()
             default:          PrivacySheet()
             }
         }

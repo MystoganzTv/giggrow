@@ -39,9 +39,9 @@ final class RangeAndSeriesTests: XCTestCase {
     func testPrimaryNavigationUsesTheRequestedBusinessFlow() {
         XCTAssertEqual(
             GGIcon.tabs,
-            [.dashboard, .expenses, .analytics, .taxes, .vehicle]
+            [.dashboard, .expenses, .analytics, .taxes, .settingsGear]
         )
-        XCTAssertFalse(GGIcon.tabs.contains(.settingsGear))
+        XCTAssertFalse(GGIcon.tabs.contains(.vehicle))
     }
 
     func testAllTimeDashboardWindowIncludesTheFirstRecordAndToday() {

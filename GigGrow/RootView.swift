@@ -28,11 +28,7 @@ struct RootView: View {
     @State private var isLoggingShift = false
     @State private var isLoggingExpense = false
     @State private var isShowingExpenses = false
-    /// Settings left the tab bar to make room for Expenses; it opens from the
-    /// gear on the dashboard instead.
-    @State private var isShowingSettings = false
     @State private var isShowingHistory = false
-    @State private var isShowingProfile = false
     @State private var isImporting = false
     @State private var isShowingMileage = false
     /// A brand-new install gets a short iCloud grace period before local
@@ -322,38 +318,32 @@ struct RootView: View {
         .sheet(isPresented: $isLoggingShift) { LogShiftView() }
         .sheet(isPresented: $isLoggingExpense) { LogExpenseView() }
         .sheet(isPresented: $isShowingExpenses) { ExpensesView() }
-        .sheet(isPresented: $isShowingSettings) { SettingsView(snapshot: snapshot, tracker: tracker) }
         .sheet(isPresented: $isShowingHistory) { ShiftHistoryView() }
         .sheet(isPresented: $isImporting) { ImportScreenshotView() }
         .sheet(isPresented: $isShowingMileage) { MileageView(tracker: tracker) }
-        .sheet(isPresented: $isShowingProfile) {
-            if let profile = profiles.first {
-                ProfileEditor(profile: profile)
-            }
-        }
     }
 
     @ViewBuilder
     private func screen(_ snapshot: EarningsSnapshot) -> some View {
         switch selection {
-        case .dashboard, .settingsGear:
+        case .dashboard:
             DashboardView(snapshot: snapshot,
                           scope: $dashboardScope,
                           anchor: $dashboardAnchor,
                           onLogShift: { isLoggingShift = true },
                           onShowHistory: { isShowingHistory = true },
-                          onShowProfile: { isShowingProfile = true },
                           onImport: { isImporting = true },
                           onShowMileage: { isShowingMileage = true },
                           onShowExpenses: { isShowingExpenses = true },
-                          onAddExpense: { isLoggingExpense = true },
-                          onShowSettings: { isShowingSettings = true })
+                          onAddExpense: { isLoggingExpense = true })
         case .taxes:     TaxView(embedded: true)
         case .analytics: AnalyticsView(snapshot: analyticsSnapshot ?? snapshot,
                                        selection: $analyticsSelection,
                                        onShowExpenses: { isShowingExpenses = true })
         case .vehicle:   VehicleView(snapshot: snapshot)
         case .expenses:  ExpensesView(embedded: true)
+        case .settingsGear:
+            SettingsView(snapshot: snapshot, tracker: tracker)
         }
     }
 
@@ -366,7 +356,9 @@ struct RootView: View {
     ) -> some View {
         let hiddenOnEmptyDashboard = selection == .dashboard && !snapshot.hasData
 
-        if selection != .expenses && !hiddenOnEmptyDashboard {
+        if selection != .expenses
+            && selection != .settingsGear
+            && !hiddenOnEmptyDashboard {
             // A menu rather than two buttons: logging a shift is the common
             // case and stays one tap from the label, while expenses get a
             // home without adding a second floating control.

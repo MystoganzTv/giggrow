@@ -16,12 +16,10 @@ struct DashboardView: View {
     /// glance" requires that it can only ever be *this* glance.
     var onLogShift: () -> Void = {}
     var onShowHistory: () -> Void = {}
-    var onShowProfile: () -> Void = {}
     var onImport: () -> Void = {}
     var onShowMileage: () -> Void = {}
     var onShowExpenses: () -> Void = {}
     var onAddExpense: () -> Void = {}
-    var onShowSettings: () -> Void = {}
 
     @Query private var drives: [DriveRecord]
     @Query(sort: \Shift.start, order: .reverse) private var allShifts: [Shift]
@@ -66,7 +64,6 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
             heroCard
             if snapshot.hasData {
-                if !historyDays.isEmpty { earningsHistoryPreview }
                 keepCard
                 if !attention.isEmpty { attentionCard }
                 setAsideTiles
@@ -87,7 +84,6 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
                 heroCard
                 if snapshot.hasData {
-                    if !historyDays.isEmpty { earningsHistoryPreview }
                 } else {
                     emptyState
                 }
@@ -407,53 +403,12 @@ struct DashboardView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            // Was "This week", directly under a RangeBar already saying
-            // "This week". The period is the bar's job; the title's job is to
-            // say which screen you're on.
-            Text(greeting)
-                .ggText(GG.Typo.screenTitle, tracking: GG.Typo.screenTitleTracking)
-
-            Spacer()
-
-            // The dashboard is where a wrong figure gets noticed, so the way
-            // back to the shift that caused it belongs here.
-            if !allShifts.isEmpty {
-                Button(action: onShowHistory) {
-                    HStack(spacing: 5) {
-                        Text("History")
-                            .font(.system(size: 13.5, weight: .medium))
-                        Chevron(size: 13, color: GG.Ink.muted)
-                    }
-                    .foregroundStyle(GG.Ink.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(GG.Surface.glass, in: Capsule())
-                    .overlay(Capsule().strokeBorder(GG.Surface.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Shift history")
-            }
-
-            // Settings gave up its tab so Expenses could have one. The gear
-            // in the top-right of the home screen is where iOS has kept it
-            // for fifteen years, so this isn't a compromise — it's where
-            // people look first anyway.
-            Button(action: onShowSettings) {
-                GGIconView(icon: .settingsGear, size: 21)
-                    .foregroundStyle(GG.Ink.secondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
-
-            // An avatar in the corner reads as a profile button in every app
-            // a driver already uses. It should behave like one.
-            Button(action: onShowProfile) {
-                Monogram(letter: snapshot.driver.initial)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Profile")
-        }
+        // Profile and Settings now have a permanent tab. Earnings History
+        // lives inside Settings, so the dashboard header can simply identify
+        // whose business is being shown instead of repeating navigation.
+        Text(greeting)
+            .ggText(GG.Typo.screenTitle, tracking: GG.Typo.screenTitleTracking)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Hero
@@ -874,166 +829,6 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: Earnings history preview
-
-    /// A dense, traceable slice of Earnings History on the dashboard itself.
-    /// The hero answers "how much"; these rows answer which days and apps
-    /// produced it without making the driver open another screen first.
-    private var earningsHistoryPreview: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Earnings history")
-                            .ggText(GG.Typo.cardTitle,
-                                    tracking: GG.Typo.cardTitleTracking)
-                        Text(scope.activityLabel.capitalized)
-                            .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
-                    }
-                    Spacer(minLength: 8)
-                    Button(action: onShowHistory) {
-                        HStack(spacing: 5) {
-                            Text("View all")
-                                .font(.system(size: 13, weight: .semibold))
-                            Chevron(size: 12, color: GG.Palette.violet300)
-                        }
-                        .foregroundStyle(GG.Palette.violet300)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack(spacing: 10) {
-                    historyStat("Days", Num.grouped(historyDays.count))
-                    historyStat("Entries", Num.grouped(historyShifts.count))
-                    historyStat("Tips", historyTips > 0
-                                ? Money.whole(historyTips)
-                                : "—")
-                    historyStat("Promos", historyPromotions > 0
-                                ? Money.whole(historyPromotions)
-                                : "—")
-                }
-                .padding(.vertical, 18)
-
-                RowDivider(color: GG.Surface.dividerSoft)
-
-                ForEach(Array(historyDays.prefix(historyPreviewLimit).enumerated()),
-                        id: \.element.id) { index, day in
-                    historyDayRow(day)
-                    if index < min(historyDays.count, historyPreviewLimit) - 1 {
-                        RowDivider(color: GG.Surface.dividerSoft)
-                    }
-                }
-
-                if historyDays.count > historyPreviewLimit {
-                    Button(action: onShowHistory) {
-                        Text("See \(historyDays.count - historyPreviewLimit) more earning days")
-                            .ggText(.system(size: 13.5, weight: .semibold),
-                                    color: GG.Palette.violet300)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 14)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private func historyStat(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label.uppercased())
-                .ggText(.system(size: 8.5, weight: .semibold),
-                        tracking: 0.9,
-                        color: GG.Ink.eyebrow)
-                .lineLimit(1)
-            Text(value)
-                .ggText(.system(size: 15.5, weight: .semibold),
-                        tracking: -0.25)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func historyDayRow(_ day: DashboardHistoryDay) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(historyDayLabel(day.date))
-                        .ggText(.system(size: 15, weight: .semibold))
-                }
-                Spacer(minLength: 8)
-                Text(day.isEstimated
-                     ? Money.whole(day.gross)
-                     : Money.cents(day.gross))
-                    .ggText(.system(size: 16, weight: .bold),
-                            tracking: -0.35)
-            }
-
-            HStack(spacing: 8) {
-                if dayPlatforms(day).isEmpty {
-                    Text("Manual entry")
-                        .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
-                } else {
-                    ForEach(dayPlatforms(day), id: \.name) { account in
-                        Text(account.short)
-                            .font(.system(size: 9.5, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 7)
-                            .frame(height: 21)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color(hex: account.gradientStart),
-                                             Color(hex: account.gradientEnd)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                in: RoundedRectangle(cornerRadius: 6,
-                                                     style: .continuous)
-                            )
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-
-            Text(historyDetailLine(day))
-                .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-
-            if day.tips > 0 || day.promotions > 0 {
-                HStack(spacing: 12) {
-                    if day.tips > 0 {
-                        supplementLabel("Tips", amount: day.tips,
-                                        color: GG.Palette.mint)
-                    }
-                    if day.promotions > 0 {
-                        supplementLabel("Promotions", amount: day.promotions,
-                                        color: GG.Palette.amber)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 14)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onShowHistory)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Opens earnings history")
-    }
-
-    private func supplementLabel(
-        _ label: String,
-        amount: Double,
-        color: Color
-    ) -> some View {
-        HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 5, height: 5)
-            Text("\(label) \(Money.cents(amount))")
-                .ggText(.system(size: 11.5, weight: .medium),
-                        color: color.opacity(0.92))
-        }
-    }
-
     private var dashboardWindow: Range<Date> {
         scope.window(
             recordDates: allShifts.map(\.start),
@@ -1052,71 +847,6 @@ struct DashboardView: View {
         return grouped.keys.sorted(by: >).map {
             DashboardHistoryDay(date: $0, items: grouped[$0] ?? [])
         }
-    }
-
-    private var historyPreviewLimit: Int { usesTabletLayout ? 4 : 3 }
-
-    private var historyTips: Double {
-        historyShifts
-            .flatMap(\.earningItems)
-            .reduce(0) { $0 + $1.tips }
-    }
-
-    private var historyPromotions: Double {
-        historyShifts
-            .flatMap(\.earningItems)
-            .reduce(0) { $0 + $1.promotions }
-    }
-
-    private func dayPlatforms(_ day: DashboardHistoryDay) -> [PlatformAccount] {
-        var seen: Set<String> = []
-        return day.items
-            .flatMap(\.earningItems)
-            .compactMap(\.account)
-            .filter { seen.insert($0.name.lowercased()).inserted }
-    }
-
-    private func historyDayLabel(_ date: Date) -> String {
-        if Calendar.gigGrow.isDateInToday(date) { return "Today" }
-        if Calendar.gigGrow.isDateInYesterday(date) { return "Yesterday" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMM d"
-        return formatter.string(from: date)
-    }
-
-    private func historyDetailLine(_ day: DashboardHistoryDay) -> String {
-        var parts: [String] = []
-        if day.hours > 0 { parts.append(Hours.clock(day.hours)) }
-        if let completed = completedWorkLabel(day) { parts.append(completed) }
-        if day.miles > 0 {
-            parts.append("\(Num.grouped(Int(day.miles.rounded()))) mi")
-        }
-        return parts.isEmpty ? "No work details recorded" : parts.joined(separator: " · ")
-    }
-
-    private func completedWorkLabel(_ day: DashboardHistoryDay) -> String? {
-        var counts: [String: Int] = [:]
-        for earning in day.items.flatMap(\.earningItems) where earning.trips > 0 {
-            let noun = earning.account?.unitNoun.lowercased() ?? "units"
-            counts[noun, default: 0] += earning.trips
-        }
-        guard !counts.isEmpty else { return nil }
-        return counts.keys.sorted().map { noun in
-            let count = counts[noun] ?? 0
-            return "\(count) \(historyInflected(noun, count: count))"
-        }
-        .joined(separator: " · ")
-    }
-
-    private func historyInflected(_ plural: String, count: Int) -> String {
-        guard count == 1 else { return plural }
-        let known: [String: String] = [
-            "trips": "trip", "rides": "ride", "orders": "order",
-            "batches": "batch", "blocks": "block",
-            "deliveries": "delivery", "units": "unit"
-        ]
-        return known[plural]
-            ?? (plural.hasSuffix("s") ? String(plural.dropLast()) : plural)
     }
 
     // MARK: Tax / maintenance

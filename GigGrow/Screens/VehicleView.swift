@@ -15,8 +15,10 @@ import SwiftData
 
 struct VehicleView: View {
     let snapshot: EarningsSnapshot
+    var showsDismissButton = false
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.ggUsesWideLayout) private var usesWideLayout
     @Query private var vehicles: [VehicleRecord]
     @Query(sort: \Shift.start) private var shifts: [Shift]
@@ -111,6 +113,11 @@ struct VehicleView: View {
 
     private var header: some View {
         HStack {
+            if showsDismissButton {
+                Button("Done") { dismiss() }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(GG.Ink.secondary)
+            }
             Text("Vehicle")
                 .ggText(GG.Typo.screenTitle, tracking: GG.Typo.screenTitleTracking)
             Spacer()

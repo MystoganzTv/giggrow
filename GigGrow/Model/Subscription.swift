@@ -99,6 +99,7 @@ enum ProFeature: String, CaseIterable, Identifiable {
     case maintenanceReserve
     case costPerMile
     case serviceSchedule
+    case receiptVault
     case dataExport
 
     var id: String { rawValue }
@@ -109,6 +110,7 @@ enum ProFeature: String, CaseIterable, Identifiable {
         case .maintenanceReserve: return "Maintenance reserve"
         case .costPerMile:        return "True cost per mile"
         case .serviceSchedule:    return "Service schedule"
+        case .receiptVault:       return "Receipt vault"
         case .dataExport:         return "Export for your accountant"
         }
     }
@@ -123,6 +125,8 @@ enum ProFeature: String, CaseIterable, Identifiable {
             return "Fuel, maintenance and depreciation per mile — what the car actually costs you."
         case .serviceSchedule:
             return "Track what's due by mileage, not by memory."
+        case .receiptVault:
+            return "Keep the receipt photo with every expense and find missing proof before tax time."
         case .dataExport:
             return "Mileage, earnings and expenses as CSV or PDF."
         }
@@ -131,7 +135,14 @@ enum ProFeature: String, CaseIterable, Identifiable {
     /// The reserve leads the paywall. Sync is table stakes — both competitors
     /// buy it from the same aggregator — so it can't be the reason to pay.
     static var orderedForPaywall: [ProFeature] {
-        [.maintenanceReserve, .costPerMile, .automaticSync, .serviceSchedule, .dataExport]
+        [
+            .maintenanceReserve,
+            .receiptVault,
+            .costPerMile,
+            .automaticSync,
+            .serviceSchedule,
+            .dataExport
+        ]
     }
 }
 

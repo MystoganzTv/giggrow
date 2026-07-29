@@ -105,7 +105,9 @@ final class BackupTests: XCTestCase {
         )
         drive.shift = shift
         context.insert(drive)
-        _ = Fixture.expense(context, amount: 18.42, category: .fees)
+        let expense = Fixture.expense(context, amount: 18.42, category: .fees)
+        expense.receiptImage = Data([0xFF, 0xD8, 0xFF, 0xD9])
+        expense.merchant = "Miami Parking"
         try context.save()
 
         let original = try GigGrowBackup.capture(from: context)
@@ -135,6 +137,8 @@ final class BackupTests: XCTestCase {
 
         XCTAssertEqual(restoredExpenses.count, 1)
         XCTAssertEqual(restoredExpenses[0].amount, 18.42, accuracy: 0.001)
+        XCTAssertEqual(restoredExpenses[0].merchant, "Miami Parking")
+        XCTAssertEqual(restoredExpenses[0].receiptImage, Data([0xFF, 0xD8, 0xFF, 0xD9]))
 
         XCTAssertEqual(restoredVehicles.count, 1)
         XCTAssertEqual(restoredVehicles[0].fuelType, .electric)

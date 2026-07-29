@@ -21,13 +21,10 @@ enum GGIcon: String, CaseIterable, Identifiable {
     // already lives inside Analytics, whereas "what do I owe" is the question
     // that brings drivers to an app like this and had no home at all.
     //
-    // Then Settings came out and Expenses went in. Five is the most a phone
-    // tab bar holds without truncating titles, so this is a swap rather than
-    // an addition. Expenses is something you do — weekly, with a receipt in
-    // your hand — and it was buried in a menu behind a button labelled
-    // "Log". Settings is something you visit twice: once at the start and
-    // once when something's wrong. It now lives behind the gear on the
-    // dashboard, which is where iOS has put it for fifteen years.
+    // Expenses stays in the primary flow because it is something a driver
+    // records every week. Vehicle is configuration, not a daily destination:
+    // it lives inside Settings with profile and mileage preferences. That
+    // gives Settings its familiar permanent home without hiding Expenses.
     case dashboard, taxes, analytics, vehicle, expenses
 
     /// The gear. Deliberately excluded from the tab bar by `tabs` below
@@ -43,7 +40,7 @@ enum GGIcon: String, CaseIterable, Identifiable {
         .expenses,
         .analytics,
         .taxes,
-        .vehicle
+        .settingsGear
     ]
 
     var title: String {

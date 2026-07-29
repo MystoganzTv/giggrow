@@ -36,6 +36,7 @@ struct LogExpenseView: View {
     // driver seeing it first.
     @State private var pickerItem: PhotosPickerItem?
     @State private var isShowingCamera = false
+    @State private var isPreviewingReceipt = false
     @State private var receiptImage: UIImage?
     /// True when `receiptImage` came out of the store rather than the picker.
     /// Re-encoding a JPEG that's already been through this once would lose
@@ -88,6 +89,15 @@ struct LogExpenseView: View {
                     Task { await read(image) }
                 }
                 .ignoresSafeArea()
+            }
+            .fullScreenCover(isPresented: $isPreviewingReceipt) {
+                if let image = receiptImage {
+                    ReceiptViewer(
+                        image: image,
+                        title: receiptMerchant,
+                        detail: receiptPreviewDetail
+                    )
+                }
             }
             .overlay {
                 if isReading {
@@ -254,16 +264,31 @@ struct LogExpenseView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if let image = receiptImage {
                     HStack(spacing: 12) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 46, height: 62)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(GG.Surface.stroke, lineWidth: 1))
+                        Button {
+                            isEditingField = false
+                            isPreviewingReceipt = true
+                        } label: {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 46, height: 62)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(GG.Surface.stroke, lineWidth: 1))
+                                .overlay(alignment: .bottomTrailing) {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(4)
+                                        .background(.ultraThinMaterial, in: Circle())
+                                        .offset(x: 4, y: 4)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("View receipt")
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(receipt?.merchant ?? "Receipt")
+                            Text(receiptMerchant)
                                 .ggText(GG.Typo.rowTitle, tracking: GG.Typo.rowTitleTracking)
                             // Reading a receipt is guesswork, and the figure
                             // ends up in a tax total, so it says so.
@@ -337,6 +362,17 @@ struct LogExpenseView: View {
                 }
             }
         }
+    }
+
+    private var receiptMerchant: String {
+        receipt?.merchant ?? editing?.merchant ?? "Receipt"
+    }
+
+    private var receiptPreviewDetail: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        let amount = Double(amountText) ?? editing?.amount ?? 0
+        return "\(formatter.string(from: date)) · \(Money.cents(amount))"
     }
 
     private func receiptSourceButton(title: String, systemImage: String) -> some View {
