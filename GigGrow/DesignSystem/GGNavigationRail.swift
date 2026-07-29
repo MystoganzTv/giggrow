@@ -24,7 +24,7 @@ struct GGNavigationRail: View {
             .padding(.bottom, 30)
 
             VStack(spacing: 7) {
-                ForEach(GGIcon.allCases) { icon in
+                ForEach(GGIcon.tabs) { icon in
                     destination(icon)
                 }
             }

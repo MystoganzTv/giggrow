@@ -36,6 +36,14 @@ final class RangeAndSeriesTests: XCTestCase {
         XCTAssertNil(DashboardScope.allTime.comparisonLabel)
     }
 
+    func testPrimaryNavigationUsesTheRequestedBusinessFlow() {
+        XCTAssertEqual(
+            GGIcon.tabs,
+            [.dashboard, .expenses, .analytics, .taxes, .vehicle]
+        )
+        XCTAssertFalse(GGIcon.tabs.contains(.settingsGear))
+    }
+
     func testAllTimeDashboardWindowIncludesTheFirstRecordAndToday() {
         let calendar = Calendar.gigGrow
         let first = calendar.date(
@@ -54,6 +62,45 @@ final class RangeAndSeriesTests: XCTestCase {
         XCTAssertTrue(window.contains(first))
         XCTAssertTrue(window.contains(now))
         XCTAssertEqual(window.lowerBound, calendar.startOfDay(for: first))
+    }
+
+    func testDashboardWeekWindowFollowsItsSelectedAnchor() {
+        let calendar = Calendar.gigGrow
+        let anchor = calendar.date(
+            from: DateComponents(year: 2025, month: 2, day: 12, hour: 18)
+        )!
+
+        let window = DashboardScope.week.window(
+            recordDates: [],
+            now: anchor,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(window.contains(anchor))
+        XCTAssertEqual(
+            calendar.component(.year, from: window.lowerBound),
+            2025
+        )
+        XCTAssertFalse(window.contains(.now))
+    }
+
+    func testDashboardYearWindowFollowsItsSelectedAnchor() {
+        let calendar = Calendar.gigGrow
+        let anchor = calendar.date(
+            from: DateComponents(year: 2024, month: 8, day: 3)
+        )!
+
+        let window = DashboardScope.year.window(
+            recordDates: [],
+            now: anchor,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(
+            calendar.component(.year, from: window.lowerBound),
+            2024
+        )
+        XCTAssertTrue(window.contains(anchor))
     }
 
     /// Weeks of the month, counted from the 1st. Day 29–31 all land in W5.

@@ -11,6 +11,7 @@ import SwiftData
 struct DashboardView: View {
     let snapshot: EarningsSnapshot
     @Binding var scope: DashboardScope
+    @Binding var anchor: Date
     /// The dashboard was hard-wired to the current week. Nothing about "at a
     /// glance" requires that it can only ever be *this* glance.
     var onLogShift: () -> Void = {}
@@ -27,29 +28,26 @@ struct DashboardView: View {
     @Query private var profiles: [DriverProfile]
     @Environment(\.ggUsesWideLayout) private var usesWideLayout
     @Namespace private var scopeAnimation
+    @State private var isPickingDashboardPeriod = false
+    @State private var chartMode: DashboardChartMode = .cumulative
 
     var body: some View {
         ScreenScaffold(maxContentWidth: dashboardContentMaxWidth) {
             GG.Gradients.dashboardWash()
         } content: {
-            // No RangeBar. It was the same control Analytics opens with, so
-            // the two screens began identically and the dashboard read as a
-            // worse Analytics. Analytics is for "what happened over time";
-            // this is for "how am I doing and what needs me", and that is
-            // always about now.
             header
 
-            if snapshot.hasData {
-                if usesTabletLayout {
-                    tabletDashboard
-                } else {
-                    phoneDashboard
-                }
+            // Keep the overview and Week / Year / Total selector visible even
+            // when the selected period is empty. Hiding the entire card used
+            // to trap someone on an empty week despite years of saved work.
+            if usesTabletLayout {
+                tabletDashboard
             } else {
-                emptyState
-                    .frame(maxWidth: GG.Layout.contentMaxWidth)
-                    .frame(maxWidth: .infinity)
+                phoneDashboard
             }
+        }
+        .sheet(isPresented: $isPickingDashboardPeriod) {
+            PeriodPickerView(selection: dashboardRangeSelection)
         }
     }
 
@@ -67,37 +65,48 @@ struct DashboardView: View {
     private var phoneDashboard: some View {
         VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
             heroCard
-            keepCard
-            if !attention.isEmpty { attentionCard }
-            setAsideTiles
-            earningsByApp
-            rateTiles
-            hoursCard
-            expensesCard
+            if snapshot.hasData {
+                if !historyDays.isEmpty { earningsHistoryPreview }
+                keepCard
+                if !attention.isEmpty { attentionCard }
+                setAsideTiles
+                earningsByApp
+                rateTiles
+                hoursCard
+                expensesCard
+            } else {
+                emptyState
+            }
         }
     }
 
-    /// The left side answers "what did I make?"; the right rail answers
-    /// "what can I keep and what needs attention?". Each card keeps a natural
-    /// reading width while the iPad canvas is actually put to use.
+    /// The left side is an earnings workspace: overview, recent days and app
+    /// mix. The right rail answers what is safe to keep and what needs action.
     private var tabletDashboard: some View {
         HStack(alignment: .top, spacing: 18) {
             VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
                 heroCard
-                earningsByApp
+                if snapshot.hasData {
+                    if !historyDays.isEmpty { earningsHistoryPreview }
+                } else {
+                    emptyState
+                }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
 
-            VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
-                keepCard
-                if !attention.isEmpty { attentionCard }
-                setAsideTiles
-                rateTiles
-                hoursCard
-                expensesCard
+            if snapshot.hasData {
+                VStack(alignment: .leading, spacing: GG.Layout.stackSpacing) {
+                    keepCard
+                    if !attention.isEmpty { attentionCard }
+                    setAsideTiles
+                    rateTiles
+                    hoursCard
+                    expensesCard
+                    earningsByApp
+                }
+                .frame(minWidth: 310, idealWidth: 350, maxWidth: 380,
+                       alignment: .topLeading)
             }
-            .frame(minWidth: 310, idealWidth: 350, maxWidth: 380,
-                   alignment: .topLeading)
         }
     }
 
@@ -283,7 +292,7 @@ struct DashboardView: View {
             // "No shifts yet this week" is true and useless when you have
             // just imported June and it's July: it reads as the import having
             // failed. Say which it is.
-            if snapshot.hasEverLoggedShift {
+            if !allShifts.isEmpty {
                 Button(action: onShowHistory) {
                     GlassCard(radius: GG.Radius.tile,
                               padding: EdgeInsets(top: 16, leading: 18,
@@ -409,7 +418,7 @@ struct DashboardView: View {
 
             // The dashboard is where a wrong figure gets noticed, so the way
             // back to the shift that caused it belongs here.
-            if snapshot.hasData {
+            if !allShifts.isEmpty {
                 Button(action: onShowHistory) {
                     HStack(spacing: 5) {
                         Text("History")
@@ -452,14 +461,10 @@ struct DashboardView: View {
     private var heroCard: some View {
         HeroCard(glow: true) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 12) {
-                    Text("Earnings".uppercased())
-                        .ggText(GG.Typo.heroEyebrow,
-                                tracking: GG.Typo.heroEyebrowTracking,
-                                color: Color.white.opacity(0.55))
-                    Spacer(minLength: 0)
-                    scopePicker
-                }
+                scopePicker
+
+                periodNavigator
+                    .padding(.top, 15)
 
                 HStack(alignment: .bottom, spacing: 10) {
                     Text(Money.cents(snapshot.weeklyTotal))
@@ -490,18 +495,167 @@ struct DashboardView: View {
                 }
                 .padding(.top, 8)
 
-                VStack(spacing: 8) {
-                    HeroAreaChart(
-                        points: heroCumulative
-                            .chartPoints(box: ChartData.weekTrendBox),
-                        box: ChartData.weekTrendBox
-                    )
+                VStack(spacing: 9) {
+                    HStack(spacing: 8) {
+                        Text(chartMode.title(for: scope))
+                            .ggText(.system(size: 10.5, weight: .semibold),
+                                    tracking: 0.2,
+                                    color: Color.white.opacity(0.44))
+                        Spacer(minLength: 0)
+                        Text("Tap to switch")
+                            .ggText(.system(size: 9.5, weight: .medium),
+                                    color: Color.white.opacity(0.28))
+                    }
+
+                    Group {
+                        if chartMode == .cumulative {
+                            HeroAreaChart(
+                                points: heroCumulative
+                                    .chartPoints(box: ChartData.weekTrendBox),
+                                box: ChartData.weekTrendBox
+                            )
+                        } else {
+                            BarChart(
+                                bars: heroBarValues,
+                                maxHeight: max(
+                                    CGFloat(heroBuckets.max() ?? 0),
+                                    1
+                                ),
+                                height: 72,
+                                cornerRadius: 6,
+                                spacing: scope == .year ? 5 : 9
+                            )
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.22)) {
+                            chartMode.toggle()
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(chartMode.accessibilityLabel(for: scope))
+                    .accessibilityHint("Double tap to change chart style")
+                    .accessibilityAddTraits(.isButton)
+
                     AxisLabels(labels: heroLabels, color: Color.white.opacity(0.42))
+                }
+                .padding(.top, 18)
+
+                HStack(spacing: 0) {
+                    heroStat("Online", Hours.clock(snapshot.onlineHours))
+                    heroStat(completedMetricLabel, Num.grouped(snapshot.tripCount))
+                    heroStat("Per hour", snapshot.perHourLabel)
+                    heroStat("Miles", snapshot.mileage > 0
+                             ? Num.grouped(snapshot.mileage)
+                             : "—")
                 }
                 .padding(.top, 18)
             }
         }
         .animation(.easeInOut(duration: 0.28), value: scope)
+        .animation(.easeInOut(duration: 0.28), value: anchor)
+    }
+
+    private var periodNavigator: some View {
+        HStack(spacing: 10) {
+            if scope != .allTime {
+                periodArrow(-1, systemName: "chevron.left", enabled: true)
+            }
+
+            Button {
+                guard scope != .allTime else { return }
+                isPickingDashboardPeriod = true
+            } label: {
+                VStack(alignment: scope == .allTime ? .leading : .center,
+                       spacing: 2) {
+                    HStack(spacing: 5) {
+                        Text(scopePeriodTitle.uppercased())
+                            .ggText(GG.Typo.heroEyebrow,
+                                    tracking: GG.Typo.heroEyebrowTracking,
+                                    color: Color.white.opacity(0.60))
+                        if scope != .allTime {
+                            Chevron(size: 10, color: Color.white.opacity(0.35))
+                                .rotationEffect(.degrees(90))
+                        }
+                    }
+                    if !dashboardPeriodIsCurrent && scope != .allTime {
+                        Text("Tap to choose another \(scope == .week ? "week" : "year")")
+                            .ggText(.system(size: 9.5, weight: .medium),
+                                    color: GG.Palette.violet300.opacity(0.75))
+                    }
+                }
+                .frame(maxWidth: .infinity,
+                       alignment: scope == .allTime ? .leading : .center)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(scope == .allTime)
+
+            Text("\(historyDays.count) earning \(historyDays.count == 1 ? "day" : "days")")
+                .ggText(GG.Typo.captionMuted,
+                        color: Color.white.opacity(0.38))
+                .fixedSize()
+
+            if scope != .allTime {
+                periodArrow(
+                    1,
+                    systemName: "chevron.right",
+                    enabled: !dashboardPeriodIsCurrent
+                )
+            }
+        }
+    }
+
+    private func periodArrow(
+        _ delta: Int,
+        systemName: String,
+        enabled: Bool
+    ) -> some View {
+        Button {
+            let component: Calendar.Component = scope == .week
+                ? .weekOfYear
+                : .year
+            if let moved = Calendar.gigGrow.date(
+                byAdding: component,
+                value: delta,
+                to: anchor
+            ) {
+                anchor = moved
+            }
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(enabled
+                                 ? Color.white.opacity(0.62)
+                                 : Color.white.opacity(0.18))
+                .frame(width: 30, height: 30)
+                .background(Color.black.opacity(enabled ? 0.20 : 0.08),
+                            in: Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(
+            "\(delta < 0 ? "Previous" : "Next") \(scope == .week ? "week" : "year")"
+        )
+    }
+
+    private var dashboardRangeSelection: Binding<RangeSelection> {
+        Binding {
+            RangeSelection(
+                range: scope == .year ? .year : .week,
+                anchor: anchor
+            )
+        } set: { selection in
+            anchor = selection.anchor
+        }
+    }
+
+    private var dashboardPeriodIsCurrent: Bool {
+        guard scope != .allTime else { return true }
+        let dates = allShifts.map(\.start)
+        return scope.window(recordDates: dates, now: anchor)
+            == scope.window(recordDates: dates, now: .now)
     }
 
     private var scopePicker: some View {
@@ -518,8 +672,8 @@ struct DashboardView: View {
                         .foregroundStyle(option == scope
                                          ? Color.white
                                          : Color.white.opacity(0.46))
-                        .padding(.horizontal, option == .allTime ? 10 : 9)
-                        .padding(.vertical, 7)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity)
                         .background {
                             if option == scope {
                                 Capsule()
@@ -541,6 +695,7 @@ struct DashboardView: View {
                         }
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Show \(option.activityLabel) earnings")
                 .accessibilityAddTraits(option == scope ? .isSelected : [])
             }
@@ -548,6 +703,59 @@ struct DashboardView: View {
         .padding(3)
         .background(Color.black.opacity(0.20), in: Capsule())
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+    }
+
+    private func heroStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .ggText(.system(size: 8.5, weight: .semibold),
+                        tracking: 0.8,
+                        color: Color.white.opacity(0.36))
+                .lineLimit(1)
+            Text(value)
+                .ggText(.system(size: 13.5, weight: .semibold),
+                        tracking: -0.2,
+                        color: Color.white.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var scopePeriodTitle: String {
+        switch scope {
+        case .week:
+            let window = dashboardWindow
+            let end = window.upperBound.addingTimeInterval(-1)
+            let startFormatter = DateFormatter()
+            startFormatter.dateFormat = "MMM d"
+            let endFormatter = DateFormatter()
+            endFormatter.dateFormat = Calendar.gigGrow.isDate(
+                window.lowerBound,
+                equalTo: end,
+                toGranularity: .month
+            ) ? "d" : "MMM d"
+            return "\(startFormatter.string(from: window.lowerBound))–\(endFormatter.string(from: end))"
+        case .year:
+            return String(Calendar.gigGrow.component(.year, from: anchor))
+        case .allTime:
+            return "All recorded earnings"
+        }
+    }
+
+    /// The platform already knows what its completed work is called. Showing
+    /// "Completed 214" made the number look unfinished; a Lyft-only period
+    /// should say Rides, Uber should say Trips, and a mixed period should use
+    /// the honest umbrella term Jobs.
+    private var completedMetricLabel: String {
+        let nouns = Set(
+            historyShifts
+                .flatMap(\.earningItems)
+                .filter { $0.trips > 0 }
+                .map { $0.account?.unitNoun.lowercased() ?? "jobs" }
+        )
+        guard nouns.count == 1, let noun = nouns.first else { return "Jobs" }
+        return noun.capitalized
     }
 
     private var trendIsNegative: Bool {
@@ -579,6 +787,15 @@ struct DashboardView: View {
         }
     }
 
+    private var heroBarValues: [(height: CGFloat, opacity: Double)] {
+        heroBuckets.map { value in
+            (
+                height: CGFloat(max(value, 0)),
+                opacity: value > 0 ? 0.92 : 0.18
+            )
+        }
+    }
+
     private var heroBuckets: [Double] {
         guard scope == .allTime else { return snapshot.series.primary }
 
@@ -597,7 +814,35 @@ struct DashboardView: View {
     }
 
     private var heroLabels: [String] {
-        guard scope == .allTime else { return snapshot.series.primaryLabels }
+        switch scope {
+        case .week:
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEE d"
+            return (0..<7).compactMap { offset in
+                Calendar.gigGrow.date(
+                    byAdding: .day,
+                    value: offset,
+                    to: dashboardWindow.lowerBound
+                )
+            }
+            .map { formatter.string(from: $0) }
+
+        case .year:
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM"
+            let start = dashboardWindow.lowerBound
+            return (0..<12).compactMap { offset in
+                Calendar.gigGrow.date(
+                    byAdding: .month,
+                    value: offset,
+                    to: start
+                )
+            }
+            .map { formatter.string(from: $0) }
+
+        case .allTime:
+            break
+        }
 
         let groups = allTimeYearGroups
         guard groups.count > 1 else { return snapshot.series.primaryLabels }
@@ -617,18 +862,261 @@ struct DashboardView: View {
         let years = yearsWithEarnings
         guard years.count > 6 else {
             return years.map {
-                (String($0).suffix(2).description, Set([$0]))
+                (String($0), Set([$0]))
             }
         }
 
         let recent = Array(years.suffix(5))
         let earlier = Set(years.dropLast(5))
-        let earlierLabel = "≤" + String(
-            String(earlier.max() ?? years[0]).suffix(2)
-        )
+        let earlierLabel = "≤" + String(earlier.max() ?? years[0])
         return [(earlierLabel, earlier)] + recent.map {
-            (String($0).suffix(2).description, Set([$0]))
+            (String($0), Set([$0]))
         }
+    }
+
+    // MARK: Earnings history preview
+
+    /// A dense, traceable slice of Earnings History on the dashboard itself.
+    /// The hero answers "how much"; these rows answer which days and apps
+    /// produced it without making the driver open another screen first.
+    private var earningsHistoryPreview: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Earnings history")
+                            .ggText(GG.Typo.cardTitle,
+                                    tracking: GG.Typo.cardTitleTracking)
+                        Text(scope.activityLabel.capitalized)
+                            .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                    }
+                    Spacer(minLength: 8)
+                    Button(action: onShowHistory) {
+                        HStack(spacing: 5) {
+                            Text("View all")
+                                .font(.system(size: 13, weight: .semibold))
+                            Chevron(size: 12, color: GG.Palette.violet300)
+                        }
+                        .foregroundStyle(GG.Palette.violet300)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                HStack(spacing: 10) {
+                    historyStat("Days", Num.grouped(historyDays.count))
+                    historyStat("Entries", Num.grouped(historyShifts.count))
+                    historyStat("Tips", historyTips > 0
+                                ? Money.whole(historyTips)
+                                : "—")
+                    historyStat("Promos", historyPromotions > 0
+                                ? Money.whole(historyPromotions)
+                                : "—")
+                }
+                .padding(.vertical, 18)
+
+                RowDivider(color: GG.Surface.dividerSoft)
+
+                ForEach(Array(historyDays.prefix(historyPreviewLimit).enumerated()),
+                        id: \.element.id) { index, day in
+                    historyDayRow(day)
+                    if index < min(historyDays.count, historyPreviewLimit) - 1 {
+                        RowDivider(color: GG.Surface.dividerSoft)
+                    }
+                }
+
+                if historyDays.count > historyPreviewLimit {
+                    Button(action: onShowHistory) {
+                        Text("See \(historyDays.count - historyPreviewLimit) more earning days")
+                            .ggText(.system(size: 13.5, weight: .semibold),
+                                    color: GG.Palette.violet300)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 14)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func historyStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased())
+                .ggText(.system(size: 8.5, weight: .semibold),
+                        tracking: 0.9,
+                        color: GG.Ink.eyebrow)
+                .lineLimit(1)
+            Text(value)
+                .ggText(.system(size: 15.5, weight: .semibold),
+                        tracking: -0.25)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func historyDayRow(_ day: DashboardHistoryDay) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(historyDayLabel(day.date))
+                        .ggText(.system(size: 15, weight: .semibold))
+                }
+                Spacer(minLength: 8)
+                Text(day.isEstimated
+                     ? Money.whole(day.gross)
+                     : Money.cents(day.gross))
+                    .ggText(.system(size: 16, weight: .bold),
+                            tracking: -0.35)
+            }
+
+            HStack(spacing: 8) {
+                if dayPlatforms(day).isEmpty {
+                    Text("Manual entry")
+                        .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                } else {
+                    ForEach(dayPlatforms(day), id: \.name) { account in
+                        Text(account.short)
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .frame(height: 21)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color(hex: account.gradientStart),
+                                             Color(hex: account.gradientEnd)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                in: RoundedRectangle(cornerRadius: 6,
+                                                     style: .continuous)
+                            )
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            Text(historyDetailLine(day))
+                .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+
+            if day.tips > 0 || day.promotions > 0 {
+                HStack(spacing: 12) {
+                    if day.tips > 0 {
+                        supplementLabel("Tips", amount: day.tips,
+                                        color: GG.Palette.mint)
+                    }
+                    if day.promotions > 0 {
+                        supplementLabel("Promotions", amount: day.promotions,
+                                        color: GG.Palette.amber)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onShowHistory)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens earnings history")
+    }
+
+    private func supplementLabel(
+        _ label: String,
+        amount: Double,
+        color: Color
+    ) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 5, height: 5)
+            Text("\(label) \(Money.cents(amount))")
+                .ggText(.system(size: 11.5, weight: .medium),
+                        color: color.opacity(0.92))
+        }
+    }
+
+    private var dashboardWindow: Range<Date> {
+        scope.window(
+            recordDates: allShifts.map(\.start),
+            now: anchor
+        )
+    }
+
+    private var historyShifts: [Shift] {
+        allShifts.filter { dashboardWindow.contains($0.start) }
+    }
+
+    private var historyDays: [DashboardHistoryDay] {
+        let grouped = Dictionary(grouping: historyShifts) {
+            Calendar.gigGrow.startOfDay(for: $0.start)
+        }
+        return grouped.keys.sorted(by: >).map {
+            DashboardHistoryDay(date: $0, items: grouped[$0] ?? [])
+        }
+    }
+
+    private var historyPreviewLimit: Int { usesTabletLayout ? 4 : 3 }
+
+    private var historyTips: Double {
+        historyShifts
+            .flatMap(\.earningItems)
+            .reduce(0) { $0 + $1.tips }
+    }
+
+    private var historyPromotions: Double {
+        historyShifts
+            .flatMap(\.earningItems)
+            .reduce(0) { $0 + $1.promotions }
+    }
+
+    private func dayPlatforms(_ day: DashboardHistoryDay) -> [PlatformAccount] {
+        var seen: Set<String> = []
+        return day.items
+            .flatMap(\.earningItems)
+            .compactMap(\.account)
+            .filter { seen.insert($0.name.lowercased()).inserted }
+    }
+
+    private func historyDayLabel(_ date: Date) -> String {
+        if Calendar.gigGrow.isDateInToday(date) { return "Today" }
+        if Calendar.gigGrow.isDateInYesterday(date) { return "Yesterday" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d"
+        return formatter.string(from: date)
+    }
+
+    private func historyDetailLine(_ day: DashboardHistoryDay) -> String {
+        var parts: [String] = []
+        if day.hours > 0 { parts.append(Hours.clock(day.hours)) }
+        if let completed = completedWorkLabel(day) { parts.append(completed) }
+        if day.miles > 0 {
+            parts.append("\(Num.grouped(Int(day.miles.rounded()))) mi")
+        }
+        return parts.isEmpty ? "No work details recorded" : parts.joined(separator: " · ")
+    }
+
+    private func completedWorkLabel(_ day: DashboardHistoryDay) -> String? {
+        var counts: [String: Int] = [:]
+        for earning in day.items.flatMap(\.earningItems) where earning.trips > 0 {
+            let noun = earning.account?.unitNoun.lowercased() ?? "units"
+            counts[noun, default: 0] += earning.trips
+        }
+        guard !counts.isEmpty else { return nil }
+        return counts.keys.sorted().map { noun in
+            let count = counts[noun] ?? 0
+            return "\(count) \(historyInflected(noun, count: count))"
+        }
+        .joined(separator: " · ")
+    }
+
+    private func historyInflected(_ plural: String, count: Int) -> String {
+        guard count == 1 else { return plural }
+        let known: [String: String] = [
+            "trips": "trip", "rides": "ride", "orders": "order",
+            "batches": "batch", "blocks": "block",
+            "deliveries": "delivery", "units": "unit"
+        ]
+        return known[plural]
+            ?? (plural.hasSuffix("s") ? String(plural.dropLast()) : plural)
     }
 
     // MARK: Tax / maintenance
@@ -785,12 +1273,76 @@ struct DashboardView: View {
     }
 }
 
+private struct DashboardHistoryDay: Identifiable {
+    let date: Date
+    let items: [Shift]
+
+    var id: Date { date }
+    var gross: Double { items.reduce(0) { $0 + $1.gross } }
+    var hours: Double { items.reduce(0) { $0 + $1.hours } }
+    var miles: Double { items.reduce(0) { $0 + $1.miles } }
+    var tips: Double {
+        items.flatMap(\.earningItems).reduce(0) { $0 + $1.tips }
+    }
+    var promotions: Double {
+        items.flatMap(\.earningItems).reduce(0) { $0 + $1.promotions }
+    }
+    var isEstimated: Bool {
+        !items.isEmpty && items.allSatisfy {
+            $0.note?.hasPrefix("From a weekly screenshot") == true
+        }
+    }
+}
+
 #Preview("Dashboard") {
-    DashboardView(snapshot: .mock, scope: .constant(.week))
+    DashboardView(
+        snapshot: .mock,
+        scope: .constant(.week),
+        anchor: .constant(.now)
+    )
         .preferredColorScheme(.dark)
 }
 
 #Preview("Dashboard — empty") {
-    DashboardView(snapshot: .empty, scope: .constant(.week))
+    DashboardView(
+        snapshot: .empty,
+        scope: .constant(.week),
+        anchor: .constant(.now)
+    )
         .preferredColorScheme(.dark)
+}
+
+private enum DashboardChartMode {
+    case cumulative
+    case period
+
+    mutating func toggle() {
+        self = self == .cumulative ? .period : .cumulative
+    }
+
+    func title(for scope: DashboardScope) -> String {
+        switch self {
+        case .cumulative:
+            return "RUNNING TOTAL"
+        case .period:
+            switch scope {
+            case .week: return "EARNINGS BY DAY"
+            case .year: return "EARNINGS BY MONTH"
+            case .allTime: return "EARNINGS BY YEAR"
+            }
+        }
+    }
+
+    func accessibilityLabel(for scope: DashboardScope) -> String {
+        switch self {
+        case .cumulative:
+            return "Running earnings total chart"
+        case .period:
+            switch scope {
+            case .week: return "Daily earnings bar chart"
+            case .year: return "Monthly earnings bar chart"
+            case .allTime: return "Yearly earnings bar chart"
+            }
+        }
+    }
 }

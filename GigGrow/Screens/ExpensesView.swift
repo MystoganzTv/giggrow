@@ -15,6 +15,7 @@ import SwiftData
 struct ExpensesView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.ggUsesWideLayout) private var usesWideLayout
 
     @Query(sort: \Expense.date, order: .reverse) private var expenses: [Expense]
 
@@ -77,6 +78,14 @@ struct ExpensesView: View {
                     monthSection(month)
                 }
             }
+            // A ledger needs a readable scan line. Letting every row stretch
+            // across the whole iPad made dates, notes and amounts feel
+            // disconnected from one another.
+            .frame(
+                maxWidth: usesWideLayout ? 680 : .infinity,
+                alignment: .leading
+            )
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, GG.Layout.screenInset)
             .padding(.top, 8)
             .padding(.bottom, 40)
@@ -240,6 +249,11 @@ struct ExpensesView: View {
                     }
                 }
             }
+            .frame(
+                maxWidth: usesWideLayout ? 680 : .infinity,
+                alignment: .leading
+            )
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, GG.Layout.screenInset)
             .padding(.top, 8)
         }

@@ -38,7 +38,13 @@ enum GGIcon: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// What the tab bar shows. Five, which is the most a phone fits.
-    static let tabs: [GGIcon] = [.dashboard, .taxes, .analytics, .vehicle, .expenses]
+    static let tabs: [GGIcon] = [
+        .dashboard,
+        .expenses,
+        .analytics,
+        .taxes,
+        .vehicle
+    ]
 
     var title: String {
         switch self {

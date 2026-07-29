@@ -13,7 +13,18 @@ import UserNotifications
 struct RootView: View {
     @Environment(\.modelContext) private var context
 
-    @State private var selection: GGIcon = .dashboard
+    @State private var selection: GGIcon = {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let flag = arguments.firstIndex(of: "-GGScreenshotTab"),
+           arguments.indices.contains(flag + 1),
+           let tab = GGIcon(rawValue: arguments[flag + 1]),
+           GGIcon.tabs.contains(tab) {
+            return tab
+        }
+        #endif
+        return .dashboard
+    }()
     @State private var isLoggingShift = false
     @State private var isLoggingExpense = false
     @State private var isShowingExpenses = false
@@ -36,6 +47,10 @@ struct RootView: View {
     /// One selection per screen. Tapping "Year" on Analytics shouldn't
     /// silently reframe the dashboard, and vice versa.
     @State private var dashboardScope: DashboardScope = .week
+    /// Which week or year the dashboard is showing. Scope alone can only say
+    /// "a week"; the anchor is what lets the driver move to the week they
+    /// actually want to inspect.
+    @State private var dashboardAnchor: Date = .now
     @State private var analyticsSelection = RangeSelection(range: .week)
 
     /// One tracker for the whole app. It owns a CLLocationManager, so a second
@@ -82,7 +97,10 @@ struct RootView: View {
     private func buildDashboard() -> EarningsSnapshot? {
         let dates = shifts.map(\.start) + expenses.map(\.date)
         return build(
-            range: dashboardScope.window(recordDates: dates),
+            range: dashboardScope.window(
+                recordDates: dates,
+                now: dashboardAnchor
+            ),
             rangeKind: dashboardScope.rangeKind
         )
     }
@@ -181,6 +199,7 @@ struct RootView: View {
         }
         .onChange(of: analyticsSelection) { _, _ in rebuildAnalytics() }
         .onChange(of: dashboardScope) { _, _ in rebuild() }
+        .onChange(of: dashboardAnchor) { _, _ in rebuild() }
         .onChange(of: selection) { _, tab in
             // Analytics is the only screen that needs the second projection.
             if tab == .analytics { rebuildAnalytics() }
@@ -320,6 +339,7 @@ struct RootView: View {
         case .dashboard, .settingsGear:
             DashboardView(snapshot: snapshot,
                           scope: $dashboardScope,
+                          anchor: $dashboardAnchor,
                           onLogShift: { isLoggingShift = true },
                           onShowHistory: { isShowingHistory = true },
                           onShowProfile: { isShowingProfile = true },
