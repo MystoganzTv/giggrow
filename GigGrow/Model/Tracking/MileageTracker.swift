@@ -158,6 +158,8 @@ final class MileageTracker: NSObject {
 
     func disable() {
         manager.stopUpdatingLocation()
+        manager.allowsBackgroundLocationUpdates = false
+        manager.showsBackgroundLocationIndicator = false
         manager.stopMonitoringSignificantLocationChanges()
         motion.stopActivityUpdates()
         idleTimer?.invalidate()
@@ -235,21 +237,47 @@ final class MileageTracker: NSObject {
     ///     Invalid parameter not satisfying: !stayUp ||
     ///     CLClientIsBackgroundable(internal->fClient)
     ///
-    /// Two things have to be true: the bundle declares the `location`
-    /// background mode, and the driver granted "Always". Checking
-    /// authorisation alone wasn't enough — the build settings were writing
-    /// UIBackgroundModes in a shape iOS didn't read, so the entitlement was
-    /// missing at runtime and tapping Start killed the app.
+    /// The bundle must declare the `location` background mode. "Always"
+    /// authorisation is needed to begin automatic tracking while GigGrow
+    /// isn't in use, but it is *not* required to continue a trip that was
+    /// started in the foreground. With "When In Use", Core Location extends
+    /// that active session into the background and shows the blue location
+    /// indicator. Requiring "Always" here used to turn background delivery
+    /// off explicitly, so a manually started trip stopped accumulating as
+    /// soon as the driver switched to Uber, Lyft or Maps.
     ///
     /// Reading the bundle rather than trusting the build means a future
     /// project-file mistake degrades to "no background tracking" instead of
     /// a crash on the one button this screen has.
     private func enableBackgroundUpdatesIfPermitted() {
-        guard canRunInBackground, manager.authorizationStatus == .authorizedAlways else {
+        guard Self.permitsContinuousBackgroundUpdates(
+            backgroundModeAvailable: canRunInBackground,
+            authorization: manager.authorizationStatus
+        ) else {
             manager.allowsBackgroundLocationUpdates = false
+            manager.showsBackgroundLocationIndicator = false
             return
         }
+
+        // "When In Use" remains valid in the background only as an extension
+        // of this foreground-started session. The blue indicator makes that
+        // continued use visible. "Always" already has its own system-level
+        // disclosure and doesn't need the extra indicator forced on.
+        manager.showsBackgroundLocationIndicator =
+            manager.authorizationStatus == .authorizedWhenInUse
         manager.allowsBackgroundLocationUpdates = true
+    }
+
+    /// Kept separate from CLLocationManager so the permission matrix can be
+    /// pinned by unit tests. Both authorised states can continue a standard
+    /// location session in the background; only "Always" can start a new one
+    /// while the app is no longer in use.
+    static func permitsContinuousBackgroundUpdates(
+        backgroundModeAvailable: Bool,
+        authorization: CLAuthorizationStatus
+    ) -> Bool {
+        guard backgroundModeAvailable else { return false }
+        return authorization == .authorizedWhenInUse || authorization == .authorizedAlways
     }
 
     /// Whether Info.plist actually declares background location.
@@ -372,6 +400,7 @@ final class MileageTracker: NSObject {
         // Back to the cheap state until the next drive.
         manager.stopUpdatingLocation()
         manager.allowsBackgroundLocationUpdates = false
+        manager.showsBackgroundLocationIndicator = false
     }
 
     // MARK: Manual trips
@@ -431,6 +460,7 @@ final class MileageTracker: NSObject {
         lastLocation = nil
         manager.stopUpdatingLocation()
         manager.allowsBackgroundLocationUpdates = false
+        manager.showsBackgroundLocationIndicator = false
 
         let wasManual = mode == .manual
         mode = .automatic
@@ -467,9 +497,11 @@ extension MileageTracker: CLLocationManagerDelegate {
                     arm()
                 }
             case .authorizedWhenInUse:
-                // Usable, but drives ending while the app is closed will be
-                // missed. Say so rather than quietly under-recording.
-                notice = "GigGrow can only track while it's open. Allow location “Always” to catch drives in the background."
+                // A trip started while GigGrow is visible can continue in the
+                // background. "Always" is still necessary for automatic
+                // detection to begin a brand-new trip while another app is
+                // already on screen.
+                notice = "Trips you start in GigGrow continue in the background. Allow location “Always” if you also want new drives detected automatically while using other apps."
                 if pendingManualStart {
                     pendingManualStart = false
                     beginDrive(mode: .manual)

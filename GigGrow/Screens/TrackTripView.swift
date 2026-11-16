@@ -120,7 +120,7 @@ struct TrackTripView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Start tracking your trip")
                     .ggText(GG.Typo.cardTitle, tracking: GG.Typo.cardTitleTracking)
-                Text("GigGrow follows you from A to B and works out the distance. Keep the app open, or allow location “Always” to leave it running in your pocket.")
+                Text("Start here, then you can switch to Uber, Lyft or Maps while GigGrow keeps recording in the background. Allow location “Always” if you also want new drives detected before opening GigGrow.")
                     .ggText(GG.Typo.footnote, color: GG.Ink.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }

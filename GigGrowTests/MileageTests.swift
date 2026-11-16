@@ -13,6 +13,7 @@
 //
 
 import XCTest
+import CoreLocation
 @testable import GigGrow
 
 final class MileageTests: XCTestCase {
@@ -160,6 +161,34 @@ final class MileageTests: XCTestCase {
     func testTrackingIsOffByDefault() {
         let profile = DriverProfile(name: "Test")
         XCTAssertFalse(profile.autoMileageTracking)
+    }
+
+    /// A trip deliberately started while GigGrow is visible must keep
+    /// recording after the driver switches to Uber, Lyft or Maps. Core
+    /// Location supports that continuation with When In Use authorisation;
+    /// requiring Always here was what cut long trips short.
+    @MainActor
+    func testForegroundStartedTripCanContinueWithWhenInUsePermission() {
+        XCTAssertTrue(MileageTracker.permitsContinuousBackgroundUpdates(
+            backgroundModeAvailable: true,
+            authorization: .authorizedWhenInUse
+        ))
+        XCTAssertTrue(MileageTracker.permitsContinuousBackgroundUpdates(
+            backgroundModeAvailable: true,
+            authorization: .authorizedAlways
+        ))
+    }
+
+    @MainActor
+    func testBackgroundTrackingRequiresDeclaredLocationModeAndPermission() {
+        XCTAssertFalse(MileageTracker.permitsContinuousBackgroundUpdates(
+            backgroundModeAvailable: false,
+            authorization: .authorizedAlways
+        ))
+        XCTAssertFalse(MileageTracker.permitsContinuousBackgroundUpdates(
+            backgroundModeAvailable: true,
+            authorization: .denied
+        ))
     }
 
     // MARK: Looking at a period that isn't the present
